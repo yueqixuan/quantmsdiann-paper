@@ -158,3 +158,34 @@ def test_count_openswath_quantified_handles_missing_peptide_with_decoy_protein(t
     # Just one target precursor (AAAR), one target protein.
     assert out[0] == 1
     assert out[-1] == 1  # use [-1] so this test still works once a peptide field is added
+
+
+def test_per_run_non_na_fraction_diann(tmp_path: Path) -> None:
+    from analysis.figure_original_vs_quantmsdiann import per_run_non_na_fraction_diann
+    matrix = write_matrix(
+        tmp_path,
+        """
+        Protein.Group\tProtein.Ids\tProtein.Names\tGenes\tFirst.Protein.Description\tProteotypic\tStripped.Sequence\tModified.Sequence\tPrecursor.Charge\tPrecursor.Id\tRun_A\tRun_B
+        P1\tP1\tA\tG1\td\t1\tAAAR\tAAAR\t2\tAAAR2\t10\t
+        P2\tP2\tB\tG2\td\t1\tBBBR\tBBBR\t2\tBBBR2\t20\t30
+        P3\tP3\tC\tG3\td\t1\tCCCR\tCCCR\t2\tCCCR2\t\t40
+        """,
+    )
+    out = per_run_non_na_fraction_diann(matrix)
+    # 3 rows total; Run_A has 2 non-NA, Run_B has 2 non-NA.
+    assert out == {"Run_A": pytest.approx(2 / 3), "Run_B": pytest.approx(2 / 3)}
+
+
+def test_per_run_non_na_fraction_openswath_excludes_decoys(tmp_path: Path) -> None:
+    from analysis.figure_original_vs_quantmsdiann import per_run_non_na_fraction_openswath
+    body = (
+        "Peptide\tProtein\tIntensity_run0\tRT_run0\tscore_run0\tIntensity_run1\tRT_run1\tscore_run1\n"
+        "1_AAAR_2_run0\t1/sp|P1|HUMAN\t100\t10\t.5\t\t\t\n"
+        "2_BBBR_2_run0\t1/sp|P2|HUMAN\t\t\t\t200\t12\t.4\n"
+        "DECOY_3_CCCR_2_run0\t1/sp|P3|HUMAN\t999\t1\t.9\t999\t1\t.9\n"
+    )
+    p = tmp_path / "fa.tsv"
+    p.write_text(body)
+    out = per_run_non_na_fraction_openswath(p)
+    # 2 target rows; run0 has 1 non-NA, run1 has 1 non-NA among targets.
+    assert out == {"Intensity_run0": pytest.approx(1 / 2), "Intensity_run1": pytest.approx(1 / 2)}

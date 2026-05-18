@@ -7,7 +7,6 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 import matplotlib
 matplotlib.use("Agg")
@@ -88,22 +87,25 @@ def download_if_missing(url: str, dest: Path, *, retries: int = 2) -> Path:
     dest.parent.mkdir(parents=True, exist_ok=True)
     part = dest.with_suffix(dest.suffix + ".part")
     last_exc: Exception | None = None
-    for attempt in range(retries + 1):
-        try:
-            with requests.get(url, stream=True, timeout=120) as resp:
-                resp.raise_for_status()
-                with part.open("wb") as fh:
-                    for chunk in resp.iter_content(chunk_size=1 << 20):
-                        fh.write(chunk)
-            os.replace(part, dest)
-            return dest
-        except requests.RequestException as exc:
-            last_exc = exc
-            if attempt < retries:
-                time.sleep(2 ** attempt)
-    raise RuntimeError(
-        f"Failed to download {url} after {retries + 1} attempts: {last_exc}"
-    )
+    try:
+        for attempt in range(retries + 1):
+            try:
+                with requests.get(url, stream=True, timeout=120) as resp:
+                    resp.raise_for_status()
+                    with part.open("wb") as fh:
+                        for chunk in resp.iter_content(chunk_size=1 << 20):
+                            fh.write(chunk)
+                os.replace(part, dest)
+                return dest
+            except requests.RequestException as exc:
+                last_exc = exc
+                if attempt < retries:
+                    time.sleep(2 ** attempt)
+        raise RuntimeError(
+            f"Failed to download {url} after {retries + 1} attempts: {last_exc}"
+        )
+    finally:
+        part.unlink(missing_ok=True)
 
 
 def count_quantified_rows(
@@ -199,6 +201,57 @@ def count_eprot73_genes(tsv_path: Path) -> int:
     return int(df["gene_id"].nunique())
 
 
+def per_run_non_na_fraction_diann(matrix_path: Path) -> dict[str, float]:
+    """For each sample column in a DIA-NN matrix, return the fraction of rows
+    with a non-NA value in that column. Sample columns are anything not in
+    PR_METADATA_COLS."""
+    df = pd.read_csv(matrix_path, sep="\t", dtype=str)
+    missing = [c for c in PR_METADATA_COLS if c not in df.columns]
+    if missing:
+        raise ValueError(
+            f"DIA-NN matrix header missing metadata columns: {missing}"
+        )
+    samples = [c for c in df.columns if c not in PR_METADATA_COLS]
+    total = len(df)
+    if total == 0:
+        return {s: 0.0 for s in samples}
+    return {s: float(df[s].notna().sum()) / total for s in samples}
+
+
+def per_run_non_na_fraction_openswath(matrix_path: Path) -> dict[str, float]:
+    """For each Intensity_<run> column in the OpenSWATH matrix, return the
+    fraction of target (non-decoy) rows with a non-NA value. Uses chunked
+    reading. Total denominator is the count of target rows (the same for
+    every run)."""
+    # First pass: count target rows.
+    target_total = 0
+    intensity_cols: list[str] = []
+    header = pd.read_csv(matrix_path, sep="\t", nrows=0)
+    cols = list(header.columns)
+    if "Peptide" not in cols or "Protein" not in cols:
+        raise ValueError("OpenSWATH matrix missing Peptide/Protein columns")
+    intensity_cols = [c for c in cols if c.startswith("Intensity_")]
+    if not intensity_cols:
+        raise ValueError("OpenSWATH matrix has no Intensity_* columns")
+
+    per_run_non_na: dict[str, int] = {c: 0 for c in intensity_cols}
+    usecols = ["Peptide", "Protein"] + intensity_cols
+    for chunk in pd.read_csv(matrix_path, sep="\t", dtype=str,
+                             usecols=usecols, chunksize=50000):
+        is_decoy = (
+            chunk["Peptide"].str.startswith("DECOY_", na=False)
+            | chunk["Protein"].str.contains("DECOY", case=False, na=False)
+        )
+        targets = chunk[~is_decoy]
+        target_total += len(targets)
+        for col in intensity_cols:
+            per_run_non_na[col] += int(targets[col].notna().sum())
+
+    if target_total == 0:
+        return {c: 0.0 for c in intensity_cols}
+    return {c: per_run_non_na[c] / target_total for c in intensity_cols}
+
+
 def parse_summary_log(log_path: Path) -> int:
     """Return protein group count at 1% global FDR from a DIA-NN summary log."""
     with open(log_path, encoding="utf-8") as fh:
@@ -212,12 +265,10 @@ def parse_summary_log(log_path: Path) -> int:
 
 
 def render_figure(counts: Counts, pdf_path: Path, png_path: Path) -> None:
-    """Render a 3-condition x 2-metric grouped bar chart and save as PDF and PNG."""
+    """Render a 2-condition x 2-metric grouped bar chart and save as PDF and PNG."""
     conditions = [
         ("Guo 2019\n(OpenSWATH)", "#9e9e9e",
          counts.guo_peptides, counts.guo_proteins),
-        ("Walzer 2022\n(CAL + OpenSWATH)", "#7fb3d5",
-         counts.walzer_peptides, counts.walzer_proteins),
         ("quantmsdiann\n(DIA-NN)", "#1f77b4",
          counts.diann_peptides, counts.diann_proteins),
     ]
@@ -282,13 +333,56 @@ def render_figure(counts: Counts, pdf_path: Path, png_path: Path) -> None:
     fig.tight_layout(rect=(0, 0.06, 1, 1))
     fig.text(
         0.5, 0.02,
-        "All counts at 1% FDR; methods differ in spectral library and search engine.",
+        "All counts at 1% FDR (Guo 2019: OpenSWATH + pyprophet; this work: DIA-NN).",
         ha="center",
         va="bottom",
         fontstyle="italic",
         fontsize=8,
     )
 
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(pdf_path)
+    fig.savefig(png_path, dpi=200)
+    plt.close(fig)
+
+
+def render_missing_values_per_run(
+    guo_per_run: dict[str, float],
+    diann_per_run: dict[str, float],
+    pdf_path: Path,
+    png_path: Path,
+) -> None:
+    """Plot per-run non-NA fraction for both pipelines.
+
+    Runs on the x axis are aligned by the L<date>_<n>_SW stem extracted from
+    the column name. Bars sorted by the stem (which sorts chronologically by
+    acquisition date)."""
+    import re as _re
+
+    def stem(col: str) -> str:
+        # diann columns look like 'guot_L130610_003_SW.mzML'
+        # openswath columns look like 'Intensity_guot_L130610_003_SW_with_dscore.csv_0_14'
+        m = _re.search(r"L\d+_\d+_SW", col)
+        return m.group(0) if m else col
+
+    diann_by_stem = {stem(c): v for c, v in diann_per_run.items()}
+    guo_by_stem = {stem(c): v for c, v in guo_per_run.items()}
+    common = sorted(set(diann_by_stem) & set(guo_by_stem))
+
+    fig, ax = plt.subplots(figsize=(10, 4))
+    x = range(len(common))
+    ax.plot(list(x), [guo_by_stem[s] for s in common],
+            label="Guo 2019 (OpenSWATH)", color="#9e9e9e", linewidth=1.0)
+    ax.plot(list(x), [diann_by_stem[s] for s in common],
+            label="quantmsdiann (DIA-NN)", color="#1f77b4", linewidth=1.0)
+    ax.set_xlabel(f"MS run index ({len(common)} runs, ordered by acquisition date)")
+    ax.set_ylabel("Fraction of precursors quantified per run")
+    ax.set_ylim(0, 1.05)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.legend(loc="lower right", frameon=False)
+
+    fig.tight_layout()
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(pdf_path)
     fig.savefig(png_path, dpi=200)
@@ -302,7 +396,7 @@ def write_counts_tsv(counts: Counts, tsv_path: Path) -> None:
          counts.guo_peptides,
          "from feature_alignment_requant_matrix.tsv (target rows, >=1 quant)"),
         ("Peptides", "Walzer 2022 (CAL + OpenSWATH, top3)",
-         77014,
+         counts.walzer_peptides,
          "Supplementary Table S2 (PXD003539, 1% FDR, top3)"),
         ("Peptides", "quantmsdiann (DIA-NN, 1% FDR)",
          counts.diann_peptides,
@@ -311,7 +405,7 @@ def write_counts_tsv(counts: Counts, tsv_path: Path) -> None:
          counts.guo_proteins,
          "unique Protein column values in feature_alignment_requant_matrix.tsv"),
         ("Protein groups", "Walzer 2022 (CAL + OpenSWATH, top3)",
-         7097,
+         counts.walzer_proteins,
          "Supplementary Table S2 (PXD003539, 1% FDR, top3, unfiltered)"),
         ("Protein groups", "quantmsdiann (DIA-NN, 1% FDR)",
          counts.diann_proteins,
@@ -389,8 +483,8 @@ def main() -> int:  # pragma: no cover
     )
 
     # 4. Render figure
-    pdf_path = FIGURES_DIR / "PXD003539_reanalysis_comparison.pdf"
-    png_path = FIGURES_DIR / "PXD003539_reanalysis_comparison.png"
+    pdf_path = FIGURES_DIR / "PXD003539_main_comparison.pdf"
+    png_path = FIGURES_DIR / "PXD003539_main_comparison.png"
     render_figure(counts, pdf_path, png_path)
     print(f"Figure saved to {pdf_path} and {png_path}")
 
@@ -399,7 +493,24 @@ def main() -> int:  # pragma: no cover
     write_counts_tsv(counts, tsv_path)
     print(f"Counts TSV saved to {tsv_path}")
 
-    # 6. Print 3-line summary
+    # 6. Supplementary figure B: per-run completeness
+    print("Computing per-run completeness for supplementary figure B...")
+    guo_per_run = per_run_non_na_fraction_openswath(opensw_path)
+    diann_per_run = per_run_non_na_fraction_diann(pr_path)
+    suppB_pdf = FIGURES_DIR / "PXD003539_supp_missing_values_per_run.pdf"
+    suppB_png = FIGURES_DIR / "PXD003539_supp_missing_values_per_run.png"
+    render_missing_values_per_run(guo_per_run, diann_per_run, suppB_pdf, suppB_png)
+    print(f"Supplementary B figure saved to {suppB_pdf} and {suppB_png}")
+
+    # Also print median per-run fraction for each pipeline.
+    import statistics as _stats
+    print(
+        f"Median per-run completeness: "
+        f"Guo={_stats.median(guo_per_run.values()):.2%} "
+        f"quantmsdiann={_stats.median(diann_per_run.values()):.2%}"
+    )
+
+    # 7. Print 3-line summary
     print(
         f"Peptides:        Guo={guo_peptides:,}  "
         f"Walzer={WALZER_PEPTIDES:,}  "
@@ -418,7 +529,7 @@ def main() -> int:  # pragma: no cover
         f"EA context:     Walzer (E-PROT-73 genes)={counts.walzer_ea_genes:,}"
     )
 
-    # 7. Sanity warnings
+    # 8. Sanity warnings
     if abs(diann_precursors - 117720) / 117720 > 0.01:
         print(
             f"WARNING: diann_precursors={diann_precursors:,} deviates >1% from expected 117,720",
