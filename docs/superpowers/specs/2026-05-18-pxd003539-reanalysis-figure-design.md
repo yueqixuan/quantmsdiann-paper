@@ -8,24 +8,25 @@
 
 Produce a single paper-quality figure that demonstrates the value of reanalysing
 the public DIA dataset PXD003539 ("NCI60 proteome by PCT-SWATH", Guo et al.,
-iScience 2019) with the quantmsdiann pipeline: more peptides and more proteins
-quantified than the original analysis reported.
+iScience 2019) with the quantmsdiann pipeline: more precursors and more proteins
+quantified than the original analysis, at the **same FDR level (1%)**.
 
 This is the first reanalysis demonstration in the quantmsdiann manuscript repo.
 
-> Unit note: the user framed this as "more precursors and proteins". The Guo
-> 2019 paper reports numbers at the **peptide** level (22,554 proteotypic
-> peptides), so for an apples-to-apples comparison we count unique peptide
-> sequences from the DIA-NN `pr_matrix.tsv` (`Stripped.Sequence` column) rather
-> than rows (precursors = peptide × charge × modification). The total precursor
-> count is also reported in the auxiliary TSV but is not the headline figure.
+> FDR-matched comparison: we compare the OpenSWATH 1%-FDR output deposited in
+> PRIDE (`feature_alignment_requant_matrix.tsv` under
+> `https://ftp.pride.ebi.ac.uk/pride/data/archive/2020/06/PXD003539/`) against
+> the DIA-NN 1%-FDR output from quantmsdiann. We deliberately do *not* compare
+> against the paper's curated 22,554 / 3,171 numbers, which were further
+> filtered by the manual DIA-expert system on top of the 1% FDR cutoff and
+> would make the comparison unfair.
 
 ## Scope
 
 In scope:
 
-- One figure: aggregate study-wide totals (peptides and protein groups),
-  original vs quantmsdiann, as a grouped bar chart.
+- One figure: aggregate study-wide totals (precursors and protein groups),
+  original vs quantmsdiann, as a grouped bar chart, both at 1% FDR.
 - One reusable Python script that downloads the DIA-NN report from the PRIDE
   FTP, computes counts under a defined rule, and renders the figure.
 - A small TSV that records the underlying counts (so the figure is auditable).
@@ -39,7 +40,7 @@ Out of scope (explicitly deferred):
 
 ## Inputs
 
-### quantmsdiann (reanalysis)
+### quantmsdiann (reanalysis, DIA-NN at 1% FDR)
 
 Downloaded from PRIDE FTP:
 
@@ -50,71 +51,78 @@ https://ftp.pride.ebi.ac.uk/pub/databases/pride/resources/proteomes/quantms-coll
 Files used:
 
 - `diann_report.pr_matrix.tsv` — precursor × run quantification matrix
-  (filtered at 1% precursor and protein-group FDR by DIA-NN).
-- `diann_report.pg_matrix.tsv` — protein-group × run quantification matrix
-  (filtered at 5% protein q-value by DIA-NN, per `diann_config.cfg`).
-- `diannsummary.log` — used to cross-check totals reported by DIA-NN
-  (117,720 target precursors at 1% global q-value; 6,927 protein groups at 1%
-  global q-value). Note: by config the `pr_matrix.tsv` is filtered at 1%
-  precursor + 1% protein-group FDR, but `pg_matrix.tsv` is filtered at 5%
-  protein q-value, so matrix protein counts can legitimately exceed 6,927.
+  (filtered at 1% precursor and protein-group FDR by DIA-NN). Used for the
+  precursor count.
+- `diannsummary.log` — parsed for the 1% global q-value protein-group total
+  (`Protein groups with global q-value <= 0.01: 6927`). This is the headline
+  protein count, *not* the `pg_matrix.tsv` (which is at 5% protein q-value
+  and would inflate the number unfairly).
 
-Counting rule (locked):
+Counting rule for quantmsdiann (locked):
 
-- **Peptides (headline):** number of *unique* values of `Stripped.Sequence` in
-  `pr_matrix.tsv` for which at least one sample column has a non-NA
-  quantification across the 120 runs.
-- **Protein groups (headline):** number of rows in `pg_matrix.tsv` with at
-  least one non-NA quantification across the 120 runs.
-- **Precursors (auxiliary, TSV only):** number of rows in `pr_matrix.tsv` with
-  at least one non-NA quantification.
+- **Precursors:** number of rows in `pr_matrix.tsv` with at least one non-NA
+  quantification across the 120 runs (expected ≈ 117,720, matching the log).
+- **Protein groups:** parsed directly from `diannsummary.log` as the integer
+  after `Protein groups with global q-value <= 0.01:` (6,927).
 
-Metadata column anchors (locked, validated against the public files on
-2026-05-18):
+`pr_matrix.tsv` metadata columns (everything before per-run sample columns,
+validated against the public file on 2026-05-18): `Protein.Group`,
+`Protein.Ids`, `Protein.Names`, `Genes`, `First.Protein.Description`,
+`Proteotypic`, `Stripped.Sequence`, `Modified.Sequence`, `Precursor.Charge`,
+`Precursor.Id`. Sample columns are "anything not in the metadata set". The
+matrix header is validated; missing metadata columns raise `ValueError`.
 
-- `pr_matrix.tsv` metadata columns (everything before per-run sample columns):
-  `Protein.Group`, `Protein.Ids`, `Protein.Names`, `Genes`,
-  `First.Protein.Description`, `Proteotypic`, `Stripped.Sequence`,
-  `Modified.Sequence`, `Precursor.Charge`, `Precursor.Id`.
-- `pg_matrix.tsv` metadata columns: `Protein.Group`, `Protein.Names`, `Genes`,
-  `First.Protein.Description`, `N.Sequences`, `N.Proteotypic.Sequences`.
-- Sample columns are detected as "anything not in the metadata set". The
-  script validates that the matrix header contains all expected metadata
-  columns and raises a clear `ValueError` if any are missing (this is what
-  catches a DIA-NN version change).
+### Original analysis (OpenSWATH at 1% FDR, deposited PRIDE submission)
 
-Cross-check (sanity, not gating): the matrix-derived precursor row count is
-expected within ~1 % of the log total (117,720 target precursors); the
-matrix-derived protein-group count is expected to be ≥ 6,927 and within ~25 %
-of it (because `pg_matrix.tsv` is at 5 % protein q-value vs the log's 1 %).
-The script logs the auxiliary precursor count and the two log totals into the
-output TSV so the figure remains auditable.
+Downloaded from PRIDE FTP:
 
-### Original analysis (Guo et al., iScience 2019)
+```
+https://ftp.pride.ebi.ac.uk/pride/data/archive/2020/06/PXD003539/feature_alignment_requant_matrix.tsv
+```
 
-Source: Guo T, Luna A, Rajapakse VN, et al. *Quantitative Proteome Landscape of
-the NCI-60 Cancer Cell Lines.* iScience. 2019;21:664–680.
-doi: 10.1016/j.isci.2019.10.059. PubMed: 31733513.
+This is the OpenSWATH + pyprophet + feature_alignment requantification matrix
+deposited by Guo et al. with PXD003539 on 2020-06-01. Layout: one row per
+precursor; columns are `Peptide`, `Protein`, then triplets of
+`Intensity_<run>`, `RT_<run>`, `score_<run>` for each of the 120 runs (≈365
+columns total, ≈50,406 rows). The file is ~184 MB.
 
-Numbers are stored as hardcoded constants at the top of the script with an
-inline comment naming the exact source.
+Decoys: rows are decoys when the `Peptide` column starts with `DECOY_` *or*
+the `Protein` column contains `DECOY` (case-insensitive). Decoys are excluded
+from all reported counts.
 
-**Baseline values (confirmed 2026-05-18 from PMC6889472 full text):**
+Counting rule for OpenSWATH (locked):
 
-- `ORIGINAL_PEPTIDES = 22554` — Guo 2019, Results, "DIA-Expert-Curated Results
-  of the NCI-60 Proteome": *"Excluding proteins/peptides that were not
-  technically reproducible resulted in 22,554 proteotypic peptides from 3,171
-  proteins…"* This is the count of proteotypic peptide sequences in the final
-  data matrix used by the paper for all downstream analyses.
-- `ORIGINAL_PROTEINS = 3171` — same sentence as above, confirmed by the
-  Introduction (*"a data matrix (120 proteomes vs. 3,171 proteins)"*) and the
-  Discussion (*"3,171 proteins were included for further analyses"*).
+- **Precursors:** number of target rows (non-decoy) with at least one non-NA
+  `Intensity_<run>` column. Expected ≈ 48,374.
+- **Protein groups:** number of unique values of the `Protein` column among
+  target rows with ≥ 1 non-NA `Intensity_<run>`. The `Protein` field is a
+  protein-group string of the form `<N>/sp|...|XXX_HUMAN/sp|...|YYY_HUMAN`
+  where `<N>` is the group size; we count unique full strings, not split
+  members. Expected ≈ 6,556 (matches Guo 2019 Results: "we identified 6,556
+  protein groups").
 
-For context, the paper also reports an initial OpenSWATH identification of
-6,556 protein groups before DIA-expert curation, and a spectral library of
-86,209 proteotypic peptides / 8,056 SwissProt proteins. These are *not* used
-as headline baselines — the paper's reproducible quantified totals are
-22,554 / 3,171.
+Cross-check (logged, not gating): if either OpenSWATH count differs from the
+expected value by more than ~1%, log a warning. These values are deterministic
+on a fixed input file, so a mismatch likely means the file changed upstream.
+
+### Reference citation
+
+The original dataset is described in: Guo T, Luna A, Rajapakse VN, et al.
+*Quantitative Proteome Landscape of the NCI-60 Cancer Cell Lines.* iScience.
+2019;21:664–680. doi: 10.1016/j.isci.2019.10.059. PubMed: 31733513.
+
+For context, the paper itself reports two different sets of numbers:
+
+- Pre-curation (OpenSWATH 1% FDR): 6,556 protein groups across 48,374 target
+  precursors. This is what is **deposited in PRIDE** and what this analysis
+  uses as the fair-comparison baseline.
+- Post-curation (DIA-expert curated subset published in figures): 22,554
+  proteotypic peptides / 3,171 proteins. This is the paper's headline number
+  but is much stricter than 1% FDR. It is **not** used as the baseline here;
+  it is reported as auxiliary context only.
+
+The spectral library used by the original study contained 86,209 proteotypic
+peptides from 8,056 SwissProt proteins.
 
 ## Outputs
 
@@ -127,9 +135,9 @@ as headline baselines — the paper's reproducible quantified totals are
 ## Figure design
 
 - Single-panel grouped bar chart, matplotlib.
-- X axis: two groups, "Peptides" and "Protein groups".
-- Within each group: two bars side-by-side, "Original (Guo 2019)" and
-  "quantmsdiann".
+- X axis: two groups, "Precursors" and "Protein groups".
+- Within each group: two bars side-by-side, "Original (OpenSWATH 1% FDR)" and
+  "quantmsdiann (DIA-NN 1% FDR)".
 - Y axis: count (linear). If the quantmsdiann/original ratio exceeds ~5× for
   either metric, switch to a log y-axis and note it in the caption.
 - Value labels on top of each bar.
@@ -143,17 +151,25 @@ Single file: `analysis/figure_original_vs_quantmsdiann.py`.
 
 Layout:
 
-1. Constants block — original-paper numbers and their citations, PRIDE FTP
-   URLs, output paths, cache directory (`data/PXD003539/`), and the two
-   metadata-column lists for `pr_matrix.tsv` and `pg_matrix.tsv`.
+1. Constants block — PRIDE FTP URLs, output paths, cache directory
+   (`data/PXD003539/`), and the `pr_matrix.tsv` metadata column list.
 2. `download_if_missing(url, dest)` — fetches a file once, idempotent.
-3. `count_quantified_rows(tsv_path, metadata_cols, unique_by=None)` — reads
-   the matrix, treats every column *not* in `metadata_cols` as a per-run
-   sample column, identifies rows with at least one non-NA quantification,
-   and returns either the count of those rows (default) or the count of
-   distinct values of `unique_by` among them. Raises `ValueError` if the
-   header is missing any expected metadata column.
-4. `main()` — downloads, counts, writes TSV, renders figure.
+3. `count_quantified_rows(tsv_path, metadata_cols, unique_by=None)` — for
+   DIA-NN matrices. Reads the matrix, treats every column *not* in
+   `metadata_cols` as a per-run sample column, identifies rows with at least
+   one non-NA quantification, and returns either the count of those rows
+   (default) or the count of distinct `unique_by` values among them. Raises
+   `ValueError` if the header is missing any expected metadata column.
+4. `count_openswath_quantified(tsv_path)` — for the OpenSWATH
+   `feature_alignment_requant_matrix.tsv`. Returns a `(precursors, proteins)`
+   tuple of integer counts among target (non-decoy) rows with at least one
+   non-NA `Intensity_<run>` column. Uses chunked reading (`pandas.read_csv`
+   with `chunksize`) because the file is ~184 MB; we never need the
+   intensities themselves, only whether each row has any.
+5. `parse_summary_log(log_path)` — parses `diannsummary.log` for the line
+   `Protein groups with global q-value <= 0.01: N` and returns N; raises
+   `ValueError` if the line is not present.
+6. `main()` — downloads, counts, writes TSV, renders figure.
 
 Dependencies (`analysis/requirements.txt`): `pandas`, `matplotlib`, `requests`.
 
@@ -164,29 +180,34 @@ from the repo root and prints the four counts to stdout.
 
 - Network: `download_if_missing` retries twice on failure and aborts with a
   clear message naming the missing URL.
-- Schema: column-name detection raises an explicit `ValueError` listing the
-  unexpected columns if the DIA-NN matrix layout has changed.
-- Original numbers: the constants are confirmed and hardcoded (see "Baseline
-  values" above). If they are ever changed to `None` during edits, the script
-  refuses to render and prints the list of missing constants.
+- DIA-NN schema: column-name detection raises an explicit `ValueError` listing
+  the missing columns if the matrix layout has changed.
+- OpenSWATH schema: the matrix loader checks for `Peptide`, `Protein`, and at
+  least one `Intensity_*` column, and raises `ValueError` otherwise.
+- Summary-log parse: `parse_summary_log` raises `ValueError` if the expected
+  protein-group total line is missing.
 
 ## Testing
 
 Light by design (this is a one-figure analysis script, not a library):
 
+- Unit tests cover the three counters (`count_quantified_rows` with and
+  without `unique_by`, schema validation, `count_openswath_quantified` with a
+  small fixture, and `parse_summary_log`).
 - Run end-to-end on a fresh checkout: downloads the matrices, produces PDF +
   PNG + TSV, exits 0.
-- Spot-check: matrix-derived precursor count is within ~1 % of 117,720;
-  matrix-derived protein count is ≥ 6,927 and within ~25 % of it. Mismatches
-  outside these bands surface in the output TSV (not a hard failure).
+- Spot-check: DIA-NN matrix precursor count within ~1% of 117,720; DIA-NN log
+  protein count = 6,927 exactly; OpenSWATH precursors within ~1% of 48,374;
+  OpenSWATH protein groups within ~1% of 6,556.
 - Eyeball the figure: bars labelled correctly, quantmsdiann > original for
   both metrics.
 
 ## Open questions / follow-ups
 
-- If the gap is dramatic (>10×), revisit whether log axis or a second panel
-  (per-run distribution) is needed; tracked but not in scope here. With the
-  confirmed numbers (22,554 peptides / 3,171 proteins original vs ~117,720
-  precursors and ≥ 6,927 protein groups from quantmsdiann), the protein-group
-  ratio is ~2× but the peptide ratio could exceed 5× depending on how many
-  unique peptide sequences DIA-NN's `Stripped.Sequence` resolves to.
+- Expected magnitudes (all at 1% FDR): precursors 48,374 → 117,720 (~2.4×);
+  protein groups 6,556 → 6,927 (~1.06×). The protein ratio is small but the
+  precursor ratio is meaningful. If we later want a more striking protein
+  comparison, we could add per-cell-line counts in a follow-up figure (out of
+  scope here).
+- The 184 MB OpenSWATH matrix download is one-time; cached under
+  `data/PXD003539/`. Subsequent runs are fast.
