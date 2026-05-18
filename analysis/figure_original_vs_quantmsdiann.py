@@ -265,6 +265,10 @@ def render_figure(counts: Counts, pdf_path: Path, png_path: Path) -> None:
     if needs_log:
         ax.set_yscale("log")
         ylabel += " (log scale)"
+    else:
+        # Headroom so the legend doesn't overlap the tallest bar's value label.
+        top = max(max(peptide_vals), max(protein_vals)) * 1.18
+        ax.set_ylim(0, top)
 
     ax.set_ylabel(ylabel)
     ax.set_xticks(x)
@@ -275,16 +279,15 @@ def render_figure(counts: Counts, pdf_path: Path, png_path: Path) -> None:
 
     ax.legend(loc="upper left", frameon=False)
 
+    fig.tight_layout(rect=(0, 0.06, 1, 1))
     fig.text(
-        0.5, -0.02,
+        0.5, 0.02,
         "All counts at 1% FDR; methods differ in spectral library and search engine.",
         ha="center",
-        va="top",
+        va="bottom",
         fontstyle="italic",
         fontsize=8,
     )
-
-    fig.tight_layout()
 
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(pdf_path)
