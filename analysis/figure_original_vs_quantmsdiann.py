@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import os
 import re
 import sys
@@ -8,6 +9,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import pandas as pd
 import requests
 
@@ -52,6 +56,18 @@ GUO_CURATED_PROTEINS = 3171
 SUMMARY_LOG_PROTEIN_LINE_RE = re.compile(
     r"Protein groups with global q-value <= 0\.01:\s*(\d+)"
 )
+
+
+@dataclass(frozen=True)
+class Counts:
+    guo_peptides: int
+    guo_proteins: int
+    guo_precursors: int
+    walzer_peptides: int
+    walzer_proteins: int
+    diann_peptides: int
+    diann_proteins: int
+    diann_precursors: int
 
 
 def download_if_missing(url: str, dest: Path, *, retries: int = 2) -> Path:
@@ -171,9 +187,226 @@ def parse_summary_log(log_path: Path) -> int:
     )
 
 
-# Do NOT add the `main()` body in this task — Task 5 fills it in.
-def main() -> int:  # pragma: no cover - filled in Task 5
-    raise NotImplementedError("main is implemented in Task 5")
+def render_figure(counts: Counts, pdf_path: Path, png_path: Path) -> None:
+    """Render a 3-condition x 2-metric grouped bar chart and save as PDF and PNG."""
+    conditions = [
+        ("Guo 2019\n(OpenSWATH)", "#9e9e9e",
+         counts.guo_peptides, counts.guo_proteins),
+        ("Walzer 2022\n(CAL + OpenSWATH)", "#7fb3d5",
+         counts.walzer_peptides, counts.walzer_proteins),
+        ("quantmsdiann\n(DIA-NN)", "#1f77b4",
+         counts.diann_peptides, counts.diann_proteins),
+    ]
+
+    metrics = ["Peptides", "Protein groups"]
+    bar_width = 0.27
+    n_conditions = len(conditions)
+    x = [0, 1]  # x positions for the two metric groups
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+
+    offsets = [bar_width * (i - (n_conditions - 1) / 2.0)
+               for i in range(n_conditions)]
+
+    for i, (label, color, peptide_val, protein_val) in enumerate(conditions):
+        values = [peptide_val, protein_val]
+        bars = ax.bar(
+            [xi + offsets[i] for xi in x],
+            values,
+            width=bar_width,
+            color=color,
+            label=label,
+        )
+        for bar, val in zip(bars, values):
+            ax.text(
+                bar.get_x() + bar.get_width() / 2.0,
+                bar.get_height(),
+                f"{val:,}",
+                ha="center",
+                va="bottom",
+                fontsize=9,
+            )
+
+    # Check if log scale is needed for either metric
+    peptide_vals = [c[2] for c in conditions]
+    protein_vals = [c[3] for c in conditions]
+    needs_log = False
+    for metric_vals in [peptide_vals, protein_vals]:
+        mn, mx = min(metric_vals), max(metric_vals)
+        if mn > 0 and mx / mn > 5:
+            needs_log = True
+            break
+
+    ylabel = "Count (1% FDR)"
+    if needs_log:
+        ax.set_yscale("log")
+        ylabel += " (log scale)"
+
+    ax.set_ylabel(ylabel)
+    ax.set_xticks(x)
+    ax.set_xticklabels(metrics)
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    ax.legend(loc="upper left", frameon=False)
+
+    fig.text(
+        0.5, -0.02,
+        "All counts at 1% FDR; methods differ in spectral library and search engine.",
+        ha="center",
+        va="top",
+        fontstyle="italic",
+        fontsize=8,
+    )
+
+    fig.tight_layout()
+
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(pdf_path)
+    fig.savefig(png_path, dpi=200)
+    plt.close(fig)
+
+
+def write_counts_tsv(counts: Counts, tsv_path: Path) -> None:
+    """Write an auditable TSV with metric/source/count/note rows."""
+    rows = [
+        ("Peptides", "Guo 2019 (OpenSWATH, deposited)",
+         counts.guo_peptides,
+         "from feature_alignment_requant_matrix.tsv (target rows, >=1 quant)"),
+        ("Peptides", "Walzer 2022 (CAL + OpenSWATH, top3)",
+         77014,
+         "Supplementary Table S2 (PXD003539, 1% FDR, top3)"),
+        ("Peptides", "quantmsdiann (DIA-NN, 1% FDR)",
+         counts.diann_peptides,
+         "unique Stripped.Sequence in pr_matrix with >=1 non-NA"),
+        ("Protein groups", "Guo 2019 (OpenSWATH, deposited)",
+         counts.guo_proteins,
+         "unique Protein column values in feature_alignment_requant_matrix.tsv"),
+        ("Protein groups", "Walzer 2022 (CAL + OpenSWATH, top3)",
+         7097,
+         "Supplementary Table S2 (PXD003539, 1% FDR, top3, unfiltered)"),
+        ("Protein groups", "quantmsdiann (DIA-NN, 1% FDR)",
+         counts.diann_proteins,
+         "from diannsummary.log (Protein groups with global q-value <= 0.01)"),
+        ("Precursors aux", "Guo 2019 (OpenSWATH, deposited)",
+         counts.guo_precursors,
+         "target rows with >=1 non-NA Intensity in feature_alignment matrix"),
+        ("Precursors aux", "quantmsdiann (DIA-NN, 1% FDR)",
+         counts.diann_precursors,
+         "rows in pr_matrix with >=1 non-NA"),
+        ("Curated context", "Guo 2019 (DIA-expert curated, peptides)",
+         22554,
+         "paper text, not used as a headline bar"),
+        ("Curated context", "Guo 2019 (DIA-expert curated, proteins)",
+         3171,
+         "paper text, not used as a headline bar"),
+        ("Filter context", "Walzer 2022 (50% per group filter)",
+         6867,
+         "Supplementary Table S2 - '50% per group' consistency filter, proteins"),
+    ]
+
+    tsv_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(tsv_path, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh, delimiter="\t")
+        writer.writerow(["metric", "source", "count", "note"])
+        for row in rows:
+            writer.writerow(row)
+
+
+def main() -> int:  # pragma: no cover
+    # 1. Ensure output directories exist
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+
+    # 2. Download input files (idempotent)
+    pr_path = DATA_DIR / "diann_report.pr_matrix.tsv"
+    log_path = DATA_DIR / "diannsummary.log"
+    opensw_path = DATA_DIR / "feature_alignment_requant_matrix.tsv"
+
+    print("Downloading files (skipped if already cached)...")
+    download_if_missing(PR_MATRIX_URL, pr_path)
+    download_if_missing(SUMMARY_LOG_URL, log_path)
+    download_if_missing(OPENSWATH_MATRIX_URL, opensw_path)
+
+    # 3. Compute counts
+    print("Computing quantmsdiann counts...")
+    diann_peptides = count_quantified_rows(
+        pr_path, PR_METADATA_COLS, unique_by="Stripped.Sequence"
+    )
+    diann_precursors = count_quantified_rows(pr_path, PR_METADATA_COLS)
+    diann_proteins = parse_summary_log(log_path)
+
+    print("Computing Guo 2019 (OpenSWATH) counts...")
+    guo_precursors, guo_peptides, guo_proteins = count_openswath_quantified(opensw_path)
+
+    # Build the immutable Counts record
+    counts = Counts(
+        guo_peptides=guo_peptides,
+        guo_proteins=guo_proteins,
+        guo_precursors=guo_precursors,
+        walzer_peptides=WALZER_PEPTIDES,
+        walzer_proteins=WALZER_PROTEINS,
+        diann_peptides=diann_peptides,
+        diann_proteins=diann_proteins,
+        diann_precursors=diann_precursors,
+    )
+
+    # 4. Render figure
+    pdf_path = FIGURES_DIR / "PXD003539_reanalysis_comparison.pdf"
+    png_path = FIGURES_DIR / "PXD003539_reanalysis_comparison.png"
+    render_figure(counts, pdf_path, png_path)
+    print(f"Figure saved to {pdf_path} and {png_path}")
+
+    # 5. Write auditable TSV
+    tsv_path = FIGURES_DIR / "PXD003539_counts.tsv"
+    write_counts_tsv(counts, tsv_path)
+    print(f"Counts TSV saved to {tsv_path}")
+
+    # 6. Print 3-line summary
+    print(
+        f"Peptides:        Guo={guo_peptides:,}  "
+        f"Walzer={WALZER_PEPTIDES:,}  "
+        f"quantmsdiann={diann_peptides:,}"
+    )
+    print(
+        f"Protein groups:  Guo={guo_proteins:,}  "
+        f"Walzer={WALZER_PROTEINS:,}  "
+        f"quantmsdiann={diann_proteins:,}"
+    )
+    print(
+        f"Auxiliary:       Guo precursors={guo_precursors:,}  "
+        f"quantmsdiann precursors={diann_precursors:,}"
+    )
+
+    # 7. Sanity warnings
+    if abs(diann_precursors - 117720) / 117720 > 0.01:
+        print(
+            f"WARNING: diann_precursors={diann_precursors:,} deviates >1% from expected 117,720",
+            file=sys.stderr,
+        )
+    if diann_proteins != 6927:
+        print(
+            f"WARNING: diann_proteins={diann_proteins:,} != expected 6,927",
+            file=sys.stderr,
+        )
+    if abs(guo_precursors - 48374) / 48374 > 0.01:
+        print(
+            f"WARNING: guo_precursors={guo_precursors:,} deviates >1% from expected 48,374",
+            file=sys.stderr,
+        )
+    if abs(guo_proteins - 6556) / 6556 > 0.01:
+        print(
+            f"WARNING: guo_proteins={guo_proteins:,} deviates >1% from expected 6,556",
+            file=sys.stderr,
+        )
+    if abs(guo_peptides - 40592) / 40592 > 0.05:
+        print(
+            f"WARNING: guo_peptides={guo_peptides:,} deviates >5% from expected 40,592",
+            file=sys.stderr,
+        )
+
+    return 0
 
 
 if __name__ == "__main__":  # pragma: no cover
