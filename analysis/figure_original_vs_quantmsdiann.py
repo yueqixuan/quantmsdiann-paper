@@ -33,6 +33,22 @@ PR_METADATA_COLS = [
     "Modified.Sequence", "Precursor.Charge", "Precursor.Id",
 ]
 
+# Walzer et al. 2022 (doi:10.1038/s41597-022-01380-9) Supplementary Table S2,
+# row PXD003539, 1% FDR, 'top3' protein inference, unfiltered.
+WALZER_PEPTIDES = 77014
+WALZER_PROTEINS = 7097
+# Auxiliary (TSV only): the same row's '50% per group' consistency-filtered
+# protein count is 6,867; with 'all' inference at 1% FDR the protein count is
+# 5,412. Walzer 2022 does not directly report a precursor-level count.
+WALZER_PROTEINS_50PCT_FILTER = 6867
+
+# Guo et al. 2019 (doi:10.1016/j.isci.2019.10.059) Results, after DIA-expert
+# manual curation. Reported in the paper text and matched in Walzer 2022
+# Supplementary Table S2, "Original - after filter" column for PXD003539.
+# Used for TSV context, NOT plotted as a headline bar.
+GUO_CURATED_PEPTIDES = 22554
+GUO_CURATED_PROTEINS = 3171
+
 SUMMARY_LOG_PROTEIN_LINE_RE = re.compile(
     r"Protein groups with global q-value <= 0\.01:\s*(\d+)"
 )
@@ -77,8 +93,8 @@ def count_quantified_rows(
             f"Matrix is missing expected metadata column(s): {', '.join(missing)}"
         )
     sample_cols = [c for c in df.columns if c not in metadata_cols]
-    sample_df = df[sample_cols].replace("NA", pd.NA)
-    sample_df = sample_df.replace("", pd.NA)
+    sample_df = df[sample_cols]
+    # read_csv treats "" and "NA" as NaN by default
     quantified_mask = sample_df.notna().any(axis=1)
     quantified_df = df[quantified_mask]
     if unique_by is not None:
@@ -86,8 +102,22 @@ def count_quantified_rows(
     return int(quantified_mask.sum())
 
 
-def count_openswath_quantified(matrix_path: Path) -> tuple[int, int]:
-    """Count quantified target precursors and protein groups in an OpenSWATH matrix."""
+PEPTIDE_ID_RE = re.compile(r"^(?:DECOY_)?\d+_(?P<modseq>.+)_(?P<charge>\d+)_run0$")
+UNIMOD_RE = re.compile(r"\(UniMod:\d+\)")
+
+
+def _stripped_peptide(peptide_id: str) -> str | None:
+    """Extract the unmodified peptide sequence from an OpenSWATH Peptide ID.
+
+    Returns None if the ID does not match the expected format."""
+    m = PEPTIDE_ID_RE.match(peptide_id)
+    if not m:
+        return None
+    return UNIMOD_RE.sub("", m.group("modseq"))
+
+
+def count_openswath_quantified(matrix_path: Path) -> tuple[int, int, int]:
+    """Count quantified target precursors, peptides, and protein groups in an OpenSWATH matrix."""
     header_df = pd.read_csv(matrix_path, sep="\t", nrows=0)
     cols = list(header_df.columns)
     if "Peptide" not in cols:
@@ -101,6 +131,7 @@ def count_openswath_quantified(matrix_path: Path) -> tuple[int, int]:
         )
     usecols = ["Peptide", "Protein"] + intensity_cols
     total_precursors = 0
+    peptides: set[str] = set()
     protein_groups: set[str] = set()
     for chunk in pd.read_csv(
         matrix_path,
@@ -110,17 +141,22 @@ def count_openswath_quantified(matrix_path: Path) -> tuple[int, int]:
         chunksize=50000,
     ):
         # Exclude decoy rows
-        is_decoy = chunk["Peptide"].str.startswith("DECOY_") | chunk["Protein"].str.contains(
-            "DECOY", case=False, na=False
+        is_decoy = (
+            chunk["Peptide"].str.startswith("DECOY_", na=False)
+            | chunk["Protein"].str.contains("DECOY", case=False, na=False)
         )
         target = chunk[~is_decoy]
         # A row is quantified if at least one Intensity_ column is non-NA / non-empty
-        intensity_df = target[intensity_cols].replace("NA", pd.NA).replace("", pd.NA)
-        quantified_mask = intensity_df.notna().any(axis=1)
+        # read_csv treats "" and "NA" as NaN by default
+        quantified_mask = target[intensity_cols].notna().any(axis=1)
         quantified = target[quantified_mask]
         total_precursors += len(quantified)
+        for pep_id in quantified["Peptide"]:
+            stripped = _stripped_peptide(pep_id)
+            if stripped is not None:
+                peptides.add(stripped)
         protein_groups.update(quantified["Protein"].tolist())
-    return total_precursors, len(protein_groups)
+    return total_precursors, len(peptides), len(protein_groups)
 
 
 def parse_summary_log(log_path: Path) -> int:

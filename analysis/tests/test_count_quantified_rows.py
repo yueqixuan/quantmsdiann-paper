@@ -90,9 +90,10 @@ DECOY_4_DDDR_2_run0\t1/sp|P4|HUMAN\t500\t11.0\t0.9\t\t\t
 """
     p = tmp_path / "fa.tsv"
     p.write_text(body)
-    precursors, proteins = count_openswath_quantified(p)
+    precursors, peptides, proteins = count_openswath_quantified(p)
     # Quantified target rows: AAAR, BBBR, FFFR. CCCR has no intensity. DECOYs excluded.
     assert precursors == 3
+    assert peptides == 3
     # Unique Protein values among quantified targets:
     # "1/sp|P1|HUMAN", "1/sp|P2|HUMAN", "2/sp|P6|HUMAN/sp|P6alt|HUMAN" -> 3
     assert proteins == 3
@@ -103,7 +104,7 @@ def test_count_openswath_quantified_raises_on_missing_columns(tmp_path: Path) ->
     p = tmp_path / "bad.tsv"
     p.write_text("Peptide\tProtein\tRT_run0\tscore_run0\nx\ty\t1\t2\n")
     with pytest.raises(ValueError, match="Intensity"):
-        count_openswath_quantified(p)
+        count_openswath_quantified(p)  # return value not unpacked; just check it raises
 
 
 def test_parse_summary_log_finds_protein_total(tmp_path: Path) -> None:
@@ -123,3 +124,19 @@ def test_parse_summary_log_raises_if_line_missing(tmp_path: Path) -> None:
     p.write_text("nothing interesting here\n")
     with pytest.raises(ValueError, match="global q-value"):
         parse_summary_log(p)
+
+
+def test_count_openswath_quantified_handles_missing_peptide_with_decoy_protein(tmp_path: Path) -> None:
+    from analysis.figure_original_vs_quantmsdiann import count_openswath_quantified
+    # An empty Peptide cell with a DECOY Protein must still be excluded.
+    body = (
+        "Peptide\tProtein\tIntensity_run0\n"
+        "1_AAAR_2_run0\t1/sp|P1|HUMAN\t100\n"
+        "\tDECOY_1/sp|P2|HUMAN\t999\n"
+    )
+    p = tmp_path / "fa.tsv"
+    p.write_text(body)
+    out = count_openswath_quantified(p)
+    # Just one target precursor (AAAR), one target protein.
+    assert out[0] == 1
+    assert out[-1] == 1  # use [-1] so this test still works once a peptide field is added
