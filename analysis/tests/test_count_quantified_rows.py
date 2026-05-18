@@ -75,3 +75,51 @@ def test_raises_if_metadata_column_missing(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="First.Protein.Description"):
         count_quantified_rows(matrix, PG_METADATA)
+
+
+def test_count_openswath_quantified_excludes_decoys(tmp_path: Path) -> None:
+    from analysis.figure_original_vs_quantmsdiann import count_openswath_quantified
+    body = """\
+Peptide\tProtein\tIntensity_run0\tRT_run0\tscore_run0\tIntensity_run1\tRT_run1\tscore_run1
+1_AAAR_2_run0\t1/sp|P1|HUMAN\t100\t10.0\t0.5\t\t\t
+2_BBBR_2_run0\t1/sp|P2|HUMAN\t\t\t\t200\t12.0\t0.4
+3_CCCR_2_run0\t1/sp|P3|HUMAN\t\t\t\t\t\t
+DECOY_4_DDDR_2_run0\t1/sp|P4|HUMAN\t500\t11.0\t0.9\t\t\t
+5_EEER_2_run0\tDECOY_1/sp|P5|HUMAN\t600\t11.5\t0.95\t\t\t
+6_FFFR_2_run0\t2/sp|P6|HUMAN/sp|P6alt|HUMAN\t700\t9.5\t0.3\t\t\t
+"""
+    p = tmp_path / "fa.tsv"
+    p.write_text(body)
+    precursors, proteins = count_openswath_quantified(p)
+    # Quantified target rows: AAAR, BBBR, FFFR. CCCR has no intensity. DECOYs excluded.
+    assert precursors == 3
+    # Unique Protein values among quantified targets:
+    # "1/sp|P1|HUMAN", "1/sp|P2|HUMAN", "2/sp|P6|HUMAN/sp|P6alt|HUMAN" -> 3
+    assert proteins == 3
+
+
+def test_count_openswath_quantified_raises_on_missing_columns(tmp_path: Path) -> None:
+    from analysis.figure_original_vs_quantmsdiann import count_openswath_quantified
+    p = tmp_path / "bad.tsv"
+    p.write_text("Peptide\tProtein\tRT_run0\tscore_run0\nx\ty\t1\t2\n")
+    with pytest.raises(ValueError, match="Intensity"):
+        count_openswath_quantified(p)
+
+
+def test_parse_summary_log_finds_protein_total(tmp_path: Path) -> None:
+    from analysis.figure_original_vs_quantmsdiann import parse_summary_log
+    p = tmp_path / "log.txt"
+    p.write_text(
+        "[0:01] Spectral library loaded\n"
+        "[1:31] Protein groups with global q-value <= 0.01: 6927\n"
+        "[2:10] Compressed report saved\n"
+    )
+    assert parse_summary_log(p) == 6927
+
+
+def test_parse_summary_log_raises_if_line_missing(tmp_path: Path) -> None:
+    from analysis.figure_original_vs_quantmsdiann import parse_summary_log
+    p = tmp_path / "log.txt"
+    p.write_text("nothing interesting here\n")
+    with pytest.raises(ValueError, match="global q-value"):
+        parse_summary_log(p)
