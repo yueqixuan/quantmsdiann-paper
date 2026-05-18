@@ -46,6 +46,15 @@ WALZER_PROTEINS = 7097
 # 5,412. Walzer 2022 does not directly report a precursor-level count.
 WALZER_PROTEINS_50PCT_FILTER = 6867
 
+# Expression Atlas E-PROT-73 — Walzer 2022 reanalysis of PXD003539 after their
+# full post-processing pipeline (Ensembl gene mapping + 50%-per-group
+# consistency filter + decoy removal). Smaller than the raw 7,097 because
+# protein-to-gene mapping is lossy.
+EPROT73_URL = (
+    "https://ftp.ebi.ac.uk/pub/databases/microarray/data/atlas/"
+    "experiments/E-PROT-73/E-PROT-73.tsv"
+)
+
 # Guo et al. 2019 (doi:10.1016/j.isci.2019.10.059) Results, after DIA-expert
 # manual curation. Reported in the paper text and matched in Walzer 2022
 # Supplementary Table S2, "Original - after filter" column for PXD003539.
@@ -65,6 +74,7 @@ class Counts:
     guo_precursors: int
     walzer_peptides: int
     walzer_proteins: int
+    walzer_ea_genes: int  # new
     diann_peptides: int
     diann_proteins: int
     diann_precursors: int
@@ -173,6 +183,20 @@ def count_openswath_quantified(matrix_path: Path) -> tuple[int, int, int]:
                 peptides.add(stripped)
         protein_groups.update(quantified["Protein"].tolist())
     return total_precursors, len(peptides), len(protein_groups)
+
+
+def count_eprot73_genes(tsv_path: Path) -> int:
+    """Count unique Ensembl gene IDs in the Expression Atlas E-PROT-73 file.
+
+    The file has no preamble: line 1 is the header (`Gene ID`, `Gene Name`, …)
+    and data rows follow immediately from line 2.  We read all rows with
+    `pd.read_csv` (no `skiprows`) and keep only those whose first column value
+    starts with `ENSG`.  The header value `"Gene ID"` is naturally excluded by
+    that prefix filter, so no extra row-dropping is needed."""
+    df = pd.read_csv(tsv_path, sep="\t", dtype=str, usecols=[0])
+    df.columns = ["gene_id"]
+    df = df[df["gene_id"].fillna("").str.startswith("ENSG")]
+    return int(df["gene_id"].nunique())
 
 
 def parse_summary_log(log_path: Path) -> int:
@@ -304,6 +328,10 @@ def write_counts_tsv(counts: Counts, tsv_path: Path) -> None:
         ("Filter context", "Walzer 2022 (50% per group filter)",
          6867,
          "Supplementary Table S2 - '50% per group' consistency filter, proteins"),
+        ("EA context", "Walzer 2022 (E-PROT-73, Expression Atlas)",
+         counts.walzer_ea_genes,
+         "unique Ensembl gene IDs in E-PROT-73.tsv (post-processed: gene mapping + "
+         "50% per-group filter + decoy removal)"),
     ]
 
     tsv_path.parent.mkdir(parents=True, exist_ok=True)
@@ -328,6 +356,7 @@ def main() -> int:  # pragma: no cover
     download_if_missing(PR_MATRIX_URL, pr_path)
     download_if_missing(SUMMARY_LOG_URL, log_path)
     download_if_missing(OPENSWATH_MATRIX_URL, opensw_path)
+    eprot73_path = download_if_missing(EPROT73_URL, DATA_DIR / "E-PROT-73.tsv")
 
     # 3. Compute counts
     print("Computing quantmsdiann counts...")
@@ -340,6 +369,9 @@ def main() -> int:  # pragma: no cover
     print("Computing Guo 2019 (OpenSWATH) counts...")
     guo_precursors, guo_peptides, guo_proteins = count_openswath_quantified(opensw_path)
 
+    print("Computing Expression Atlas E-PROT-73 gene count...")
+    walzer_ea_genes = count_eprot73_genes(eprot73_path)
+
     # Build the immutable Counts record
     counts = Counts(
         guo_peptides=guo_peptides,
@@ -347,6 +379,7 @@ def main() -> int:  # pragma: no cover
         guo_precursors=guo_precursors,
         walzer_peptides=WALZER_PEPTIDES,
         walzer_proteins=WALZER_PROTEINS,
+        walzer_ea_genes=walzer_ea_genes,
         diann_peptides=diann_peptides,
         diann_proteins=diann_proteins,
         diann_precursors=diann_precursors,
@@ -378,6 +411,9 @@ def main() -> int:  # pragma: no cover
         f"Auxiliary:       Guo precursors={guo_precursors:,}  "
         f"quantmsdiann precursors={diann_precursors:,}"
     )
+    print(
+        f"EA context:     Walzer (E-PROT-73 genes)={counts.walzer_ea_genes:,}"
+    )
 
     # 7. Sanity warnings
     if abs(diann_precursors - 117720) / 117720 > 0.01:
@@ -403,6 +439,12 @@ def main() -> int:  # pragma: no cover
     if abs(guo_peptides - 40592) / 40592 > 0.05:
         print(
             f"WARNING: guo_peptides={guo_peptides:,} deviates >5% from expected 40,592",
+            file=sys.stderr,
+        )
+    if abs(walzer_ea_genes - 2199) / 2199 > 0.02:
+        print(
+            f"WARN: Walzer EA gene count {walzer_ea_genes} differs from "
+            f"expected 2,199 by >2%",
             file=sys.stderr,
         )
 

@@ -126,6 +126,24 @@ def test_parse_summary_log_raises_if_line_missing(tmp_path: Path) -> None:
         parse_summary_log(p)
 
 
+def test_count_eprot73_genes_counts_unique_ensembl_ids(tmp_path: Path) -> None:
+    from analysis.figure_original_vs_quantmsdiann import count_eprot73_genes
+    # Mimic the real EA file layout: header on line 1, data from line 2.
+    # No preamble — the real file starts directly with the "Gene ID" header.
+    body = (
+        "Gene ID\tGene Name\tg1.WithInSampleAbundance\n"
+        "ENSG00000000001\tFOO\t1.0\n"
+        "ENSG00000000002\tBAR\t\n"
+        "ENSG00000000001\tFOO\t2.0\n"  # duplicate gene id, distinct row
+        "\tEmptyId\t0.5\n"
+        "NOTANENSG\tX\t1.0\n"
+    )
+    p = tmp_path / "e.tsv"
+    p.write_text(body)
+    # Expect 2 unique Ensembl gene IDs (00000001 and 00000002).
+    assert count_eprot73_genes(p) == 2
+
+
 def test_count_openswath_quantified_handles_missing_peptide_with_decoy_protein(tmp_path: Path) -> None:
     from analysis.figure_original_vs_quantmsdiann import count_openswath_quantified
     # An empty Peptide cell with a DECOY Protein must still be excluded.
