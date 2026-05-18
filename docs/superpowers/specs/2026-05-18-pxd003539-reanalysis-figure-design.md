@@ -27,13 +27,22 @@ repo.
 
 In scope:
 
-- One figure: aggregate study-wide totals at 1% FDR, three conditions × two
-  metrics (peptides and protein groups), as a grouped bar chart.
-- One reusable Python script that downloads the DIA-NN report and the
-  OpenSWATH deposited matrix from PRIDE FTP, computes counts under defined
-  rules, hardcodes the Walzer 2022 numbers (which are from a static
-  supplementary table), and renders the figure.
-- A small TSV that records the underlying counts (so the figure is auditable).
+- **Main figure** — aggregate study-wide totals at 1% FDR, **two** conditions
+  × two metrics (peptides and protein groups), original Guo 2019 OpenSWATH
+  vs quantmsdiann. We compare against the *original submission* only here
+  because that's the only set of raw intermediate files we still have
+  programmatic access to (Walzer 2022's S3 bucket is decommissioned).
+- **Supplementary figure A** — Walzer 2022 (E-PROT-73 in Expression Atlas) vs
+  quantmsdiann at the **gene level, broken down by tissue**. The two
+  pipelines are processed differently downstream (Walzer applies a gene-ID
+  mapping + consistency filter; we don't), so this gene-by-tissue view is
+  the only fair lens on what Walzer published.
+- **Supplementary figure B** — missing values per MS run, Guo 2019 OpenSWATH
+  vs quantmsdiann. Same matrices as the main figure; per-run completeness is
+  expected to be substantially higher in quantmsdiann.
+- One Python script that downloads inputs, computes counts, and renders all
+  three figures.
+- A TSV recording the underlying numbers (figure data, fully auditable).
 
 Out of scope (explicitly deferred):
 
@@ -170,29 +179,69 @@ from 8,056 SwissProt proteins. Walzer 2022 used the pan-human CAL library
 
 ## Outputs
 
-- `analysis/figures/PXD003539_reanalysis_comparison.pdf` — vector figure for
-  inclusion in the manuscript.
-- `analysis/figures/PXD003539_reanalysis_comparison.png` — raster preview.
-- `analysis/figures/PXD003539_counts.tsv` — tab-separated table with all six
-  bar values plus auxiliary numbers (Guo curated, Guo precursors, Walzer
-  filtered variants), their sources, and the date the script was run.
+- `analysis/figures/PXD003539_main_comparison.pdf` / `.png` — main figure
+  (2 conditions × 2 metrics: Guo 2019 OpenSWATH vs quantmsdiann; peptides
+  and protein groups at 1% FDR).
+- `analysis/figures/PXD003539_supp_walzer_genes_by_tissue.pdf` / `.png` —
+  supplementary figure A (gene counts per tissue, Walzer E-PROT-73 vs
+  quantmsdiann).
+- `analysis/figures/PXD003539_supp_missing_values_per_run.pdf` / `.png` —
+  supplementary figure B (per-run missing-value rate, Guo OpenSWATH vs
+  quantmsdiann).
+- `analysis/figures/PXD003539_counts.tsv` — tab-separated table with all
+  figure values plus auxiliary context (Guo curated 22,554/3,171; Walzer
+  raw Supplementary Table S2 totals; precursor counts).
 
-## Figure design
+## Figure designs
 
-- Single-panel grouped bar chart, matplotlib.
+### Main figure: 2 conditions × 2 metrics
+
+- Single-panel grouped bar chart.
 - X axis: two groups, "Peptides" and "Protein groups".
-- Within each group: three bars side-by-side in this fixed order:
-  1. "Guo 2019 (OpenSWATH)" — grey
-  2. "Walzer 2022 (CAL + OpenSWATH)" — light blue
-  3. "quantmsdiann (DIA-NN)" — accent blue
-- Y axis: count (linear). If the max/min ratio within either metric exceeds
-  ~5×, switch to a log y-axis and note it in the caption. (Expected peptide
-  ratio ≈ 3×, well within linear.)
+- Within each group, two bars in this fixed order:
+  1. "Guo 2019 (OpenSWATH)" — grey `#9e9e9e`
+  2. "quantmsdiann (DIA-NN)" — accent blue `#1f77b4`
 - Value labels on top of each bar.
-- No grid, no chart-junk. Title omitted (referenced from the paper caption).
-- Footnote on the figure (small italic text under the legend or as part of
-  the caption): "All counts at 1% FDR; methods differ in spectral library and
-  search engine."
+- Y axis: count (linear); switch to log if max/min ratio within either
+  metric > 5× (expected ratio ≈ 2.4×, comfortably linear).
+- Footer: italic, "All counts at 1% FDR (Guo 2019: OpenSWATH+pyprophet; this
+  work: DIA-NN)."
+
+### Supplementary figure A: genes per tissue (Walzer vs quantmsdiann)
+
+- Single-panel grouped bar chart.
+- X axis: tissue groups (NCI-60 has 9: blood/leukemia, brain/CNS, breast,
+  colon, lung, melanoma, ovary, prostate, renal). Order alphabetical.
+- Within each tissue, two bars: Walzer 2022 (E-PROT-73) light-blue vs
+  quantmsdiann (DIA-NN unique_genes_matrix) accent blue.
+- A row is "detected" in a tissue if any sample in that tissue has a non-zero
+  / non-NA value.
+- Sample-to-tissue mapping:
+  - Walzer (E-PROT-73): parse `E-PROT-73-configuration.xml` to map
+    `g<N>` → assay (cell line) → disease label, then bucket disease labels
+    into the 9 tissue categories (we'll use a small literal mapping inside
+    the script).
+  - quantmsdiann: parse `PXD003539.sdrf.tsv` to map `assay name` → MS run
+    file → `characteristics[organism part]` (already at tissue granularity).
+- Y axis: unique gene count.
+
+### Supplementary figure B: missing values per run
+
+- Single-panel, line / strip plot.
+- X axis: MS run index, sorted by run name (the 120 files are alphabetical
+  by acquisition date, so the order doubles as an acquisition timeline).
+- Y axis: fraction of precursors with a non-NA quantification in that run.
+- Two series:
+  - Guo 2019 OpenSWATH: from `feature_alignment_requant_matrix.tsv`,
+    fraction of target precursor rows with non-NA `Intensity_<run>`.
+  - quantmsdiann (DIA-NN): from `diann_report.pr_matrix.tsv`, fraction of
+    rows with non-NA value in each per-run column.
+- Both denominators are the TOTAL number of precursor rows in the respective
+  matrix (so the two series are not directly stack-comparable; what is
+  meaningful is the *shape* of each curve and the per-pipeline floor).
+- Optional secondary panel: missing-value *count* on the same x axis. We
+  start with a single panel and add the count if the percentage view alone
+  doesn't tell the story.
 
 ## Script architecture
 
