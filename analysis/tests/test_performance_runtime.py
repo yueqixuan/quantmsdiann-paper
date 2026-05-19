@@ -309,9 +309,9 @@ def test_aggregate_step_durations_keys_by_step(tmp_path: Path) -> None:
 
 
 def test_load_trace_handles_header_only_trace(tmp_path: Path) -> None:
-    """Truncated traces (PXD070049/v2_3_2 ships header-only) must not crash
-    the loader or downstream aggregators. The figure script should still emit
-    a TSV row for the analysis with `complete=False`."""
+    """Truncated traces (PXD070049/v2_3_2 ships header-only on PRIDE) must
+    not crash the loader or downstream aggregators. `collect_parallelism_rows`
+    drops them entirely rather than emitting sentinel rows."""
     from analysis.figure_performance_trace import (
         load_trace, peak_concurrent_tasks, trace_wallclock_seconds,
     )

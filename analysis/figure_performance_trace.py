@@ -205,9 +205,10 @@ def aggregate_step_durations(
 # ---------------------------------------------------------------------------
 
 def collect_parallelism_rows(*, fetch: bool = True) -> pd.DataFrame:
-    """One row per benchmark analysis with peak/median concurrency and
-    wallclock derived from its nextflow_trace.txt. Truncated traces are
-    kept in the table with `complete=False` and zeroed metrics."""
+    """One row per benchmark analysis with complete nextflow_trace.txt
+    (>= MIN_ROWS_COMPLETE rows). Truncated traces (5 timsTOF SCP + 1
+    ZenoTOF v2.3.2 ship truncated upstream on PRIDE) are dropped entirely
+    rather than rendered with sentinel values."""
     rows: list[dict] = []
     for dataset in BENCHMARK_DATASETS:
         for version in DIANN_VERSIONS:
@@ -218,12 +219,10 @@ def collect_parallelism_rows(*, fetch: bool = True) -> pd.DataFrame:
                 download_if_missing(f"{base}/nextflow_trace.txt", trace)
             df = load_trace(trace)
             n = int(len(df))
-            complete = n >= MIN_ROWS_COMPLETE
-            if complete:
-                peak, med = peak_concurrent_tasks(df)
-                wallclock = trace_wallclock_seconds(df)
-            else:
-                peak, med, wallclock = 0, 0.0, 0.0
+            if n < MIN_ROWS_COMPLETE:
+                continue
+            peak, med = peak_concurrent_tasks(df)
+            wallclock = trace_wallclock_seconds(df)
             rows.append({
                 "dataset": dataset,
                 "version": version,
@@ -232,7 +231,6 @@ def collect_parallelism_rows(*, fetch: bool = True) -> pd.DataFrame:
                 "peak_concurrent": peak,
                 "median_concurrent": med,
                 "wallclock_seconds": wallclock,
-                "complete": complete,
                 "source_file": str(trace.relative_to(REPO_ROOT)),
             })
     return pd.DataFrame(rows)
@@ -287,8 +285,9 @@ def render_parallelism_scatter(
     svg_path: Path | None = None,
 ) -> None:
     """One-panel scatter: x = peak concurrent tasks, y = wallclock hours,
-    colour = instrument family. Drops `complete=False` rows."""
-    plot_df = df[df["complete"]].copy()
+    colour = instrument family. Truncated traces are already filtered out
+    upstream by `collect_parallelism_rows`."""
+    plot_df = df.copy()
     fig, ax = plt.subplots(figsize=(7.5, 5.0))
 
     hours = plot_df["wallclock_seconds"] / 3600.0
@@ -337,9 +336,8 @@ def render_parallelism_scatter(
     lines = ["Peak concurrent (median per instrument):"]
     for inst, val in by_inst.items():
         lines.append(f"  {inst}: {val:.0f}")
-    n_drop = int((~df["complete"]).sum())
-    if n_drop:
-        lines.append(f"({n_drop}/{len(df)} traces truncated upstream)")
+    # Truncated traces are no longer present in `df`; no in-figure note
+    # needed. The dataset/version exclusions are documented in the spec.
     ax.text(
         0.98, 0.02, "\n".join(lines),
         transform=ax.transAxes, ha="right", va="bottom",
@@ -430,7 +428,7 @@ def write_parallelism_tsv(df: pd.DataFrame, tsv_path: Path) -> None:
     tsv_path.parent.mkdir(parents=True, exist_ok=True)
     cols = [
         "dataset", "version", "instrument", "n_tasks", "peak_concurrent",
-        "median_concurrent", "wallclock_seconds", "complete", "source_file",
+        "median_concurrent", "wallclock_seconds", "source_file",
     ]
     out = df[cols].copy().sort_values(["dataset", "version"])
     out.to_csv(tsv_path, sep="\t", index=False)
@@ -470,10 +468,8 @@ def main() -> int:  # pragma: no cover
         FIGURES_DIR / "runtime_per_step.svg",
     )
 
-    n_complete = int(par_df["complete"].sum())
     print(
-        f"Wrote {len(par_df)} parallelism rows "
-        f"({n_complete} complete, {len(par_df) - n_complete} truncated) "
+        f"Wrote {len(par_df)} parallelism rows (complete-trace analyses only) "
         f"and {len(summary)} step-summary rows."
     )
     return 0

@@ -1,21 +1,15 @@
-dataset	version	instrument	n_tasks	peak_concurrent	median_concurrent	wallclock_seconds	complete	source_file
-PXD049412	v1_8_1	Orbitrap Astral	25	7	3.0	2704.245	True	data/quantmsdiann_benchmarks/PXD049412/v1_8_1/nextflow_trace.txt
-PXD049412	v2_1_0	Orbitrap Astral	19	7	3.0	1904.477	True	data/quantmsdiann_benchmarks/PXD049412/v2_1_0/nextflow_trace.txt
-PXD049412	v2_2_0	Orbitrap Astral	19	6	2.0	1909.547	True	data/quantmsdiann_benchmarks/PXD049412/v2_2_0/nextflow_trace.txt
-PXD049412	v2_3_2	Orbitrap Astral	19	6	3.0	1929.625	True	data/quantmsdiann_benchmarks/PXD049412/v2_3_2/nextflow_trace.txt
-PXD049412	v2_5_0	Orbitrap Astral	19	6	2.0	1894.532	True	data/quantmsdiann_benchmarks/PXD049412/v2_5_0/nextflow_trace.txt
-PXD062685	v1_8_1	timsTOF SCP	2	0	0.0	0.0	False	data/quantmsdiann_benchmarks/PXD062685/v1_8_1/nextflow_trace.txt
-PXD062685	v2_1_0	timsTOF SCP	2	0	0.0	0.0	False	data/quantmsdiann_benchmarks/PXD062685/v2_1_0/nextflow_trace.txt
-PXD062685	v2_2_0	timsTOF SCP	2	0	0.0	0.0	False	data/quantmsdiann_benchmarks/PXD062685/v2_2_0/nextflow_trace.txt
-PXD062685	v2_3_2	timsTOF SCP	2	0	0.0	0.0	False	data/quantmsdiann_benchmarks/PXD062685/v2_3_2/nextflow_trace.txt
-PXD062685	v2_5_0	timsTOF SCP	2	0	0.0	0.0	False	data/quantmsdiann_benchmarks/PXD062685/v2_5_0/nextflow_trace.txt
-PXD070049	v1_8_1	ZenoTOF 7600	32	2	1.0	2124.509	True	data/quantmsdiann_benchmarks/PXD070049/v1_8_1/nextflow_trace.txt
-PXD070049	v2_1_0	ZenoTOF 7600	32	2	1.0	2129.515	True	data/quantmsdiann_benchmarks/PXD070049/v2_1_0/nextflow_trace.txt
-PXD070049	v2_2_0	ZenoTOF 7600	25	7	3.0	4059.624	True	data/quantmsdiann_benchmarks/PXD070049/v2_2_0/nextflow_trace.txt
-PXD070049	v2_3_2	ZenoTOF 7600	0	0	0.0	0.0	False	data/quantmsdiann_benchmarks/PXD070049/v2_3_2/nextflow_trace.txt
-PXD070049	v2_5_0	ZenoTOF 7600	25	7	3.0	4059.619	True	data/quantmsdiann_benchmarks/PXD070049/v2_5_0/nextflow_trace.txt
-ProteoBench_Module_7	v1_8_1	Orbitrap Astral	25	6	3.0	4884.605	True	data/quantmsdiann_benchmarks/ProteoBench_Module_7/v1_8_1/nextflow_trace.txt
-ProteoBench_Module_7	v2_1_0	Orbitrap Astral	19	6	2.0	3389.544	True	data/quantmsdiann_benchmarks/ProteoBench_Module_7/v2_1_0/nextflow_trace.txt
-ProteoBench_Module_7	v2_2_0	Orbitrap Astral	19	6	2.0	3344.558	True	data/quantmsdiann_benchmarks/ProteoBench_Module_7/v2_2_0/nextflow_trace.txt
-ProteoBench_Module_7	v2_3_2	Orbitrap Astral	19	6	2.0	3299.641	True	data/quantmsdiann_benchmarks/ProteoBench_Module_7/v2_3_2/nextflow_trace.txt
-ProteoBench_Module_7	v2_5_0	Orbitrap Astral	19	6	2.0	3314.502	True	data/quantmsdiann_benchmarks/ProteoBench_Module_7/v2_5_0/nextflow_trace.txt
+dataset	version	instrument	n_tasks	peak_concurrent	median_concurrent	wallclock_seconds	source_file
+PXD049412	v1_8_1	Orbitrap Astral	25	7	3.0	2704.245	data/quantmsdiann_benchmarks/PXD049412/v1_8_1/nextflow_trace.txt
+PXD049412	v2_1_0	Orbitrap Astral	19	7	3.0	1904.477	data/quantmsdiann_benchmarks/PXD049412/v2_1_0/nextflow_trace.txt
+PXD049412	v2_2_0	Orbitrap Astral	19	6	2.0	1909.547	data/quantmsdiann_benchmarks/PXD049412/v2_2_0/nextflow_trace.txt
+PXD049412	v2_3_2	Orbitrap Astral	19	6	3.0	1929.625	data/quantmsdiann_benchmarks/PXD049412/v2_3_2/nextflow_trace.txt
+PXD049412	v2_5_0	Orbitrap Astral	19	6	2.0	1894.532	data/quantmsdiann_benchmarks/PXD049412/v2_5_0/nextflow_trace.txt
+PXD070049	v1_8_1	ZenoTOF 7600	32	2	1.0	2124.509	data/quantmsdiann_benchmarks/PXD070049/v1_8_1/nextflow_trace.txt
+PXD070049	v2_1_0	ZenoTOF 7600	32	2	1.0	2129.515	data/quantmsdiann_benchmarks/PXD070049/v2_1_0/nextflow_trace.txt
+PXD070049	v2_2_0	ZenoTOF 7600	25	7	3.0	4059.624	data/quantmsdiann_benchmarks/PXD070049/v2_2_0/nextflow_trace.txt
+PXD070049	v2_5_0	ZenoTOF 7600	25	7	3.0	4059.619	data/quantmsdiann_benchmarks/PXD070049/v2_5_0/nextflow_trace.txt
+ProteoBench_Module_7	v1_8_1	Orbitrap Astral	25	6	3.0	4884.605	data/quantmsdiann_benchmarks/ProteoBench_Module_7/v1_8_1/nextflow_trace.txt
+ProteoBench_Module_7	v2_1_0	Orbitrap Astral	19	6	2.0	3389.544	data/quantmsdiann_benchmarks/ProteoBench_Module_7/v2_1_0/nextflow_trace.txt
+ProteoBench_Module_7	v2_2_0	Orbitrap Astral	19	6	2.0	3344.558	data/quantmsdiann_benchmarks/ProteoBench_Module_7/v2_2_0/nextflow_trace.txt
+ProteoBench_Module_7	v2_3_2	Orbitrap Astral	19	6	2.0	3299.641	data/quantmsdiann_benchmarks/ProteoBench_Module_7/v2_3_2/nextflow_trace.txt
+ProteoBench_Module_7	v2_5_0	Orbitrap Astral	19	6	2.0	3314.502	data/quantmsdiann_benchmarks/ProteoBench_Module_7/v2_5_0/nextflow_trace.txt
