@@ -308,6 +308,56 @@ def test_aggregate_step_durations_keys_by_step(tmp_path: Path) -> None:
     assert by_step["SAMPLESHEET_CHECK"] == [30.0]
 
 
+def test_load_report_window_data_extracts_trace_from_html(tmp_path: Path) -> None:
+    """nextflow_report.html embeds the full per-task trace as a JavaScript
+    object literal `window.data = {...};`. The parser brace-balances the
+    blob, repairs Nextflow's invalid `\\'` escapes, and lifts the trace
+    array into a DataFrame with submit/duration in seconds."""
+    from analysis.figure_performance_trace import load_report_window_data
+    # Minimal HTML mimicking Nextflow's report shape — single trace record,
+    # epoch-ms timestamps, the over-escaped apostrophe Nextflow emits in
+    # nested shell commands.
+    html = (
+        "<html><body><script>window.data = {"
+        '"trace":[{"task_id":"1",'
+        '"process":"BIGBIO:QUANTMSDIANN:DIA:PRELIMINARY_ANALYSIS",'
+        '"name":"BIGBIO:QUANTMSDIANN:DIA:PRELIMINARY_ANALYSIS (raw1.mzML)",'
+        '"status":"COMPLETED",'
+        '"submit":"1700000000000","duration":"125000","realtime":"120000",'
+        '"%cpu":"94.5","cmd":"awk -F \\\': \\\' \'{print $1}\'"}'
+        "],"
+        '"summary":{}};window.payload={};</script></body></html>'
+    )
+    p = tmp_path / "nextflow_report.html"
+    p.write_text(html)
+    df = load_report_window_data(p)
+    assert len(df) == 1
+    row = df.iloc[0]
+    assert row["step"] == "PRELIMINARY_ANALYSIS"
+    assert row["status"] == "COMPLETED"
+    assert row["submit"] == pytest.approx(1_700_000_000.0)
+    assert row["duration_s"] == pytest.approx(125.0)
+    assert row["finish"] == pytest.approx(1_700_000_125.0)
+
+
+def test_load_report_window_data_returns_empty_on_missing_or_malformed(
+    tmp_path: Path,
+) -> None:
+    """Parser must not crash on a missing file, a file without the
+    `window.data` blob, or a malformed JSON payload."""
+    from analysis.figure_performance_trace import load_report_window_data
+    missing = tmp_path / "absent.html"
+    assert load_report_window_data(missing).empty
+    no_blob = tmp_path / "no_blob.html"
+    no_blob.write_text("<html>no Nextflow data here</html>")
+    assert load_report_window_data(no_blob).empty
+    malformed = tmp_path / "bad.html"
+    malformed.write_text(
+        "<html><script>window.data = {\"trace\":[{not json</script></html>"
+    )
+    assert load_report_window_data(malformed).empty
+
+
 def test_load_trace_handles_header_only_trace(tmp_path: Path) -> None:
     """Truncated traces (PXD070049/v2_3_2 ships header-only on PRIDE) must
     not crash the loader or downstream aggregators. `collect_parallelism_rows`

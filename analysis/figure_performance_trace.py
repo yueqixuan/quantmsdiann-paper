@@ -100,6 +100,94 @@ def extract_step_name(full_name: str) -> str:
     return s.strip()
 
 
+def load_report_window_data(report_path: Path) -> pd.DataFrame:
+    """Read a Nextflow-generated `nextflow_report.html` and return its
+    embedded `window.data.trace` table as a normalised DataFrame.
+
+    Nextflow embeds the full per-task trace inside the HTML report as a
+    JavaScript object literal. We brace-balance the `window.data = {...}`
+    assignment, repair its invalid `\\'` escapes (Nextflow over-escapes
+    single quotes inside JSON strings), and lift the `trace` array.
+
+    The report is strictly better than `nextflow_trace.txt` for our purposes:
+    it's published for every dataset (under `pipeline_info/` for cell-line
+    runs, alongside the dataset for benchmark runs), and it contains the
+    full task list even when the sibling `trace.txt` is upstream-truncated.
+
+    Returns columns: `step`, `status`, `submit` (epoch seconds, float),
+    `duration_s` (float), `finish` (epoch seconds, float). Returns an empty
+    DataFrame with those columns when the HTML cannot be parsed or the
+    trace array is empty."""
+    import json
+    cols = ["step", "status", "submit", "duration_s", "finish"]
+    try:
+        html = report_path.read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError):
+        return pd.DataFrame(columns=cols)
+    start = html.find("window.data = ")
+    if start < 0:
+        return pd.DataFrame(columns=cols)
+    i = html.find("{", start)
+    depth, in_str, esc, end = 0, False, False, -1
+    for j in range(i, len(html)):
+        ch = html[j]
+        if esc:
+            esc = False
+            continue
+        if ch == "\\":
+            esc = True
+            continue
+        if ch == '"':
+            in_str = not in_str
+            continue
+        if in_str:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                end = j + 1
+                break
+    if end < 0:
+        return pd.DataFrame(columns=cols)
+    blob = html[i:end].replace("\\'", "'")
+    try:
+        data = json.loads(blob)
+    except json.JSONDecodeError:
+        return pd.DataFrame(columns=cols)
+    trace = data.get("trace", [])
+    if not trace:
+        return pd.DataFrame(columns=cols)
+    rows: list[dict] = []
+    for rec in trace:
+        # submit/duration are epoch-ms strings in the report's JSON; convert
+        # to seconds. start/complete are also available but submit+duration
+        # matches the trace.txt semantics we already use elsewhere.
+        submit_ms = rec.get("submit")
+        duration_ms = rec.get("duration")
+        try:
+            submit_s = float(submit_ms) / 1000.0 if submit_ms is not None else float("nan")
+        except (TypeError, ValueError):
+            submit_s = float("nan")
+        try:
+            duration_s = float(duration_ms) / 1000.0 if duration_ms is not None else 0.0
+        except (TypeError, ValueError):
+            duration_s = 0.0
+        # Step name: prefer the `process` field (already the colon-qualified
+        # path with no input-arg suffix), fall back to extracting from name.
+        process = rec.get("process") or rec.get("name") or ""
+        step = extract_step_name(process)
+        rows.append({
+            "step": step,
+            "status": rec.get("status") or "",
+            "submit": submit_s,
+            "duration_s": duration_s,
+            "finish": submit_s + duration_s,
+        })
+    return pd.DataFrame(rows, columns=cols)
+
+
 def load_trace(trace_path: Path) -> pd.DataFrame:
     """Read a nextflow_trace.txt as a normalised DataFrame.
 
@@ -168,11 +256,15 @@ def peak_concurrent_tasks(df: pd.DataFrame) -> tuple[int, float]:
 
 def trace_wallclock_seconds(df: pd.DataFrame) -> float:
     """`max(submit + duration) - min(submit)` in seconds. Returns 0.0 for an
-    empty frame."""
+    empty frame. Handles both pandas Timestamp/Timedelta (from the legacy
+    nextflow_trace.txt loader) and plain epoch-second floats (from the new
+    nextflow_report.html loader)."""
     if df.empty:
         return 0.0
     span = df["finish"].max() - df["submit"].min()
-    return float(span.total_seconds())
+    if hasattr(span, "total_seconds"):
+        return float(span.total_seconds())
+    return float(span)
 
 
 def aggregate_step_durations(
@@ -201,59 +293,95 @@ def aggregate_step_durations(
 
 
 # ---------------------------------------------------------------------------
+# Analysis enumeration
+# ---------------------------------------------------------------------------
+
+PRIDE_CELL_LINE_BASE = (
+    "https://ftp.pride.ebi.ac.uk/pub/databases/pride/resources/proteomes/"
+    "quantms-collections/absolute-expression-2.0/cell-lines"
+)
+
+# Cell-line datasets: each has a single Nextflow run with a report under
+# `pipeline_info/nextflow_report.html`. Versions are inferred from the
+# diannsummary.log command line (all currently 2.5.0).
+CELL_LINE_ANALYSES: dict[str, dict[str, str]] = {
+    "PXD003539": {"instrument": "TripleTOF 5600", "version": "v2_5_0"},
+    "PXD030304": {"instrument": "TripleTOF 6600", "version": "v2_5_0"},
+    "PXD004701": {"instrument": "TripleTOF 5600", "version": "v2_5_0"},
+}
+
+
+def iter_analyses() -> Iterable[tuple[str, str, str, str, Path]]:
+    """Yield (dataset, version, instrument, report_url, local_report_path)
+    for every analysis we know about — 3 cell-line + 20 benchmark = 23 rows.
+    Both groups serve `nextflow_report.html` but at different URL shapes:
+    cell-lines under `<dataset>/pipeline_info/`; benchmarks under
+    `<dataset>/<version>/`."""
+    for dataset, info in CELL_LINE_ANALYSES.items():
+        base = f"{PRIDE_CELL_LINE_BASE}/{dataset}"
+        url = f"{base}/pipeline_info/nextflow_report.html"
+        local = (DATA_DIR / dataset / "pipeline_info"
+                 / "nextflow_report.html")
+        yield dataset, info["version"], info["instrument"], url, local
+    for dataset in BENCHMARK_DATASETS:
+        for version in DIANN_VERSIONS:
+            base = f"{BENCHMARK_BASE}/{dataset}/{version}"
+            url = f"{base}/nextflow_report.html"
+            local = (DATA_DIR / "quantmsdiann_benchmarks" / dataset
+                     / version / "nextflow_report.html")
+            yield dataset, version, BENCHMARK_INSTRUMENT.get(
+                dataset, "unknown"
+            ), url, local
+
+
+# ---------------------------------------------------------------------------
 # Row builders
 # ---------------------------------------------------------------------------
 
 def collect_parallelism_rows(*, fetch: bool = True) -> pd.DataFrame:
-    """One row per benchmark analysis with complete nextflow_trace.txt
-    (>= MIN_ROWS_COMPLETE rows). Truncated traces (5 timsTOF SCP + 1
-    ZenoTOF v2.3.2 ship truncated upstream on PRIDE) are dropped entirely
-    rather than rendered with sentinel values."""
+    """One row per analysis (3 cell-line + 20 benchmark = 23) reading the
+    per-task trace from each `nextflow_report.html`'s embedded
+    `window.data.trace` JSON. Reports below MIN_ROWS_COMPLETE rows (none
+    expected in practice, but defensive against future truncations) are
+    dropped."""
     rows: list[dict] = []
-    for dataset in BENCHMARK_DATASETS:
-        for version in DIANN_VERSIONS:
-            base = f"{BENCHMARK_BASE}/{dataset}/{version}"
-            dset_dir = DATA_DIR / "quantmsdiann_benchmarks" / dataset / version
-            trace = dset_dir / "nextflow_trace.txt"
-            if fetch:
-                download_if_missing(f"{base}/nextflow_trace.txt", trace)
-            df = load_trace(trace)
-            n = int(len(df))
-            if n < MIN_ROWS_COMPLETE:
-                continue
-            peak, med = peak_concurrent_tasks(df)
-            wallclock = trace_wallclock_seconds(df)
-            rows.append({
-                "dataset": dataset,
-                "version": version,
-                "instrument": BENCHMARK_INSTRUMENT.get(dataset, "unknown"),
-                "n_tasks": n,
-                "peak_concurrent": peak,
-                "median_concurrent": med,
-                "wallclock_seconds": wallclock,
-                "source_file": str(trace.relative_to(REPO_ROOT)),
-            })
+    for dataset, version, instrument, url, local in iter_analyses():
+        if fetch:
+            download_if_missing(url, local)
+        df = load_report_window_data(local)
+        n = int(len(df))
+        if n < MIN_ROWS_COMPLETE:
+            continue
+        peak, med = peak_concurrent_tasks(df)
+        wallclock = trace_wallclock_seconds(df)
+        rows.append({
+            "dataset": dataset,
+            "version": version,
+            "instrument": instrument,
+            "n_tasks": n,
+            "peak_concurrent": peak,
+            "median_concurrent": med,
+            "wallclock_seconds": wallclock,
+            "source_file": str(local.relative_to(REPO_ROOT)),
+        })
     return pd.DataFrame(rows)
 
 
 def collect_step_runtime_rows(*, fetch: bool = True) -> tuple[
     dict[str, list[float]], pd.DataFrame,
 ]:
-    """Aggregate per-step task durations across all benchmark analyses.
+    """Aggregate per-step task durations across every analysis (3 cell-line
+    + 20 benchmark = 23) by reading each `nextflow_report.html` trace.
 
     Returns (durations_by_step, summary_df) where summary_df has columns
     `step, n, p05_seconds, p25_seconds, p50_seconds, p75_seconds,
     p95_seconds, min_seconds, max_seconds`.
     """
     traces: list[pd.DataFrame] = []
-    for dataset in BENCHMARK_DATASETS:
-        for version in DIANN_VERSIONS:
-            base = f"{BENCHMARK_BASE}/{dataset}/{version}"
-            dset_dir = DATA_DIR / "quantmsdiann_benchmarks" / dataset / version
-            trace = dset_dir / "nextflow_trace.txt"
-            if fetch:
-                download_if_missing(f"{base}/nextflow_trace.txt", trace)
-            traces.append(load_trace(trace))
+    for _, _, _, url, local in iter_analyses():
+        if fetch:
+            download_if_missing(url, local)
+        traces.append(load_report_window_data(local))
     durations = aggregate_step_durations(traces)
 
     summary: list[dict] = []
@@ -309,14 +437,19 @@ def render_parallelism_scatter(
             label=instrument,
         )
 
-    ax.set_xlabel("Peak concurrent tasks (Nextflow trace)", fontsize=10)
+    ax.set_xlabel("Peak concurrent tasks (Nextflow trace, log scale)",
+                  fontsize=10)
     ax.set_ylabel("Workflow wallclock (hours)", fontsize=10)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     ax.tick_params(axis="both", labelsize=9)
 
-    xmin = max(0, int(plot_df["peak_concurrent"].min()) - 1)
-    xmax = int(plot_df["peak_concurrent"].max()) + 2
+    # Log x-axis: the benchmark analyses peak at 6-7 concurrent tasks while
+    # the cell-line PXD004701 run hits ~300; linear would crush the
+    # benchmarks against the y-axis.
+    ax.set_xscale("log")
+    xmin = max(1, int(plot_df["peak_concurrent"].min()) - 1)
+    xmax = int(plot_df["peak_concurrent"].max()) * 1.5
     ax.set_xlim(xmin, xmax)
     ax.set_ylim(0, max(hours) * 1.20 if len(hours) else 1.0)
 
