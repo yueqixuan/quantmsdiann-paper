@@ -60,6 +60,7 @@ from analysis.figure_performance_runtime import (
     DIANN_VERSIONS,
     INSTRUMENT_COLOURS,
     parse_duration_to_seconds,
+    parse_pipeline_report_duration,
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -339,21 +340,42 @@ def iter_analyses() -> Iterable[tuple[str, str, str, str, Path]]:
 # ---------------------------------------------------------------------------
 
 def collect_parallelism_rows(*, fetch: bool = True) -> pd.DataFrame:
-    """One row per analysis (3 cell-line + 20 benchmark = 23) reading the
-    per-task trace from each `nextflow_report.html`'s embedded
-    `window.data.trace` JSON. Reports below MIN_ROWS_COMPLETE rows (none
-    expected in practice, but defensive against future truncations) are
-    dropped."""
+    """One row per analysis (3 cell-line + 20 benchmark = 23). Primary
+    source is each `nextflow_report.html`'s embedded `window.data.trace`
+    JSON, which gives peak/median concurrency and wallclock. For analyses
+    where the report's trace is incomplete (PXD003539 / PXD030304 used
+    `-resume` so their published reports only include the 0-2 tasks that
+    re-ran after the resume), we fall back to total wallclock from
+    `pipeline_info/pipeline_report.txt` and mark `trace_complete=False`;
+    `peak_concurrent` is left as `NaN` to be honest about the missing
+    observation."""
+    import math
     rows: list[dict] = []
     for dataset, version, instrument, url, local in iter_analyses():
         if fetch:
             download_if_missing(url, local)
         df = load_report_window_data(local)
         n = int(len(df))
-        if n < MIN_ROWS_COMPLETE:
-            continue
-        peak, med = peak_concurrent_tasks(df)
-        wallclock = trace_wallclock_seconds(df)
+        if n >= MIN_ROWS_COMPLETE:
+            peak, med = peak_concurrent_tasks(df)
+            wallclock = trace_wallclock_seconds(df)
+            source = local
+            trace_complete = True
+        else:
+            # Fall back to pipeline_report.txt for total wallclock so the
+            # dataset still appears on the figure with an honest "trace
+            # incomplete" marker.
+            report_txt = local.parent / "pipeline_report.txt"
+            if fetch:
+                base = url.rsplit("/", 1)[0]
+                download_if_missing(f"{base}/pipeline_report.txt", report_txt)
+            try:
+                wallclock = parse_pipeline_report_duration(report_txt)
+            except (FileNotFoundError, ValueError):
+                continue
+            peak, med = float("nan"), float("nan")
+            source = report_txt
+            trace_complete = False
         rows.append({
             "dataset": dataset,
             "version": version,
@@ -362,7 +384,8 @@ def collect_parallelism_rows(*, fetch: bool = True) -> pd.DataFrame:
             "peak_concurrent": peak,
             "median_concurrent": med,
             "wallclock_seconds": wallclock,
-            "source_file": str(local.relative_to(REPO_ROOT)),
+            "trace_complete": trace_complete,
+            "source_file": str(source.relative_to(REPO_ROOT)),
         })
     return pd.DataFrame(rows)
 
@@ -412,30 +435,61 @@ def render_parallelism_scatter(
     png_path: Path,
     svg_path: Path | None = None,
 ) -> None:
-    """One-panel scatter: x = peak concurrent tasks, y = wallclock hours,
-    colour = instrument family. Truncated traces are already filtered out
-    upstream by `collect_parallelism_rows`."""
+    """One-panel scatter: x = peak concurrent tasks (log), y = wallclock
+    hours, colour = instrument family. Analyses with `trace_complete=False`
+    are plotted at the left edge of the x-axis with hollow markers to
+    indicate the per-task trace was incomplete (only total wallclock from
+    pipeline_report.txt is shown)."""
     plot_df = df.copy()
     fig, ax = plt.subplots(figsize=(7.5, 5.0))
 
     hours = plot_df["wallclock_seconds"] / 3600.0
-
-    # Dot size held constant — n_runs is 6 for every benchmark so the size
-    # dimension would be uninformative.
     DOT_SIZE = 140.0
 
+    complete_mask = plot_df["trace_complete"].astype(bool)
+    complete_df = plot_df[complete_mask]
+    incomplete_df = plot_df[~complete_mask]
+
     for instrument in sorted(plot_df["instrument"].unique()):
-        mask = plot_df["instrument"] == instrument
-        ax.scatter(
-            plot_df.loc[mask, "peak_concurrent"],
-            hours[mask],
-            s=DOT_SIZE,
-            c=INSTRUMENT_COLOURS.get(instrument, "#9e9e9e"),
-            alpha=0.78,
-            edgecolors="#222222",
-            linewidths=0.6,
-            label=instrument,
-        )
+        comp_mask = complete_df["instrument"] == instrument
+        if comp_mask.any():
+            ax.scatter(
+                complete_df.loc[comp_mask, "peak_concurrent"],
+                hours[complete_df.index[comp_mask]],
+                s=DOT_SIZE,
+                c=INSTRUMENT_COLOURS.get(instrument, "#9e9e9e"),
+                alpha=0.78,
+                edgecolors="#222222",
+                linewidths=0.6,
+                label=instrument,
+            )
+
+    # Hollow markers for incomplete-trace rows. Anchor them at x = 1
+    # (left of any complete-trace value) so they read as "trace not
+    # observed" rather than "1 concurrent task".
+    if not incomplete_df.empty:
+        for instrument in sorted(incomplete_df["instrument"].unique()):
+            mask = incomplete_df["instrument"] == instrument
+            xs = [1.0] * int(mask.sum())
+            ys = hours[incomplete_df.index[mask]]
+            ax.scatter(
+                xs, ys, s=DOT_SIZE,
+                facecolors="none",
+                edgecolors=INSTRUMENT_COLOURS.get(instrument, "#9e9e9e"),
+                linewidths=1.6,
+                label=(f"{instrument} (trace incomplete)"
+                       if instrument not in
+                       complete_df["instrument"].unique() else None),
+            )
+        # Annotate each hollow dot with the dataset id so the reader can
+        # identify which analyses are which.
+        for _, row in incomplete_df.iterrows():
+            ax.annotate(
+                row["dataset"],
+                xy=(1.0, row["wallclock_seconds"] / 3600.0),
+                xytext=(8, 0), textcoords="offset points",
+                fontsize=7, color="#555555", va="center",
+            )
 
     ax.set_xlabel("Peak concurrent tasks (Nextflow trace, log scale)",
                   fontsize=10)
@@ -446,11 +500,12 @@ def render_parallelism_scatter(
 
     # Log x-axis: the benchmark analyses peak at 6-7 concurrent tasks while
     # the cell-line PXD004701 run hits ~300; linear would crush the
-    # benchmarks against the y-axis.
+    # benchmarks against the y-axis. Incomplete-trace dots sit at x=1 so the
+    # axis floor starts there.
     ax.set_xscale("log")
-    xmin = max(1, int(plot_df["peak_concurrent"].min()) - 1)
-    xmax = int(plot_df["peak_concurrent"].max()) * 1.5
-    ax.set_xlim(xmin, xmax)
+    xmax = float(complete_df["peak_concurrent"].max() if not complete_df.empty
+                 else 10) * 1.5
+    ax.set_xlim(0.8, xmax)
     ax.set_ylim(0, max(hours) * 1.20 if len(hours) else 1.0)
 
     inst_legend = ax.legend(
@@ -459,18 +514,19 @@ def render_parallelism_scatter(
     )
     ax.add_artist(inst_legend)
 
-    # Per-instrument peak-concurrent median annotation (replaces the
-    # informationless size legend from the threads scatter).
+    # Per-instrument peak-concurrent median annotation, computed from the
+    # complete-trace rows only (incomplete dots have NaN peak).
     by_inst = (
-        plot_df.groupby("instrument")["peak_concurrent"]
+        complete_df.groupby("instrument")["peak_concurrent"]
         .median()
         .sort_values(ascending=False)
     )
     lines = ["Peak concurrent (median per instrument):"]
     for inst, val in by_inst.items():
         lines.append(f"  {inst}: {val:.0f}")
-    # Truncated traces are no longer present in `df`; no in-figure note
-    # needed. The dataset/version exclusions are documented in the spec.
+    n_incomplete = int((~complete_mask).sum())
+    if n_incomplete:
+        lines.append(f"({n_incomplete} hollow = trace incomplete on PRIDE)")
     ax.text(
         0.98, 0.02, "\n".join(lines),
         transform=ax.transAxes, ha="right", va="bottom",
@@ -561,7 +617,8 @@ def write_parallelism_tsv(df: pd.DataFrame, tsv_path: Path) -> None:
     tsv_path.parent.mkdir(parents=True, exist_ok=True)
     cols = [
         "dataset", "version", "instrument", "n_tasks", "peak_concurrent",
-        "median_concurrent", "wallclock_seconds", "source_file",
+        "median_concurrent", "wallclock_seconds", "trace_complete",
+        "source_file",
     ]
     out = df[cols].copy().sort_values(["dataset", "version"])
     out.to_csv(tsv_path, sep="\t", index=False)
@@ -601,8 +658,11 @@ def main() -> int:  # pragma: no cover
         FIGURES_DIR / "runtime_per_step.svg",
     )
 
+    n_complete = int(par_df["trace_complete"].sum())
     print(
-        f"Wrote {len(par_df)} parallelism rows (complete-trace analyses only) "
+        f"Wrote {len(par_df)} parallelism rows "
+        f"({n_complete} complete trace, "
+        f"{len(par_df) - n_complete} hollow / pipeline_report.txt fallback) "
         f"and {len(summary)} step-summary rows."
     )
     return 0

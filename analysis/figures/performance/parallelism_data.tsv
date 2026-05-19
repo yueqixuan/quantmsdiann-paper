@@ -1,22 +1,24 @@
-dataset	version	instrument	n_tasks	peak_concurrent	median_concurrent	wallclock_seconds	source_file
-PXD004701	v2_5_0	TripleTOF 5600	908	300	150.0	6754.5609998703	data/PXD004701/pipeline_info/nextflow_report.html
-PXD049412	v1_8_1	Orbitrap Astral	25	6	3.0	2704.4439997673035	data/quantmsdiann_benchmarks/PXD049412/v1_8_1/nextflow_report.html
-PXD049412	v2_1_0	Orbitrap Astral	19	6	2.0	1904.3889999389648	data/quantmsdiann_benchmarks/PXD049412/v2_1_0/nextflow_report.html
-PXD049412	v2_2_0	Orbitrap Astral	19	6	2.0	1909.4800000190735	data/quantmsdiann_benchmarks/PXD049412/v2_2_0/nextflow_report.html
-PXD049412	v2_3_2	Orbitrap Astral	19	6	2.0	1929.5569999217987	data/quantmsdiann_benchmarks/PXD049412/v2_3_2/nextflow_report.html
-PXD049412	v2_5_0	Orbitrap Astral	19	6	2.0	1894.470999956131	data/quantmsdiann_benchmarks/PXD049412/v2_5_0/nextflow_report.html
-PXD062685	v1_8_1	timsTOF SCP	19	6	2.0	7349.134999990463	data/quantmsdiann_benchmarks/PXD062685/v1_8_1/nextflow_report.html
-PXD062685	v2_1_0	timsTOF SCP	19	6	2.0	4294.390000104904	data/quantmsdiann_benchmarks/PXD062685/v2_1_0/nextflow_report.html
-PXD062685	v2_2_0	timsTOF SCP	19	6	2.0	4889.625999927521	data/quantmsdiann_benchmarks/PXD062685/v2_2_0/nextflow_report.html
-PXD062685	v2_3_2	timsTOF SCP	19	6	2.0	4559.508999824524	data/quantmsdiann_benchmarks/PXD062685/v2_3_2/nextflow_report.html
-PXD062685	v2_5_0	timsTOF SCP	19	6	2.0	4559.5579998493195	data/quantmsdiann_benchmarks/PXD062685/v2_5_0/nextflow_report.html
-PXD070049	v1_8_1	ZenoTOF 7600	25	6	3.0	5269.541000127792	data/quantmsdiann_benchmarks/PXD070049/v1_8_1/nextflow_report.html
-PXD070049	v2_1_0	ZenoTOF 7600	25	6	3.0	4079.5120000839233	data/quantmsdiann_benchmarks/PXD070049/v2_1_0/nextflow_report.html
-PXD070049	v2_2_0	ZenoTOF 7600	25	6	3.0	4059.53200006485	data/quantmsdiann_benchmarks/PXD070049/v2_2_0/nextflow_report.html
-PXD070049	v2_3_2	ZenoTOF 7600	25	6	3.0	4119.573999881744	data/quantmsdiann_benchmarks/PXD070049/v2_3_2/nextflow_report.html
-PXD070049	v2_5_0	ZenoTOF 7600	25	6	3.0	4059.5460000038147	data/quantmsdiann_benchmarks/PXD070049/v2_5_0/nextflow_report.html
-ProteoBench_Module_7	v1_8_1	Orbitrap Astral	25	6	3.0	4884.535000085831	data/quantmsdiann_benchmarks/ProteoBench_Module_7/v1_8_1/nextflow_report.html
-ProteoBench_Module_7	v2_1_0	Orbitrap Astral	19	6	2.0	3389.454999923706	data/quantmsdiann_benchmarks/ProteoBench_Module_7/v2_1_0/nextflow_report.html
-ProteoBench_Module_7	v2_2_0	Orbitrap Astral	19	6	2.0	3344.5009999275208	data/quantmsdiann_benchmarks/ProteoBench_Module_7/v2_2_0/nextflow_report.html
-ProteoBench_Module_7	v2_3_2	Orbitrap Astral	19	6	2.0	3299.5469999313354	data/quantmsdiann_benchmarks/ProteoBench_Module_7/v2_3_2/nextflow_report.html
-ProteoBench_Module_7	v2_5_0	Orbitrap Astral	19	6	2.0	3314.4450001716614	data/quantmsdiann_benchmarks/ProteoBench_Module_7/v2_5_0/nextflow_report.html
+dataset	version	instrument	n_tasks	peak_concurrent	median_concurrent	wallclock_seconds	trace_complete	source_file
+PXD003539	v2_5_0	TripleTOF 5600	2			12398.0	False	data/PXD003539/pipeline_info/pipeline_report.txt
+PXD004701	v2_5_0	TripleTOF 5600	908	300.0	150.0	6754.5609998703	True	data/PXD004701/pipeline_info/nextflow_report.html
+PXD030304	v2_5_0	TripleTOF 6600	0			17219.0	False	data/PXD030304/pipeline_info/pipeline_report.txt
+PXD049412	v1_8_1	Orbitrap Astral	25	6.0	3.0	2704.4439997673035	True	data/quantmsdiann_benchmarks/PXD049412/v1_8_1/nextflow_report.html
+PXD049412	v2_1_0	Orbitrap Astral	19	6.0	2.0	1904.3889999389648	True	data/quantmsdiann_benchmarks/PXD049412/v2_1_0/nextflow_report.html
+PXD049412	v2_2_0	Orbitrap Astral	19	6.0	2.0	1909.4800000190735	True	data/quantmsdiann_benchmarks/PXD049412/v2_2_0/nextflow_report.html
+PXD049412	v2_3_2	Orbitrap Astral	19	6.0	2.0	1929.5569999217987	True	data/quantmsdiann_benchmarks/PXD049412/v2_3_2/nextflow_report.html
+PXD049412	v2_5_0	Orbitrap Astral	19	6.0	2.0	1894.470999956131	True	data/quantmsdiann_benchmarks/PXD049412/v2_5_0/nextflow_report.html
+PXD062685	v1_8_1	timsTOF SCP	19	6.0	2.0	7349.134999990463	True	data/quantmsdiann_benchmarks/PXD062685/v1_8_1/nextflow_report.html
+PXD062685	v2_1_0	timsTOF SCP	19	6.0	2.0	4294.390000104904	True	data/quantmsdiann_benchmarks/PXD062685/v2_1_0/nextflow_report.html
+PXD062685	v2_2_0	timsTOF SCP	19	6.0	2.0	4889.625999927521	True	data/quantmsdiann_benchmarks/PXD062685/v2_2_0/nextflow_report.html
+PXD062685	v2_3_2	timsTOF SCP	19	6.0	2.0	4559.508999824524	True	data/quantmsdiann_benchmarks/PXD062685/v2_3_2/nextflow_report.html
+PXD062685	v2_5_0	timsTOF SCP	19	6.0	2.0	4559.5579998493195	True	data/quantmsdiann_benchmarks/PXD062685/v2_5_0/nextflow_report.html
+PXD070049	v1_8_1	ZenoTOF 7600	25	6.0	3.0	5269.541000127792	True	data/quantmsdiann_benchmarks/PXD070049/v1_8_1/nextflow_report.html
+PXD070049	v2_1_0	ZenoTOF 7600	25	6.0	3.0	4079.5120000839233	True	data/quantmsdiann_benchmarks/PXD070049/v2_1_0/nextflow_report.html
+PXD070049	v2_2_0	ZenoTOF 7600	25	6.0	3.0	4059.53200006485	True	data/quantmsdiann_benchmarks/PXD070049/v2_2_0/nextflow_report.html
+PXD070049	v2_3_2	ZenoTOF 7600	25	6.0	3.0	4119.573999881744	True	data/quantmsdiann_benchmarks/PXD070049/v2_3_2/nextflow_report.html
+PXD070049	v2_5_0	ZenoTOF 7600	25	6.0	3.0	4059.5460000038147	True	data/quantmsdiann_benchmarks/PXD070049/v2_5_0/nextflow_report.html
+ProteoBench_Module_7	v1_8_1	Orbitrap Astral	25	6.0	3.0	4884.535000085831	True	data/quantmsdiann_benchmarks/ProteoBench_Module_7/v1_8_1/nextflow_report.html
+ProteoBench_Module_7	v2_1_0	Orbitrap Astral	19	6.0	2.0	3389.454999923706	True	data/quantmsdiann_benchmarks/ProteoBench_Module_7/v2_1_0/nextflow_report.html
+ProteoBench_Module_7	v2_2_0	Orbitrap Astral	19	6.0	2.0	3344.5009999275208	True	data/quantmsdiann_benchmarks/ProteoBench_Module_7/v2_2_0/nextflow_report.html
+ProteoBench_Module_7	v2_3_2	Orbitrap Astral	19	6.0	2.0	3299.5469999313354	True	data/quantmsdiann_benchmarks/ProteoBench_Module_7/v2_3_2/nextflow_report.html
+ProteoBench_Module_7	v2_5_0	Orbitrap Astral	19	6.0	2.0	3314.4450001716614	True	data/quantmsdiann_benchmarks/ProteoBench_Module_7/v2_5_0/nextflow_report.html
