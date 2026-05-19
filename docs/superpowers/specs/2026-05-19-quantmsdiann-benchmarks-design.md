@@ -267,3 +267,66 @@ under ≥3, which is the desired behaviour:
 The corrected supp figure is the version we ship in the paper; the ≥1 panel
 is retained as a "what people usually see on ProteoBench's UI" reference
 only.
+
+## Performance plots derived from nextflow_trace.txt (2026-05-19)
+
+In addition to the threads-vs-wallclock scatter
+([analysis/figure_performance_runtime.py](../../../analysis/figure_performance_runtime.py)),
+we render two trace-derived performance panels in
+[analysis/figure_performance_trace.py](../../../analysis/figure_performance_trace.py).
+Both use only the 20 benchmark analyses (4 datasets × 5 DIA-NN versions);
+the 3 cell-line datasets are excluded because PRIDE does not publish their
+`nextflow_trace.txt` (verified — the files are not under
+`/cell-lines/<PXD>/pipeline_info/`).
+
+### What we measure and why
+
+- **Parallelism = peak concurrent task count from `nextflow_trace.txt`.**
+  We do not have node counts: the SLURM partition profile schedules each
+  Nextflow task as a separate job across whatever cores SLURM allocates, so
+  a node-level "max nodes used" is not reconstructible from the artefacts
+  on PRIDE. Peak concurrency over the `[submit, submit+duration]` intervals
+  is the closest reproducible proxy and is what the user asked for: "the
+  cluster number of nodes uses scale with time nicely."
+- **Workflow wallclock = `max(submit + duration) − min(submit)`** across
+  all rows in a trace (including FAILED retry attempts, since those did
+  occupy cluster slots while running). Matches the user's "total time to
+  finish the entire workflow" wording. This can disagree with the
+  `pipeline_report.txt` duration when the trace and the report come from
+  different invocations (e.g. PXD070049/v1_8_1: trace has 14 failed
+  SDRF_PARSING retries spanning 35 minutes, pipeline_report.txt records
+  the duration of the final successful re-run only). The trace is the
+  honest "how long this took on the cluster" number; the report is the
+  successful-run duration.
+- **Per-step distribution** uses only `COMPLETED` rows so the box plot
+  reflects task success times; FAILED retries are kept in the parallelism
+  analysis only.
+
+### Truncated traces
+
+PRIDE publishes truncated traces for 6 of the 20 analyses:
+
+- `PXD062685/v{1_8_1,2_1_0,2_2_0,2_3_2,2_5_0}/nextflow_trace.txt` — 2
+  data rows each (SAMPLESHEET_CHECK + SDRF_PARSING only).
+- `PXD070049/v2_3_2/nextflow_trace.txt` — header only (0 data rows).
+
+For Plot 1 we emit a row per analysis in `parallelism_data.tsv` with
+`complete=False` and zeroed metrics for these, and drop them from the
+scatter (legend annotation explains the count). For Plot 2 we ingest
+whatever `COMPLETED` rows exist — the PXD062685 partial traces still
+contribute valid SAMPLESHEET_CHECK / SDRF_PARSING durations.
+
+### Outputs
+
+Under [analysis/figures/performance/](../../../analysis/figures/performance/):
+
+- `parallelism_vs_wallclock.{pdf,png,svg}` + `parallelism_data.tsv`
+- `runtime_per_step.{pdf,png,svg}` + `runtime_per_step.tsv`
+
+### Tests
+
+Six new tests in
+[analysis/tests/test_performance_runtime.py](../../../analysis/tests/test_performance_runtime.py)
+cover: step-name extraction, peak-concurrent computation on a staggered
+interval fixture, trace wallclock from `max(submit+duration) − min(submit)`,
+per-step aggregator, and the header-only trace edge case.

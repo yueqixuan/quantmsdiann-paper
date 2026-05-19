@@ -189,3 +189,138 @@ def test_parse_sdrf_instrument_strips_nt_field(tmp_path: Path) -> None:
     p = tmp_path / "x.sdrf.tsv"
     p.write_text(body)
     assert parse_sdrf_instrument(p) == "TripleTOF 5600"
+
+
+# ---------------------------------------------------------------------------
+# Trace-derived analyses: parallelism + per-step durations
+# (figure_performance_trace.py)
+# ---------------------------------------------------------------------------
+
+def _make_trace(tmp_path: Path, rows: list[tuple[str, str, str]]) -> Path:
+    """Write a minimal nextflow_trace.txt with `(name, submit, duration)`
+    tuples; remaining columns are filled with placeholders the parser
+    ignores. Returns the path."""
+    header = (
+        "task_id\thash\tnative_id\tname\tstatus\texit\tsubmit\tduration\t"
+        "realtime\t%cpu\tpeak_rss\tpeak_vmem\trchar\twchar\n"
+    )
+    lines = [header]
+    for i, (name, submit, duration) in enumerate(rows, start=1):
+        lines.append(
+            f"{i}\thash\t{i}\t{name}\tCOMPLETED\t0\t{submit}\t{duration}\t"
+            f"{duration}\t100%\t1GB\t1GB\t1MB\t1MB\n"
+        )
+    p = tmp_path / "trace.txt"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("".join(lines))
+    return p
+
+
+def test_extract_step_name_handles_qualified_paths() -> None:
+    """The trace stores fully-qualified `BIGBIO:...:STEP (input)` strings.
+    The step parser must take only the last `:`-segment and strip the
+    parenthesised argument. Rows without an argument (SUMMARY_PIPELINE)
+    return the bare name."""
+    from analysis.figure_performance_trace import extract_step_name
+    assert extract_step_name(
+        "BIGBIO_QUANTMSDIANN:QUANTMSDIANN:INPUT_CHECK:SAMPLESHEET_CHECK "
+        "(PXD049412.sdrf.tsv)"
+    ) == "SAMPLESHEET_CHECK"
+    assert extract_step_name(
+        "BIGBIO_QUANTMSDIANN:QUANTMSDIANN:DIA:PRELIMINARY_ANALYSIS "
+        "(run_with_spaces_in_name)"
+    ) == "PRELIMINARY_ANALYSIS"
+    # No parenthesised argument.
+    assert extract_step_name(
+        "BIGBIO_QUANTMSDIANN:QUANTMSDIANN:SUMMARY_PIPELINE"
+    ) == "SUMMARY_PIPELINE"
+    # Defensive: an unqualified bare step name passes through.
+    assert extract_step_name("STAND_ALONE") == "STAND_ALONE"
+    assert extract_step_name("") == ""
+
+
+def test_peak_concurrent_tasks_finds_max_overlap(tmp_path: Path) -> None:
+    """Peak concurrent count is the largest number of intervals
+    `[submit, submit+duration]` that overlap at any instant. Build a
+    deliberately staggered 5-task fixture where the peak (3) only occurs in
+    a narrow window in the middle of the trace."""
+    from analysis.figure_performance_trace import (
+        load_trace, peak_concurrent_tasks,
+    )
+    # Timeline:
+    #   A: 09:00:00 -> 09:01:00 (60s)
+    #   B: 09:00:30 -> 09:02:00 (90s)   -> A+B overlap 09:00:30-09:01:00
+    #   C: 09:01:30 -> 09:03:00 (90s)   -> B+C overlap 09:01:30-09:02:00
+    #   D: 09:01:40 -> 09:01:50 (10s)   -> peak=3 in 09:01:40-09:01:50
+    #   E: 09:05:00 -> 09:05:10 (10s)   -> isolated
+    p = _make_trace(tmp_path, [
+        ("A:STEP (x)", "2026-05-15 09:00:00.000", "1m"),
+        ("A:STEP (y)", "2026-05-15 09:00:30.000", "1m 30s"),
+        ("A:STEP (z)", "2026-05-15 09:01:30.000", "1m 30s"),
+        ("A:STEP (w)", "2026-05-15 09:01:40.000", "10s"),
+        ("A:STEP (q)", "2026-05-15 09:05:00.000", "10s"),
+    ])
+    df = load_trace(p)
+    peak, med = peak_concurrent_tasks(df)
+    assert peak == 3
+    # Median is over active-window samples (concurrency > 0); we just
+    # require it to be in [1, peak]. A point estimate is brittle to
+    # tie-break order, so the range check is the stable assertion.
+    assert 1 <= med <= 3
+
+
+def test_trace_wallclock_seconds_spans_first_submit_to_last_finish(
+    tmp_path: Path,
+) -> None:
+    """The workflow wallclock is `max(submit+duration) - min(submit)`. With
+    submits at 09:00:00 / 09:02:00 / 09:04:00 and the last task running for
+    1h, the span is 09:00:00 -> 10:04:00 = 1h 4m = 3840 s."""
+    from analysis.figure_performance_trace import (
+        load_trace, trace_wallclock_seconds,
+    )
+    p = _make_trace(tmp_path, [
+        ("A:FOO (a)", "2026-05-15 09:00:00.000", "30s"),
+        ("A:FOO (b)", "2026-05-15 09:02:00.000", "30s"),
+        ("A:BAR (c)", "2026-05-15 09:04:00.000", "1h"),
+    ])
+    df = load_trace(p)
+    assert trace_wallclock_seconds(df) == 3840.0
+
+
+def test_aggregate_step_durations_keys_by_step(tmp_path: Path) -> None:
+    """`aggregate_step_durations` should collapse tasks across multiple
+    traces into a {step -> [duration_s, ...]} map. Empty-step rows must be
+    dropped (they correspond to header-only traces)."""
+    from analysis.figure_performance_trace import (
+        aggregate_step_durations, load_trace,
+    )
+    t1 = _make_trace(tmp_path / "t1", [
+        ("A:DIANN_RUN (x)", "2026-05-15 09:00:00.000", "10m"),
+        ("A:SAMPLESHEET_CHECK (s)", "2026-05-15 09:11:00.000", "30s"),
+    ])
+    t2 = _make_trace(tmp_path / "t2", [
+        ("A:DIANN_RUN (y)", "2026-05-15 10:00:00.000", "8m"),
+        ("A:DIANN_RUN (z)", "2026-05-15 10:00:00.000", "12m"),
+    ])
+    by_step = aggregate_step_durations([load_trace(t1), load_trace(t2)])
+    assert sorted(by_step.keys()) == ["DIANN_RUN", "SAMPLESHEET_CHECK"]
+    assert sorted(by_step["DIANN_RUN"]) == [480.0, 600.0, 720.0]
+    assert by_step["SAMPLESHEET_CHECK"] == [30.0]
+
+
+def test_load_trace_handles_header_only_trace(tmp_path: Path) -> None:
+    """Truncated traces (PXD070049/v2_3_2 ships header-only) must not crash
+    the loader or downstream aggregators. The figure script should still emit
+    a TSV row for the analysis with `complete=False`."""
+    from analysis.figure_performance_trace import (
+        load_trace, peak_concurrent_tasks, trace_wallclock_seconds,
+    )
+    p = tmp_path / "trace.txt"
+    p.write_text(
+        "task_id\thash\tnative_id\tname\tstatus\texit\tsubmit\tduration\t"
+        "realtime\t%cpu\tpeak_rss\tpeak_vmem\trchar\twchar\n"
+    )
+    df = load_trace(p)
+    assert df.empty
+    assert peak_concurrent_tasks(df) == (0, 0.0)
+    assert trace_wallclock_seconds(df) == 0.0
