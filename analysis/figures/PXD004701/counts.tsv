@@ -1,0 +1,18 @@
+metric	source	count	note
+Protein groups (consistency filter)	Sun et al. 2023 (paper headline)	6091	6,091 SwissProt proteins; proteotypic, Global.Q.Value<=0.01, >=10% detection across samples (paper, Methods)
+Protein groups (consistency filter)	quantmsdiann (DIA-NN)	6296	post-filter union across all subtypes; same two-stage filter applied to diann_report.parquet
+Protein groups (1% FDR, no consistency)	Sun et al. 2023 (paper pre-filter)	8952	8,952 proteins identified pre-consistency-filter (paper, Methods)
+Protein groups (1% FDR, no consistency)	quantmsdiann (DIA-NN)	7746	from diannsummary.log (Protein groups with global q-value <= 0.01)
+Proteotypic peptides	Sun et al. 2023 (paper headline)	90762	90,762 proteotypic peptides under the same consistency filter (paper, Methods)
+Proteotypic peptides	quantmsdiann (DIA-NN)	83185	unique Stripped.Sequence in pr_matrix.tsv among rows with >=1 non-NA sample
+Precursors	quantmsdiann (DIA-NN, 1% FDR)	100499	from diannsummary.log (Target precursors at 1% global q-value)
+Spectral library precursors	Sun et al. 2023 (pan-human CAL)	194899	194,899 library precursors; NOT identified precursors (PXD009597)
+Spectral library proteins	Sun et al. 2023 (pan-human CAL)	10323	10,323 SwissProt library proteins (PXD009597)
+Cell lines: TNBC	Sun et al. 2023 (paper-reported split)	39	39 TNBC lines in paper's split of the 76 cell lines
+Cell lines: non-TNBC	Sun et al. 2023 (paper-reported split)	37	37 non-TNBC lines in paper's split of the 76 cell lines
+Cell lines: TNBC (this work mapping)	quantmsdiann (BC_SUBTYPES from Heiser/Neve/Lehmann + Cellosaurus)	34	hardcoded classification; PMC supplement inaccessible behind a CAPTCHA so per-cell paper assignment not retrievable
+Cell lines: non-TNBC (this work mapping)	quantmsdiann (BC_SUBTYPES from Heiser/Neve/Lehmann + Cellosaurus)	37	hardcoded classification; PMC supplement inaccessible behind a CAPTCHA so per-cell paper assignment not retrievable
+Cell lines: normal-like (this work mapping)	quantmsdiann (BC_SUBTYPES from Heiser/Neve/Lehmann + Cellosaurus)	5	hardcoded classification; PMC supplement inaccessible behind a CAPTCHA so per-cell paper assignment not retrievable
+Per-subtype proteins | TNBC	quantmsdiann (DIA-NN)	6296	per-subtype union of Protein.Group from diann_report.parquet filtered to Proteotypic==1 AND Global.Q.Value<=0.01 AND consistency filter (>=10% detection across mapped runs)
+Per-subtype proteins | non-TNBC	quantmsdiann (DIA-NN)	6296	per-subtype union of Protein.Group from diann_report.parquet filtered to Proteotypic==1 AND Global.Q.Value<=0.01 AND consistency filter (>=10% detection across mapped runs)
+Per-subtype proteins | normal-like	quantmsdiann (DIA-NN)	6263	per-subtype union of Protein.Group from diann_report.parquet filtered to Proteotypic==1 AND Global.Q.Value<=0.01 AND consistency filter (>=10% detection across mapped runs)
