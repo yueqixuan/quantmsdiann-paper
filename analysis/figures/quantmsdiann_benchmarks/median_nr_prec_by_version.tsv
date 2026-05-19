@@ -1,0 +1,87 @@
+dataset	min_replicates	source	version	n_submissions	median_nr_prec
+PXD049412	1	proteobench	2.1.0 Academia	1	46930
+PXD049412	1	proteobench	2.2.0 Academia	2	47759
+PXD049412	1	proteobench	2.3.0 Academia	1	51484
+PXD049412	1	proteobench	2.5.0 Academia	2	45137
+PXD049412	1	quantmsdiann	1.8.1	1	39283
+PXD049412	1	quantmsdiann	2.1.0	1	39796
+PXD049412	1	quantmsdiann	2.2.0	1	42551
+PXD049412	1	quantmsdiann	2.3.2	1	43193
+PXD049412	1	quantmsdiann	2.5.0	1	44934
+PXD049412	3	proteobench	2.1.0 Academia	1	32726
+PXD049412	3	proteobench	2.2.0 Academia	2	38208
+PXD049412	3	proteobench	2.3.0 Academia	1	36037
+PXD049412	3	proteobench	2.5.0 Academia	2	35020
+PXD049412	3	quantmsdiann	1.8.1	1	38442
+PXD049412	3	quantmsdiann	2.1.0	1	37800
+PXD049412	3	quantmsdiann	2.2.0	1	40183
+PXD049412	3	quantmsdiann	2.3.2	1	40696
+PXD049412	3	quantmsdiann	2.5.0	1	41325
+PXD062685	1	proteobench	1.7.16	1	90463
+PXD062685	1	proteobench	1.8	1	102260
+PXD062685	1	proteobench	1.9.1	2	178954
+PXD062685	1	proteobench	1.9.2	4	108316
+PXD062685	1	proteobench	2.0 Academia	1	120520
+PXD062685	1	proteobench	2.1.0 Academia	1	128954
+PXD062685	1	proteobench	2.2.0 Academia	1	122710
+PXD062685	1	proteobench	2.3.0 Academia	1	132229
+PXD062685	1	proteobench	2.5.0 Academia	1	129446
+PXD062685	1	quantmsdiann	1.8.1	1	92138
+PXD062685	1	quantmsdiann	2.1.0	1	102192
+PXD062685	1	quantmsdiann	2.2.0	1	112155
+PXD062685	1	quantmsdiann	2.3.2	1	113850
+PXD062685	1	quantmsdiann	2.5.0	1	117024
+PXD062685	3	proteobench	1.7.16	1	88935
+PXD062685	3	proteobench	1.8	1	99789
+PXD062685	3	proteobench	1.9.1	2	98211
+PXD062685	3	proteobench	1.9.2	4	104821
+PXD062685	3	proteobench	2.0 Academia	1	115845
+PXD062685	3	proteobench	2.1.0 Academia	1	97712
+PXD062685	3	proteobench	2.2.0 Academia	1	118326
+PXD062685	3	proteobench	2.3.0 Academia	1	100308
+PXD062685	3	proteobench	2.5.0 Academia	1	98694
+PXD062685	3	quantmsdiann	1.8.1	1	91688
+PXD062685	3	quantmsdiann	2.1.0	1	100861
+PXD062685	3	quantmsdiann	2.2.0	1	110281
+PXD062685	3	quantmsdiann	2.3.2	1	111805
+PXD062685	3	quantmsdiann	2.5.0	1	111825
+PXD070049	1	proteobench	2.1.0 Academia	1	103911
+PXD070049	1	quantmsdiann	1.8.1	1	87021
+PXD070049	1	quantmsdiann	2.1.0	1	95125
+PXD070049	1	quantmsdiann	2.2.0	1	96367
+PXD070049	1	quantmsdiann	2.3.2	1	99443
+PXD070049	1	quantmsdiann	2.5.0	1	101737
+PXD070049	3	proteobench	2.1.0 Academia	1	97538
+PXD070049	3	quantmsdiann	1.8.1	1	85869
+PXD070049	3	quantmsdiann	2.1.0	1	91942
+PXD070049	3	quantmsdiann	2.2.0	1	93138
+PXD070049	3	quantmsdiann	2.3.2	1	95676
+PXD070049	3	quantmsdiann	2.5.0	1	94602
+ProteoBench_Module_7	1	proteobench	1.7.16	1	128222
+ProteoBench_Module_7	1	proteobench	1.9.1	1	175476
+ProteoBench_Module_7	1	proteobench	1.9.2	8	124437
+ProteoBench_Module_7	1	proteobench	2.0 Academia	1	130787
+ProteoBench_Module_7	1	proteobench	2.1.0 Academia	1	125761
+ProteoBench_Module_7	1	proteobench	2.2.0 Academia	4	135817
+ProteoBench_Module_7	1	proteobench	2.3.0 Academia	4	120486
+ProteoBench_Module_7	1	proteobench	2.3.2 Academia	1	133244
+ProteoBench_Module_7	1	proteobench	2.5.0 Academia	3	135402
+ProteoBench_Module_7	1	quantmsdiann	1.8.1	1	106965
+ProteoBench_Module_7	1	quantmsdiann	2.1.0	1	111706
+ProteoBench_Module_7	1	quantmsdiann	2.2.0	1	116015
+ProteoBench_Module_7	1	quantmsdiann	2.3.2	1	118900
+ProteoBench_Module_7	1	quantmsdiann	2.5.0	1	122152
+ProteoBench_Module_7	3	proteobench	1.7.16	1	122228
+ProteoBench_Module_7	3	proteobench	1.9.1	1	107622
+ProteoBench_Module_7	3	proteobench	1.9.2	8	116198
+ProteoBench_Module_7	3	proteobench	2.0 Academia	1	120598
+ProteoBench_Module_7	3	proteobench	2.1.0 Academia	1	115398
+ProteoBench_Module_7	3	proteobench	2.2.0 Academia	4	123756
+ProteoBench_Module_7	3	proteobench	2.3.0 Academia	4	113510
+ProteoBench_Module_7	3	proteobench	2.3.2 Academia	1	123274
+ProteoBench_Module_7	3	proteobench	2.5.0 Academia	3	100151
+ProteoBench_Module_7	3	quantmsdiann	1.8.1	1	104301
+ProteoBench_Module_7	3	quantmsdiann	2.1.0	1	107227
+ProteoBench_Module_7	3	quantmsdiann	2.2.0	1	111497
+ProteoBench_Module_7	3	quantmsdiann	2.3.2	1	113958
+ProteoBench_Module_7	3	quantmsdiann	2.5.0	1	113270

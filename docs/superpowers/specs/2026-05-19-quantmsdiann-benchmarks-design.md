@@ -178,3 +178,92 @@ dataset↔module mapper. No network in tests.
 - DIA-NN versions 1.8.1 and 2.x have meaningfully different defaults
   (libfree behaviour, MBR, normalisation). The figure shows raw headline
   numbers; we deliberately do not normalise.
+
+## Slack-driven correction: ≥3-replicate threshold (2026-05-19)
+
+After a Slack exchange with the ProteoBench maintainers (Marie Locard-Paulet
+and Robbe Devreese) two corrections to the supp figure were agreed:
+
+### 1. `predictors_library` is the canonical library-strategy field
+
+Robbe confirmed that all of his DIA-NN submissions ran "right fasta + DIA-NN
+predicted library" (i.e. within DIA-NN, FASTA-derived in-silico) and that
+this is the policy for ~95% of current ProteoBench DIA points. The existing
+`predictors_library` field — a per-component dict `{'RT': 'DIANN', 'IM':
+'DIANN', 'MS2_int': 'DIANN'}` for predicted, `None` for empirical, the
+literal string `"User defined speclib"` for externally uploaded — is
+therefore the canonical declaration. No new extraction is required; we
+document and keep `classify_predictors_library` as the single source of
+truth for the colour coding in the supp figure.
+
+### 2. `nr_prec` at the ≥1-replicate threshold is misleading for cross-version ranking
+
+Robbe specifically called out DIA-NN 1.9.1's headline `nr_prec`:
+
+> "you will notice that 2.3.0 will overtake 2.2 and 1.9.1 in n precursors at
+> ≥3 replicate observations. Especially the effect of 1.9.1 being so high at
+> 1 replicate observation is a very weird quirk that has been observed by a
+> few people."
+
+#### Field structure (verified)
+
+ProteoBench submissions embed per-replicate-threshold counts under
+`entry['results']` keyed by replicate count as a string. The exact shape,
+inspected across all four modules' submissions:
+
+```python
+entry['results'] = {
+    '1': { 'nr_prec': N, 'nr_prec_HUMAN': ..., 'mean_abs_epsilon_global': ... },
+    '2': { 'nr_prec': N, ... },
+    '3': { 'nr_prec': N, ... },
+    '4': { 'nr_prec': N, ... },
+    '5': { 'nr_prec': N, ... },
+    '6': { 'nr_prec': N, ... },
+}
+```
+
+`entry['results']['1']['nr_prec']` equals the top-level
+`entry['nr_prec']`. The `nr_prec` at key `K` counts precursors quantified in
+at least `K` of the six ProteoBench sample replicates. The figure now
+renders both thresholds:
+
+| File | Threshold | Default |
+|---|---|---|
+| `supp_vs_proteobench_min1.{pdf,png,svg}` | ≥1 replicate (legacy) | retained for comparison |
+| `supp_vs_proteobench_min3.{pdf,png,svg}` | ≥3 replicates (Slack-corrected) | **new default**; matches Robbe's recommendation |
+
+The corresponding quantmsdiann ≥3 count is computed from
+`diann_report.pr_matrix.tsv` by counting rows with non-NA intensity in ≥3 of
+the 6 sample columns (`count_pr_matrix_min_replicates(path, 3)`).
+
+#### Verified ranking flips
+
+`analysis/figures/quantmsdiann_benchmarks/median_nr_prec_by_version.tsv`
+records the per-DIA-NN-version median `nr_prec` per module under both
+thresholds. The ProteoBench-side ranking flips Robbe predicted are visible:
+
+- **PXD062685 (timsTOF SCP, ProteoBench community submissions):**
+  - ≥1: 1.9.1 median = **178,954** (highest, anomalously high)
+  - ≥3: 1.9.1 median = **98,211** (drops to mid-pack; 2.0/2.2 now exceed it)
+- **ProteoBench Module 7 (Astral, ProteoBench community submissions):**
+  - ≥1: 1.9.1 median = **175,476** (highest)
+  - ≥3: 1.9.1 median = **107,622** (drops below 1.7.16, 1.9.2, 2.0, 2.1.0,
+    2.2.0, 2.3.0/2.3.2)
+- The same pattern is consistent with the "1.9.1 quirk" Robbe described:
+  unusually permissive at ≥1, in-line with neighbours at ≥3.
+
+#### quantmsdiann ranking under the corrected threshold
+
+quantmsdiann's per-version progression remains monotonic (or nearly so)
+under ≥3, which is the desired behaviour:
+
+| Dataset | quantmsdiann ≥3 medians (1.8.1 → 2.5.0) |
+|---|---|
+| PXD049412 (Astral) | 38,442 → 37,800 → 40,183 → 40,696 → 41,325 |
+| PXD062685 (timsTOF SCP) | 91,688 → 100,861 → 110,281 → 111,805 → 111,825 |
+| PXD070049 (ZenoTOF 7600) | 85,869 → 91,942 → 93,138 → 95,676 → 94,602 |
+| ProteoBench Module 7 (Astral) | 104,301 → 107,227 → 111,497 → 113,958 → 113,270 |
+
+The corrected supp figure is the version we ship in the paper; the ≥1 panel
+is retained as a "what people usually see on ProteoBench's UI" reference
+only.

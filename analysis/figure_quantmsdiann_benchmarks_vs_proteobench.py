@@ -197,6 +197,98 @@ def parse_proteobench_datapoints(
         yield str(software), str(version), int(nr_prec), kind
 
 
+def extract_nr_prec_at_replicate_threshold(
+    entry: dict, min_replicates: int,
+) -> int | None:
+    """Return the precursor count for a single ProteoBench submission
+    `entry` at the requested ≥min_replicates threshold.
+
+    Each ProteoBench submission embeds a `results` dict keyed by replicate
+    count as a string ('1', '2', ..., '6'). The value at key 'K' is the
+    set of metrics computed over precursors quantified in AT LEAST K of the
+    6 ProteoBench replicates. So the field we want is:
+
+        entry['results'][str(min_replicates)]['nr_prec']
+
+    Returns None when the field is missing or not numeric. Falls back to
+    the top-level `nr_prec` only when `min_replicates == 1` (the top-level
+    nr_prec is defined as precursors quantified in ≥1 of 6 samples).
+
+    Robbe Devreese (ProteoBench maintainer) flagged that DIA-NN 1.9.1's
+    headline nr_prec is unusually high at the ≥1 threshold but drops back
+    in line at ≥3; this function is the canonical extractor for the ≥3
+    re-ranking used in the corrected supp figure.
+    """
+    results = entry.get("results")
+    key = str(min_replicates)
+    if isinstance(results, dict) and key in results:
+        bucket = results[key]
+        if isinstance(bucket, dict):
+            v = bucket.get("nr_prec")
+            if isinstance(v, (int, float)) and not pd.isna(v):
+                return int(v)
+    if min_replicates == 1:
+        v = entry.get("nr_prec")
+        if isinstance(v, (int, float)) and not pd.isna(v):
+            return int(v)
+    return None
+
+
+def parse_proteobench_datapoints_at_threshold(
+    json_path: Path,
+    min_replicates: int,
+) -> Iterator[tuple[str, str, int, str]]:
+    """Same shape as `parse_proteobench_datapoints` but reads precursor
+    counts from `entry['results'][str(min_replicates)]['nr_prec']`.
+
+    Skips submissions that have no bucket at the requested threshold (rare;
+    every DIA-NN submission inspected during the Slack-driven correction
+    review carries all six replicate buckets, but defensive handling here
+    keeps the renderer robust against any future submission that doesn't)."""
+    with open(json_path, encoding="utf-8") as fh:
+        payload = json.load(fh)
+    for entry in payload:
+        nr_prec = extract_nr_prec_at_replicate_threshold(
+            entry, min_replicates,
+        )
+        if nr_prec is None:
+            continue
+        software = entry.get("software_name") or ""
+        version = entry.get("software_version") or ""
+        if normalise_software_name(str(software)) == "dia-nn":
+            kind = classify_predictors_library(entry.get("predictors_library"))
+        else:
+            kind = LIBRARY_KIND_OTHER_TOOL
+        yield str(software), str(version), int(nr_prec), kind
+
+
+def count_pr_matrix_min_replicates(
+    matrix_path: Path,
+    min_replicates: int,
+) -> int:
+    """Count precursors in a DIA-NN pr_matrix.tsv that have a non-NA
+    intensity in AT LEAST `min_replicates` of the per-run sample columns.
+
+    Sample columns are every column past the standard DIA-NN metadata block
+    (everything that is not one of the well-known metadata column names).
+    The four ProteoBench DIA pr_matrix.tsv files always have exactly six
+    sample columns (Condition_A_REP1..3 + Condition_B_REP1..3), so a
+    `min_replicates == 3` count matches Robbe's "≥3 replicate observations"
+    bucket for the head-to-head supp figure.
+    """
+    metadata = {
+        "Protein.Group", "Protein.Ids", "Protein.Names", "Genes",
+        "First.Protein.Description", "Proteotypic", "Stripped.Sequence",
+        "Modified.Sequence", "Precursor.Charge", "Precursor.Id",
+    }
+    df = pd.read_csv(matrix_path, sep="\t", dtype=str)
+    sample_cols = [c for c in df.columns if c not in metadata]
+    if not sample_cols:
+        return 0
+    non_na = df[sample_cols].notna().sum(axis=1)
+    return int((non_na >= min_replicates).sum())
+
+
 def normalise_software_name(name: str) -> str:
     """Collapse case/whitespace variants. DIA-NN appears as 'DIA-NN', 'DIANN',
     'Diann' across ProteoBench submissions; we normalise so highlight
@@ -676,11 +768,73 @@ def write_counts_tsv(long_df: pd.DataFrame, tsv_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+def median_nr_prec_per_version(
+    proteobench_rows_by_threshold: dict[int, dict[str, list[tuple[str, str, int, str]]]],
+    quantmsdiann_rows_by_threshold: dict[int, list[tuple[str, str, int, int]]] | None = None,
+) -> pd.DataFrame:
+    """Build a long-format table of median precursor counts per DIA-NN
+    version per module at each replicate threshold. Used to quantify the
+    Robbe-predicted 1.9.1 vs 2.3.0 ranking flip across the ≥1 and ≥3
+    thresholds.
+
+    `proteobench_rows_by_threshold` is keyed by min_replicates -> dataset ->
+    list of (tool, version, nr_prec, library_kind). Optional
+    `quantmsdiann_rows_by_threshold` adds quantmsdiann rows for the same
+    table (one quantmsdiann analysis per version, so 'median' == the single
+    value)."""
+    rows = []
+    for thr, by_dataset in proteobench_rows_by_threshold.items():
+        for dataset, entries in by_dataset.items():
+            diann = [(v, n) for tool, v, n, _k in entries
+                     if normalise_software_name(tool) == "dia-nn"]
+            by_v: dict[str, list[int]] = {}
+            for v, n in diann:
+                by_v.setdefault(v.strip(), []).append(n)
+            for v, ns in sorted(by_v.items()):
+                rows.append({
+                    "dataset": dataset,
+                    "min_replicates": thr,
+                    "source": "proteobench",
+                    "version": v,
+                    "n_submissions": len(ns),
+                    "median_nr_prec": int(pd.Series(ns).median()),
+                })
+    if quantmsdiann_rows_by_threshold is not None:
+        for thr, qm_rows in quantmsdiann_rows_by_threshold.items():
+            for dataset, version, nr_prec, _ in qm_rows:
+                rows.append({
+                    "dataset": dataset,
+                    "min_replicates": thr,
+                    "source": "quantmsdiann",
+                    "version": _VERSION_LABELS.get(version, version),
+                    "n_submissions": 1,
+                    "median_nr_prec": int(nr_prec),
+                })
+    return pd.DataFrame(rows)
+
+
+def write_median_table(df: pd.DataFrame, tsv_path: Path) -> None:
+    """Auditable TSV of median precursor counts per DIA-NN version per module
+    at the ≥1 and ≥3 replicate thresholds. One row per
+    (dataset, threshold, source, version)."""
+    tsv_path.parent.mkdir(parents=True, exist_ok=True)
+    out = df.sort_values(
+        ["dataset", "min_replicates", "source", "version"]
+    )
+    out.to_csv(tsv_path, sep="\t", index=False)
+
+
 def main() -> int:  # pragma: no cover
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 
+    # quantmsdiann rows for the headline main panels (≥1-replicate row count,
+    # i.e. the raw pr_matrix.tsv row count). Each row is
+    # (dataset, version, precursors_min1, proteins).
     quantmsdiann_rows: list[tuple[str, str, int, int]] = []
+    # Parallel ≥3-replicate quantmsdiann counts, computed by re-scanning the
+    # cached pr_matrix.tsv. (proteins unchanged.)
+    quantmsdiann_rows_min3: list[tuple[str, str, int, int]] = []
     for dataset in DATASET_TO_MODULE:
         for version in DIANN_VERSIONS:
             base = f"{PRIDE_BASE}/{dataset}/{version}/quant_tables"
@@ -699,12 +853,18 @@ def main() -> int:  # pragma: no cover
                       f"{exc}", file=sys.stderr)
                 continue
             precursors = count_matrix_data_rows(pr_path)
+            precursors_min3 = count_pr_matrix_min_replicates(pr_path, 3)
             proteins = count_matrix_data_rows(pg_path)
             quantmsdiann_rows.append((dataset, version, precursors, proteins))
-            print(f"{dataset} {version}: precursors={precursors:,}  "
+            quantmsdiann_rows_min3.append(
+                (dataset, version, precursors_min3, proteins)
+            )
+            print(f"{dataset} {version}: precursors_min1={precursors:,}  "
+                  f"precursors_min3={precursors_min3:,}  "
                   f"proteins={proteins:,}")
 
-    proteobench_rows: dict[str, list[tuple[str, str, int]]] = {}
+    proteobench_rows: dict[str, list[tuple[str, str, int, str]]] = {}
+    proteobench_rows_min3: dict[str, list[tuple[str, str, int, str]]] = {}
     for dataset, info in DATASET_TO_MODULE.items():
         cache = DATA_DIR / "proteobench" / f"{dataset}.json"
         try:
@@ -713,12 +873,19 @@ def main() -> int:  # pragma: no cover
             print(f"WARN: failed to fetch ProteoBench for {dataset}: {exc}",
                   file=sys.stderr)
             proteobench_rows[dataset] = []
+            proteobench_rows_min3[dataset] = []
             continue
-        entries = list(parse_proteobench_datapoints(cache))
-        proteobench_rows[dataset] = entries
-        print(f"{dataset}: {len(entries)} ProteoBench submissions")
+        entries_min1 = list(parse_proteobench_datapoints_at_threshold(cache, 1))
+        entries_min3 = list(parse_proteobench_datapoints_at_threshold(cache, 3))
+        proteobench_rows[dataset] = entries_min1
+        proteobench_rows_min3[dataset] = entries_min3
+        print(f"{dataset}: {len(entries_min1)} ProteoBench submissions "
+              f"(min1) / {len(entries_min3)} (min3)")
 
     long_df = build_long_table(quantmsdiann_rows, proteobench_rows)
+    long_df_min3 = build_long_table(
+        quantmsdiann_rows_min3, proteobench_rows_min3,
+    )
 
     print("Rendering precursor-only main panel...")
     render_main_precursors(
@@ -736,16 +903,42 @@ def main() -> int:  # pragma: no cover
         FIGURES_DIR / "main_benchmarks_overview.svg",
     )
 
-    print("Rendering ProteoBench-overlay supp figure...")
+    print("Rendering ProteoBench-overlay supp figure (≥1 replicate)...")
     render_vs_proteobench(
         long_df,
-        FIGURES_DIR / "supp_vs_proteobench.pdf",
-        FIGURES_DIR / "supp_vs_proteobench.png",
-        FIGURES_DIR / "supp_vs_proteobench.svg",
+        FIGURES_DIR / "supp_vs_proteobench_min1.pdf",
+        FIGURES_DIR / "supp_vs_proteobench_min1.png",
+        FIGURES_DIR / "supp_vs_proteobench_min1.svg",
     )
 
-    print("Writing auditable counts TSV...")
+    print("Rendering ProteoBench-overlay supp figure (≥3 replicates, "
+          "Slack-corrected default)...")
+    render_vs_proteobench(
+        long_df_min3,
+        FIGURES_DIR / "supp_vs_proteobench_min3.pdf",
+        FIGURES_DIR / "supp_vs_proteobench_min3.png",
+        FIGURES_DIR / "supp_vs_proteobench_min3.svg",
+    )
+
+    print("Writing auditable counts TSV (≥1)...")
     write_counts_tsv(long_df, FIGURES_DIR / "counts.tsv")
+    print("Writing auditable counts TSV (≥3)...")
+    write_counts_tsv(long_df_min3, FIGURES_DIR / "counts_min3.tsv")
+
+    print("Writing per-DIA-NN-version median precursor table (≥1 and ≥3)...")
+    median_df = median_nr_prec_per_version(
+        {
+            1: proteobench_rows,
+            3: proteobench_rows_min3,
+        },
+        {
+            1: quantmsdiann_rows,
+            3: quantmsdiann_rows_min3,
+        },
+    )
+    write_median_table(
+        median_df, FIGURES_DIR / "median_nr_prec_by_version.tsv",
+    )
     return 0
 
 

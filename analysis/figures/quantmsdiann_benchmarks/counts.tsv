@@ -19,26 +19,31 @@ ProteoBench_Module_7	quantmsdiann	DIA-NN	v2_1_0	111706	10477
 ProteoBench_Module_7	quantmsdiann	DIA-NN	v2_2_0	116015	10638
 ProteoBench_Module_7	quantmsdiann	DIA-NN	v2_3_2	118900	10556
 ProteoBench_Module_7	quantmsdiann	DIA-NN	v2_5_0	122152	10888
+PXD049412	proteobench	DIA-NN	2.3.0 Academia 	51484	
+PXD049412	proteobench	DIA-NN	2.5.0 Academia 	50097	
 PXD049412	proteobench	DIA-NN	2.2.0 Academia 	48339	
-PXD049412	proteobench	DIA-NN	2.3.0 Academia 	36037	
-PXD049412	proteobench	DIA-NN	2.5.0 Academia 	35196	
-PXD049412	proteobench	DIA-NN	2.5.0 Academia 	34844	
+PXD049412	proteobench	DIA-NN	2.2.0 Academia 	47180	
+PXD049412	proteobench	DIA-NN	2.1.0 Academia 	46930	
+PXD049412	proteobench	DIA-NN	2.5.0 Academia 	40178	
 PXD049412	proteobench	FragPipe (DIA-NN quant)	23.1	32943	
-PXD049412	proteobench	DIA-NN	2.2.0 Academia 	32890	
-PXD049412	proteobench	DIA-NN	2.1.0 Academia 	32726	
-PXD049412	proteobench	FragPipe (DIA-NN quant)	24.0	29551	
-PXD049412	proteobench	MaxQuant	2.7.5.0	22648	
-PXD049412	proteobench	MaxQuant	2.7.5.0	22114	
-PXD049412	proteobench	AlphaDIA	2.1.0	18867	
+PXD049412	proteobench	FragPipe (DIA-NN quant)	24.0	30727	
+PXD049412	proteobench	MaxQuant	2.7.5.0	28603	
+PXD049412	proteobench	MaxQuant	2.7.5.0	28381	
+PXD049412	proteobench	AlphaDIA	2.1.0	22176	
 PXD049412	proteobench	FragPipe (DIA-NN quant)	23.1	2844	
+PXD062685	proteobench	DIA-NN	1.9.1	212994	
 PXD062685	proteobench	DIA-NN	1.9.1	144914	
+PXD062685	proteobench	DIA-NN	2.3.0 Academia 	132229	
 PXD062685	proteobench	Spectronaut	19.5.241126.62635	130768	
 PXD062685	proteobench	Spectronaut	20.0.250606.92449	129979	
+PXD062685	proteobench	DIA-NN	2.5.0 Academia 	129446	
 PXD062685	proteobench	Spectronaut	19.5.241126.62635	129230	
+PXD062685	proteobench	DIA-NN	2.1.0 Academia 	128954	
 PXD062685	proteobench	Spectronaut	20.0.250606.92449	124534	
 PXD062685	proteobench	Spectronaut	20.0.250606.92449	122764	
 PXD062685	proteobench	DIA-NN	2.2.0 Academia 	122710	
 PXD062685	proteobench	DIA-NN	2.0 Academia 	120520	
+PXD062685	proteobench	DIA-NN	1.9.2	118372	
 PXD062685	proteobench	AlphaDIA	1.10.3	114060	
 PXD062685	proteobench	PEAKS	13 20250520	112925	
 PXD062685	proteobench	PEAKS	13 20250520	109818	
@@ -46,21 +51,16 @@ PXD062685	proteobench	DIA-NN	1.9.2	108672
 PXD062685	proteobench	DIA-NN	1.9.2	107961	
 PXD062685	proteobench	DIA-NN	1.9.2	107961	
 PXD062685	proteobench	DIA-NN	1.8	102260	
-PXD062685	proteobench	DIA-NN	2.3.0 Academia 	100308	
 PXD062685	proteobench	PEAKS		98885	
-PXD062685	proteobench	DIA-NN	2.5.0 Academia 	98694	
-PXD062685	proteobench	DIA-NN	2.1.0 Academia 	97712	
 PXD062685	proteobench	AlphaDIA	1.10.4-dev0	92212	
-PXD062685	proteobench	DIA-NN	1.9.1	90907	
 PXD062685	proteobench	DIA-NN	1.7.16	90463	
-PXD062685	proteobench	DIA-NN	1.9.2	88924	
 PXD062685	proteobench	FragPipe (DIA-NN quant)	23.0	87943	
 PXD062685	proteobench	FragPipe (DIA-NN quant)	23.0	87778	
 PXD062685	proteobench	AlphaDIA	1.12.1	87659	
 PXD062685	proteobench	FragPipe (DIA-NN quant)	22.0	85738	
 PXD062685	proteobench	FragPipe (DIA-NN quant)	22.0	85328	
 PXD062685	proteobench	AlphaDIA	1.10.3	80469	
-PXD062685	proteobench	FragPipe (DIA-NN quant)	24.0	78261	
+PXD062685	proteobench	FragPipe (DIA-NN quant)	24.0	79241	
 PXD062685	proteobench	AlphaDIA	1.12.1	72028	
 PXD062685	proteobench	AlphaDIA	1.12.1	71702	
 PXD070049	proteobench	PEAKS	13 20250520	132330	
@@ -69,12 +69,14 @@ PXD070049	proteobench	AlphaDIA	1.12.1	71637
 PXD070049	proteobench	AlphaDIA	1.12.2	59590	
 ProteoBench_Module_7	proteobench	DIA-NN	1.9.1	175476	
 ProteoBench_Module_7	proteobench	DIA-NN	2.2.0 Academia 	155538	
+ProteoBench_Module_7	proteobench	DIA-NN	2.5.0 Academia 	142431	
 ProteoBench_Module_7	proteobench	PEAKS	13 20250515	140472	
 ProteoBench_Module_7	proteobench	PEAKS	13 20250520	140083	
 ProteoBench_Module_7	proteobench	DIA-NN	2.3.0 Academia 	139895	
 ProteoBench_Module_7	proteobench	PEAKS	13 20250520	139295	
 ProteoBench_Module_7	proteobench	DIA-NN	2.2.0 Academia 	137222	
 ProteoBench_Module_7	proteobench	DIA-NN	2.3.0 Academia 	137048	
+ProteoBench_Module_7	proteobench	DIA-NN	2.5.0 Academia 	135402	
 ProteoBench_Module_7	proteobench	DIA-NN	2.2.0 Academia 	134412	
 ProteoBench_Module_7	proteobench	DIA-NN	1.9.2	133751	
 ProteoBench_Module_7	proteobench	DIA-NN	2.2.0 Academia 	133276	
@@ -92,25 +94,23 @@ ProteoBench_Module_7	proteobench	Spectronaut	19.9.250512.62635	120479
 ProteoBench_Module_7	proteobench	Spectronaut	19.5.241126.62635	119380	
 ProteoBench_Module_7	proteobench	Spectronaut	19.5.241126.62635	117769	
 ProteoBench_Module_7	proteobench	Spectronaut	20.4.260109.92449	117652	
-ProteoBench_Module_7	proteobench	DIA-NN	2.5.0 Academia 	117289	
 ProteoBench_Module_7	proteobench	AlphaDIA	1.12.1	115816	
 ProteoBench_Module_7	proteobench	Spectronaut	20.0.250606.92449	112922	
+ProteoBench_Module_7	proteobench	DIA-NN	2.5.0 Academia 	111675	
 ProteoBench_Module_7	proteobench	AlphaDIA	1.12.1	110569	
 ProteoBench_Module_7	proteobench	Spectronaut	20.0.250606.92449	107875	
 ProteoBench_Module_7	proteobench	AlphaDIA	1.10.4-dev0	106376	
 ProteoBench_Module_7	proteobench	AlphaDIA	1.10.4-dev0	105002	
 ProteoBench_Module_7	proteobench	DIA-NN	2.3.0 Academia 	103925	
-ProteoBench_Module_7	proteobench	DIA-NN	2.5.0 Academia 	100151	
+ProteoBench_Module_7	proteobench	AlphaDIA	2.1.0	97484	
 ProteoBench_Module_7	proteobench	FragPipe (DIA-NN quant)	23.0	96671	
 ProteoBench_Module_7	proteobench	FragPipe (DIA-NN quant)	23.0	94644	
-ProteoBench_Module_7	proteobench	DIA-NN	2.5.0 Academia 	94505	
 ProteoBench_Module_7	proteobench	AlphaDIA	1.12.1	91675	
 ProteoBench_Module_7	proteobench	FragPipe (DIA-NN quant)	22.0	90251	
-ProteoBench_Module_7	proteobench	AlphaDIA	2.1.0	84145	
-ProteoBench_Module_7	proteobench	FragPipe (DIA-NN quant)	24.0	83123	
+ProteoBench_Module_7	proteobench	FragPipe (DIA-NN quant)	24.0	84675	
 ProteoBench_Module_7	proteobench	DIA-NN	1.9.2	80720	
 ProteoBench_Module_7	proteobench	AlphaDIA	1.10.3	37968	
 ProteoBench_Module_7	proteobench	AlphaDIA	1.10.3	31495	
 ProteoBench_Module_7	proteobench	AlphaDIA	1.10.3	25788	
 ProteoBench_Module_7	proteobench	MaxQuant	2.6.3.0	23890	
-ProteoBench_Module_7	proteobench	DIA-NN	2.3.0 Academia 	3022	
+ProteoBench_Module_7	proteobench	DIA-NN	2.3.0 Academia 	5535	

@@ -267,6 +267,149 @@ def test_build_long_table_combines_quantmsdiann_and_proteobench(
 # Cache writer (idempotent)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Replicate-threshold extraction (Slack-driven correction)
+# ---------------------------------------------------------------------------
+
+def test_extract_nr_prec_at_replicate_threshold_uses_results_bucket() -> None:
+    """ProteoBench submissions embed per-replicate-threshold counts under
+    `results[str(min_replicates)]['nr_prec']`. The extractor must read from
+    that nested bucket, NOT the top-level `nr_prec` (which is always the
+    ≥1-replicate count and overstates DIA-NN 1.9.1 per Robbe's note)."""
+    from analysis.figure_quantmsdiann_benchmarks_vs_proteobench import (
+        extract_nr_prec_at_replicate_threshold,
+    )
+    entry = {
+        "software_name": "DIA-NN",
+        "software_version": "1.9.1",
+        "nr_prec": 105002,  # headline ≥1 count
+        "results": {
+            "1": {"nr_prec": 105002},
+            "2": {"nr_prec": 105002},
+            "3": {"nr_prec": 99707},
+            "4": {"nr_prec": 91622},
+            "5": {"nr_prec": 81223},
+            "6": {"nr_prec": 65666},
+        },
+    }
+    assert extract_nr_prec_at_replicate_threshold(entry, 1) == 105002
+    assert extract_nr_prec_at_replicate_threshold(entry, 3) == 99707
+    assert extract_nr_prec_at_replicate_threshold(entry, 6) == 65666
+
+
+def test_extract_nr_prec_falls_back_to_top_level_only_for_min1() -> None:
+    """If `results` is missing entirely (rare older submission), the
+    top-level `nr_prec` may still be present; that's only equivalent to the
+    ≥1-replicate threshold, so we must NOT silently fall back for ≥3."""
+    from analysis.figure_quantmsdiann_benchmarks_vs_proteobench import (
+        extract_nr_prec_at_replicate_threshold,
+    )
+    entry = {"software_name": "DIA-NN", "nr_prec": 50000}
+    assert extract_nr_prec_at_replicate_threshold(entry, 1) == 50000
+    assert extract_nr_prec_at_replicate_threshold(entry, 3) is None
+
+
+def test_parse_proteobench_datapoints_at_threshold_skips_missing_buckets(
+    tmp_path: Path,
+) -> None:
+    """The threshold-aware parser should drop any submission whose results
+    block does not carry the requested replicate-threshold bucket. The
+    library-kind classification still applies."""
+    import json as _json
+    from analysis.figure_quantmsdiann_benchmarks_vs_proteobench import (
+        parse_proteobench_datapoints_at_threshold,
+    )
+    payload = [
+        {
+            "software_name": "DIA-NN", "software_version": "2.3.0",
+            "predictors_library": {"RT": "DIANN", "IM": "DIANN",
+                                   "MS2_int": "DIANN"},
+            "results": {"1": {"nr_prec": 110000}, "3": {"nr_prec": 95000}},
+            "id": "A",
+        },
+        {
+            "software_name": "DIA-NN", "software_version": "1.9.1",
+            "predictors_library": None,
+            "results": {"1": {"nr_prec": 130000}},  # no 3-bucket
+            "id": "B",
+        },
+        {
+            "software_name": "AlphaDIA", "software_version": "1.10",
+            "results": {"1": {"nr_prec": 80000}, "3": {"nr_prec": 70000}},
+            "id": "C",
+        },
+    ]
+    p = tmp_path / "module.json"
+    p.write_text(_json.dumps(payload))
+    # ≥1 yields all three rows.
+    rows1 = list(parse_proteobench_datapoints_at_threshold(p, 1))
+    assert [(t, v, n) for t, v, n, _ in rows1] == [
+        ("DIA-NN", "2.3.0", 110000),
+        ("DIA-NN", "1.9.1", 130000),
+        ("AlphaDIA", "1.10", 80000),
+    ]
+    # ≥3 drops the DIA-NN 1.9.1 submission (no `3` bucket).
+    rows3 = list(parse_proteobench_datapoints_at_threshold(p, 3))
+    assert [(t, v, n) for t, v, n, _ in rows3] == [
+        ("DIA-NN", "2.3.0", 95000),
+        ("AlphaDIA", "1.10", 70000),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# pr_matrix ≥N-replicate counter
+# ---------------------------------------------------------------------------
+
+def test_count_pr_matrix_min_replicates_counts_non_na_threshold(
+    tmp_path: Path,
+) -> None:
+    """The ≥3-replicate count is precursors with non-NA intensity in at least
+    3 of the 6 ProteoBench sample columns. Mirrors how ProteoBench's per-
+    bucket `nr_prec` is defined."""
+    from analysis.figure_quantmsdiann_benchmarks_vs_proteobench import (
+        count_pr_matrix_min_replicates,
+    )
+    p = tmp_path / "pr_matrix.tsv"
+    # 4 precursors, 6 sample columns ("Condition_A_REP1..3", "B_REP1..3").
+    # P1: 6/6  (passes ≥3 and ≥6)
+    # P2: 3/6  (passes ≥3, not ≥6)
+    # P3: 2/6  (fails ≥3)
+    # P4: 0/6  (fails everything; row exists but is unquantified)
+    p.write_text(
+        "Protein.Group\tStripped.Sequence\tPrecursor.Id\t"
+        "A_REP1\tA_REP2\tA_REP3\tB_REP1\tB_REP2\tB_REP3\n"
+        "Q1\tAAAR\tAAAR_2\t1.0\t1.0\t1.0\t1.0\t1.0\t1.0\n"
+        "Q2\tBBBR\tBBBR_2\t1.0\t\t1.0\t\t1.0\t\n"
+        "Q3\tCCCR\tCCCR_2\t1.0\t1.0\t\t\t\t\n"
+        "Q4\tDDDR\tDDDR_2\t\t\t\t\t\t\n"
+    )
+    assert count_pr_matrix_min_replicates(p, 1) == 3  # P1, P2, P3
+    assert count_pr_matrix_min_replicates(p, 3) == 2  # P1, P2
+    assert count_pr_matrix_min_replicates(p, 6) == 1  # P1
+
+
+def test_count_pr_matrix_min_replicates_strips_metadata_columns(
+    tmp_path: Path,
+) -> None:
+    """The matrix carries up to 10 DIA-NN metadata columns (Protein.Group,
+    Genes, ...). The counter must only look at sample columns, otherwise
+    a string-valued 'Genes' column would always count as 'non-NA' and
+    inflate the ≥N tally."""
+    from analysis.figure_quantmsdiann_benchmarks_vs_proteobench import (
+        count_pr_matrix_min_replicates,
+    )
+    p = tmp_path / "pr_matrix.tsv"
+    p.write_text(
+        "Protein.Group\tProtein.Ids\tProtein.Names\tGenes\t"
+        "First.Protein.Description\tProteotypic\tStripped.Sequence\t"
+        "Modified.Sequence\tPrecursor.Charge\tPrecursor.Id\t"
+        "A_REP1\tA_REP2\tA_REP3\tB_REP1\tB_REP2\tB_REP3\n"
+        # Metadata fully populated, samples empty -> should NOT count.
+        "Q1\tQ1\tName\tGENE1\tdesc\tTrue\tAAAR\tAAAR\t2\tAAAR_2\t\t\t\t\t\t\n"
+    )
+    assert count_pr_matrix_min_replicates(p, 1) == 0
+
+
 def test_consolidate_proteobench_datapoints_writes_list(
     tmp_path: Path,
 ) -> None:
