@@ -160,32 +160,243 @@ def test_count_openswath_quantified_handles_missing_peptide_with_decoy_protein(t
     assert out[-1] == 1  # use [-1] so this test still works once a peptide field is added
 
 
-def test_per_run_non_na_fraction_diann(tmp_path: Path) -> None:
-    from analysis.figure_original_vs_quantmsdiann import per_run_non_na_fraction_diann
+def test_per_run_real_detection_fraction_openswath_uses_score(tmp_path: Path) -> None:
+    from analysis.figure_original_vs_quantmsdiann import per_run_real_detection_fraction_openswath
+    body = (
+        "Peptide\tProtein\tIntensity_run0\tRT_run0\tscore_run0\tIntensity_run1\tRT_run1\tscore_run1\n"
+        # Row 1: real detection in run0 (score 0.005), requant in run1 (score 2.0).
+        "1_AAAR_2_run0\t1/sp|P1|HUMAN\t100\t10\t0.005\t150\t10.2\t2.0\n"
+        # Row 2: real detection in both runs.
+        "2_BBBR_2_run0\t1/sp|P2|HUMAN\t200\t12\t0.001\t250\t12.1\t0.008\n"
+        # Row 3: requant in both runs (score 2.0).
+        "3_CCCR_2_run0\t1/sp|P3|HUMAN\t300\t9\t2.0\t300\t9.1\t2.0\n"
+        # Row 4: decoy (Peptide prefix); should be excluded entirely.
+        "DECOY_4_DDDR_2_run0\t1/sp|P4|HUMAN\t999\t1\t0.001\t999\t1\t0.001\n"
+    )
+    p = tmp_path / "fa.tsv"
+    p.write_text(body)
+    out = per_run_real_detection_fraction_openswath(p)
+    # 3 target rows. score_run0 has 2 detections (rows 1,2); score_run1 has 1 (row 2).
+    assert out == {"score_run0": pytest.approx(2 / 3), "score_run1": pytest.approx(1 / 3)}
+
+
+def test_per_run_real_detection_fraction_diann_parquet(tmp_path: Path) -> None:
+    """Per-run completeness from the DIA-NN long-format report.
+
+    Numerator per run: distinct Precursor.Id rows with Q.Value <= 0.01 in that
+    run AND Global.Q.Value <= 0.01 (so the per-cell filter is strict 1% per-run
+    precursor FDR, matching the OpenSWATH score <= 0.01 criterion).
+    Denominator: distinct Precursor.Id with Global.Q.Value <= 0.01 anywhere."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from analysis.figure_original_vs_quantmsdiann import (
+        per_run_real_detection_fraction_diann_parquet,
+    )
+    table = pa.table({
+        "Run":            ["A",   "A",   "A",   "B",   "B",   "B",   "C"],
+        "Precursor.Id":   ["X2",  "Y2",  "Z2",  "X2",  "Y2",  "Z2",  "X2"],
+        "Q.Value":        [0.005, 0.02,  0.001, 0.001, 0.5,   0.005, 0.005],
+        "Global.Q.Value": [0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.5],
+    })
+    p = tmp_path / "report.parquet"
+    pq.write_table(table, p)
+    # Denominator: distinct Precursor.Id with Global.Q.Value <= 0.01 = {X2, Y2, Z2} = 3.
+    # Run A: X2 (0.005 OK), Z2 (0.001 OK); Y2 (0.02) fails per-run. -> 2/3
+    # Run B: X2 OK, Z2 OK; Y2 fails per-run. -> 2/3
+    # Run C: only X2 row, but its Global.Q.Value=0.5 means X2 is NOT in the denominator's pool
+    #        from this run's perspective... no, denominator is global. X2 IS in the pool
+    #        (it appears in runs A,B with Global=0.001). But this particular C-row has
+    #        Global=0.5 -> filtered out, so run C has 0 detections. -> 0/3
+    out = per_run_real_detection_fraction_diann_parquet(p)
+    assert out == {
+        "A": pytest.approx(2 / 3),
+        "B": pytest.approx(2 / 3),
+        "C": pytest.approx(0 / 3),
+    }
+
+
+def test_unique_peptides_per_protein_diann_counts_proteotypic_quantified(
+    tmp_path: Path,
+) -> None:
+    """Per Protein.Group, count distinct Stripped.Sequence among rows that are
+    proteotypic AND have at least one non-NA sample value."""
+    from analysis.figure_original_vs_quantmsdiann import (
+        unique_peptides_per_protein_diann,
+    )
     matrix = write_matrix(
         tmp_path,
         """
         Protein.Group\tProtein.Ids\tProtein.Names\tGenes\tFirst.Protein.Description\tProteotypic\tStripped.Sequence\tModified.Sequence\tPrecursor.Charge\tPrecursor.Id\tRun_A\tRun_B
         P1\tP1\tA\tG1\td\t1\tAAAR\tAAAR\t2\tAAAR2\t10\t
-        P2\tP2\tB\tG2\td\t1\tBBBR\tBBBR\t2\tBBBR2\t20\t30
-        P3\tP3\tC\tG3\td\t1\tCCCR\tCCCR\t2\tCCCR2\t\t40
+        P1\tP1\tA\tG1\td\t1\tAAAR\tAAAR\t3\tAAAR3\t\t20
+        P1\tP1\tA\tG1\td\t1\tBBBR\tBBBR\t2\tBBBR2\t\t30
+        P1\tP1\tA\tG1\td\t0\tCCCR\tCCCR\t2\tCCCR2\t40\t
+        P2\tP2\tB\tG2\td\t1\tDDDR\tDDDR\t2\tDDDR2\t50\t
+        P3\tP3\tC\tG3\td\t1\tEEER\tEEER\t2\tEEER2\t\t
         """,
     )
-    out = per_run_non_na_fraction_diann(matrix)
-    # 3 rows total; Run_A has 2 non-NA, Run_B has 2 non-NA.
-    assert out == {"Run_A": pytest.approx(2 / 3), "Run_B": pytest.approx(2 / 3)}
+    # P1: AAAR (proteotypic, quantified twice as 2 charge states -> 1 peptide),
+    #     BBBR (proteotypic, quantified), CCCR (NOT proteotypic, skip) -> 2 unique
+    # P2: DDDR (proteotypic, quantified) -> 1 unique
+    # P3: EEER (proteotypic but never quantified) -> 0 -> absent from output
+    out = unique_peptides_per_protein_diann(matrix)
+    assert out == {"P1": 2, "P2": 1}
 
 
-def test_per_run_non_na_fraction_openswath_excludes_decoys(tmp_path: Path) -> None:
-    from analysis.figure_original_vs_quantmsdiann import per_run_non_na_fraction_openswath
+def test_unique_peptides_per_protein_openswath_filters_decoys_and_multimap(
+    tmp_path: Path,
+) -> None:
+    """Per Protein (proteotypic '1/...' only), count distinct stripped peptides
+    that have >=1 score <= 0.01 in any run (= confidently detected, not just
+    requant-filled)."""
+    from analysis.figure_original_vs_quantmsdiann import (
+        unique_peptides_per_protein_openswath,
+    )
     body = (
         "Peptide\tProtein\tIntensity_run0\tRT_run0\tscore_run0\tIntensity_run1\tRT_run1\tscore_run1\n"
-        "1_AAAR_2_run0\t1/sp|P1|HUMAN\t100\t10\t.5\t\t\t\n"
-        "2_BBBR_2_run0\t1/sp|P2|HUMAN\t\t\t\t200\t12\t.4\n"
-        "DECOY_3_CCCR_2_run0\t1/sp|P3|HUMAN\t999\t1\t.9\t999\t1\t.9\n"
+        # P1 proteotypic, AAAR detected in run0
+        "1_AAAR_2_run0\t1/sp|P1|HUMAN\t100\t10\t0.005\t150\t10.2\t2.0\n"
+        # P1 proteotypic, same peptide AAAR different charge - should not double-count
+        "2_AAAR_3_run0\t1/sp|P1|HUMAN\t110\t10\t0.005\t150\t10.2\t2.0\n"
+        # P1 proteotypic, BBBR detected in both runs
+        "3_BBBR_2_run0\t1/sp|P1|HUMAN\t200\t12\t0.001\t250\t12.1\t0.008\n"
+        # P1 proteotypic, CCCR never confidently detected (both scores 2.0)
+        "4_CCCR_2_run0\t1/sp|P1|HUMAN\t300\t9\t2.0\t300\t9.1\t2.0\n"
+        # P2 multi-protein peptide - not unique to a single protein
+        "5_DDDR_2_run0\t2/sp|P2|HUMAN/sp|P2alt|HUMAN\t400\t9\t0.001\t400\t9.1\t0.001\n"
+        # DECOY peptide
+        "DECOY_6_EEER_2_run0\t1/sp|P3|HUMAN\t500\t9\t0.001\t500\t9.1\t0.001\n"
+        # P4 proteotypic, FFFR detected
+        "7_FFFR_2_run0\t1/sp|P4|HUMAN\t600\t9\t0.001\t600\t9.1\t0.001\n"
     )
     p = tmp_path / "fa.tsv"
     p.write_text(body)
-    out = per_run_non_na_fraction_openswath(p)
-    # 2 target rows; run0 has 1 non-NA, run1 has 1 non-NA among targets.
-    assert out == {"Intensity_run0": pytest.approx(1 / 2), "Intensity_run1": pytest.approx(1 / 2)}
+    out = unique_peptides_per_protein_openswath(p)
+    # P1: {AAAR, BBBR} = 2; P4: {FFFR} = 1; P2/P3 excluded.
+    assert out == {"1/sp|P1|HUMAN": 2, "1/sp|P4|HUMAN": 1}
+
+
+def test_proteins_with_min_peptides_counts_above_threshold() -> None:
+    from analysis.figure_original_vs_quantmsdiann import proteins_with_min_peptides
+    counts = {"P1": 5, "P2": 2, "P3": 1, "P4": 10, "P5": 1}
+    assert proteins_with_min_peptides(counts, 1) == 5
+    assert proteins_with_min_peptides(counts, 2) == 3
+    assert proteins_with_min_peptides(counts, 3) == 2
+    assert proteins_with_min_peptides(counts, 10) == 1
+    assert proteins_with_min_peptides(counts, 11) == 0
+
+
+def test_load_hgnc_symbol_to_ensembl_includes_aliases_and_prev(tmp_path: Path) -> None:
+    """HGNC complete-set TSV has: symbol, alias_symbol (pipe-separated),
+    prev_symbol (pipe-separated), ensembl_gene_id. The mapping should accept
+    the current symbol AND any alias / previous symbol as a key. Empty
+    ensembl_gene_id rows are skipped. Last writer wins on conflicts."""
+    from analysis.figure_original_vs_quantmsdiann import load_hgnc_symbol_to_ensembl
+    body = (
+        "hgnc_id\tsymbol\tname\tlocus_group\tlocus_type\tstatus\tlocation\tlocation_sortable\talias_symbol\talias_name\tprev_symbol\tprev_name\tgene_group\tgene_group_id\tdate_approved_reserved\tdate_symbol_changed\tdate_name_changed\tdate_modified\tentrez_id\tensembl_gene_id\n"
+        "HGNC:1\tA1\tname1\tprotein\tgene\tApproved\t1q23\t1q23\tA1ALIAS\talias_name\tA1OLD\told_name\t\t\t\t\t\t\t1\tENSG00000001\n"
+        "HGNC:2\tB1\tname2\tprotein\tgene\tApproved\t2q23\t2q23\tB1ALIAS1|B1ALIAS2\talias_name\t\t\t\t\t\t\t\t\t2\tENSG00000002\n"
+        "HGNC:3\tC1\tname3\tprotein\tgene\tApproved\t3q23\t3q23\t\t\t\t\t\t\t\t\t\t\t3\t\n"
+        "HGNC:4\tD1\tname4\tprotein\tgene\tApproved\t4q23\t4q23\t\t\tD1OLD\told_name\t\t\t\t\t\t\t4\tENSG00000004\n"
+    )
+    p = tmp_path / "hgnc.tsv"
+    p.write_text(body)
+    out = load_hgnc_symbol_to_ensembl(p)
+    # A1 -> ENSG00000001 (with alias A1ALIAS, prev A1OLD)
+    assert out["A1"] == "ENSG00000001"
+    assert out["A1ALIAS"] == "ENSG00000001"
+    assert out["A1OLD"] == "ENSG00000001"
+    # B1 -> ENSG00000002, two aliases
+    assert out["B1"] == "ENSG00000002"
+    assert out["B1ALIAS1"] == "ENSG00000002"
+    assert out["B1ALIAS2"] == "ENSG00000002"
+    # C1 has no ensembl_gene_id, must NOT be in the map
+    assert "C1" not in out
+    # D1 with prev symbol
+    assert out["D1"] == "ENSG00000004"
+    assert out["D1OLD"] == "ENSG00000004"
+
+
+def test_load_walzer_genes_ensembl_returns_set(tmp_path: Path) -> None:
+    """E-PROT-73 has Gene ID (Ensembl) as column 1; return that as a set of
+    ENSG IDs, skipping any row whose first column does not start with ENSG."""
+    from analysis.figure_original_vs_quantmsdiann import load_walzer_genes_ensembl
+    body = (
+        "Gene ID\tGene Name\tg1.WithInSampleAbundance\n"
+        "ENSG00000000001\tFOO\t1.0\n"
+        "ENSG00000000002\tBAR\t\n"
+        "ENSG00000000001\tFOO\t2.0\n"  # duplicate gene id -> collapsed
+        "\tEmptyId\t0.5\n"
+        "NOTANENSG\tX\t1.0\n"
+    )
+    p = tmp_path / "e.tsv"
+    p.write_text(body)
+    out = load_walzer_genes_ensembl(p)
+    assert out == {"ENSG00000000001", "ENSG00000000002"}
+
+
+def test_quantmsdiann_genes_as_ensembl_maps_and_reports_unmapped(tmp_path: Path) -> None:
+    """Given the DIA-NN unique_genes_matrix and an HGNC symbol->ENSG mapping,
+    return (mapped_ensg_set, unmapped_symbol_count). Only quantified rows
+    (>=1 non-NA cell) count toward both numbers."""
+    from analysis.figure_original_vs_quantmsdiann import quantmsdiann_genes_as_ensembl
+    matrix = write_matrix(
+        tmp_path,
+        """
+        Genes\tN.Sequences\tN.Proteotypic.Sequences\tguot_R1.mzML\tguot_R2.mzML
+        A1\t2\t2\t1.0\t
+        B1\t3\t3\t\t2.0
+        UNKNOWN\t5\t5\t1.0\t
+        EMPTYROW\t1\t1\t\t
+        """,
+    )
+    mapping = {"A1": "ENSG00000001", "B1": "ENSG00000002"}
+    mapped, unmapped_count = quantmsdiann_genes_as_ensembl(matrix, mapping)
+    # A1 and B1 are quantified and map -> {ENSG1, ENSG2}; UNKNOWN is quantified
+    # but doesn't map -> +1 unmapped; EMPTYROW is unquantified -> ignored.
+    assert mapped == {"ENSG00000001", "ENSG00000002"}
+    assert unmapped_count == 1
+
+
+def test_quantmsdiann_genes_as_ensembl_applies_detection_filter(tmp_path: Path) -> None:
+    """With min_detection_fraction=0.5, only rows whose non-NA-cell count is
+    >= ceil(0.5 * n_sample_cols) survive. Mimics Walzer's '50% per group'
+    consistency filter applied globally across all runs."""
+    from analysis.figure_original_vs_quantmsdiann import quantmsdiann_genes_as_ensembl
+    matrix = write_matrix(
+        tmp_path,
+        """
+        Genes\tN.Sequences\tN.Proteotypic.Sequences\tR1\tR2\tR3\tR4
+        A1\t2\t2\t1.0\t2.0\t3.0\t4.0
+        B1\t3\t3\t1.0\t\t\t
+        C1\t5\t5\t1.0\t2.0\t\t
+        D1\t5\t5\t\t\t\t
+        """,
+    )
+    mapping = {"A1": "ENSG1", "B1": "ENSG2", "C1": "ENSG3", "D1": "ENSG4"}
+    # 4 sample cols; threshold = ceil(0.5 * 4) = 2.
+    # A1 has 4 non-NA -> passes. C1 has 2 -> passes. B1 has 1 -> fails. D1: 0 -> fails.
+    mapped, unmapped_count = quantmsdiann_genes_as_ensembl(
+        matrix, mapping, min_detection_fraction=0.5,
+    )
+    assert mapped == {"ENSG1", "ENSG3"}
+    assert unmapped_count == 0
+
+
+def test_count_quantified_genes_diann_excludes_empty_rows(tmp_path: Path) -> None:
+    """DIA-NN unique_genes_matrix.tsv layout: 3 metadata cols (Genes,
+    N.Sequences, N.Proteotypic.Sequences) followed by one column per run.
+    A gene is 'quantified' iff at least one sample cell is non-NA."""
+    from analysis.figure_original_vs_quantmsdiann import count_quantified_genes_diann
+    matrix = write_matrix(
+        tmp_path,
+        """
+        Genes\tN.Sequences\tN.Proteotypic.Sequences\tguot_R1.mzML\tguot_R2.mzML\tguot_R3.mzML
+        A1CF\t2\t2\t\t\t
+        A2M\t42\t42\t\t68.3\t
+        AAAS\t5\t5\t1.0\t2.0\tNA
+        AACS\t3\t3\t\t\t
+        """,
+    )
+    # A2M and AAAS have >=1 non-NA cell. A1CF and AACS are empty.
+    assert count_quantified_genes_diann(matrix) == 2
