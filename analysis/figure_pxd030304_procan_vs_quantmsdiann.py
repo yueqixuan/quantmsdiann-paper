@@ -45,6 +45,7 @@ PRIDE_QUANT_BASE = (
 DIANN_SUMMARY_LOG_URL = f"{PRIDE_QUANT_BASE}/quant_tables/diannsummary.log"
 DIANN_PG_MATRIX_URL = f"{PRIDE_QUANT_BASE}/quant_tables/diann_report.pg_matrix.tsv"
 DIANN_PR_MATRIX_URL = f"{PRIDE_QUANT_BASE}/quant_tables/diann_report.pr_matrix.tsv"
+DIANN_PARQUET_URL = f"{PRIDE_QUANT_BASE}/quant_tables/diann_report.parquet"
 QUANTMS_SDRF_URL = f"{PRIDE_QUANT_BASE}/sdrf/PXD030304.sdrf.tsv"
 
 # Figshare deposit 19345397 (Gonçalves et al. 2022 supporting data). The
@@ -235,6 +236,93 @@ PR_METADATA_COLS = [
     "First.Protein.Description", "Proteotypic", "Stripped.Sequence",
     "Modified.Sequence", "Precursor.Charge", "Precursor.Id",
 ]
+
+
+def _compute_or_load_diann_procan_filter(
+    cache_path: Path,
+    parquet_source: str,
+    sdrf_path: Path,
+    procan_mapping_path: Path,
+) -> dict[str, set[str]]:
+    """Side-cache wrapper around `proteins_per_tissue_quantmsdiann_procan_filter`:
+    streaming 33 GB over HTTP takes ~15 minutes, so we persist the per-tissue
+    result as a small JSON (tissue -> sorted list of Protein.Group). Delete
+    the JSON to force a fresh stream."""
+    import json
+    if cache_path.exists() and cache_path.stat().st_size > 0:
+        with open(cache_path, encoding="utf-8") as fh:
+            payload = json.load(fh)
+        return {t: set(vs) for t, vs in payload.items()}
+    result = proteins_per_tissue_quantmsdiann_procan_filter(
+        parquet_source, sdrf_path, procan_mapping_path,
+    )
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(cache_path, "w", encoding="utf-8") as fh:
+        json.dump({t: sorted(s) for t, s in result.items()}, fh)
+    return result
+
+
+def proteins_per_tissue_quantmsdiann_procan_filter(
+    parquet_source: str | Path,
+    sdrf_path: Path,
+    procan_mapping_path: Path,
+    *,
+    qvalue_cutoff: float = 0.01,
+    batch_size: int = 1_000_000,
+) -> dict[str, set[str]]:
+    """ProCan-style filter applied to quantmsdiann's long-format report.
+
+    For each ProCan tissue, the set of Protein.Group values that have any
+    proteotypic precursor passing Global.Q.Value <= `qvalue_cutoff` in at
+    least one MS run mapped to that tissue. Matches Gonçalves et al. 2022
+    Methods ("filtered to retain only precursors from proteotypic peptides
+    with Global.Q.Value <= 0.01") — global-FDR-only, no per-cell quant FDR.
+
+    `parquet_source` is either a local Path or an HTTPS URL. For the URL
+    case we stream the parquet via fsspec's HTTPFileSystem with column
+    projection on (`Run`, `Protein.Group`, `Global.Q.Value`, `Proteotypic`);
+    only those columns' chunks transit the wire so the 33 GB file never
+    needs to be staged locally."""
+    import pyarrow.parquet as pq
+
+    sdrf_run_to_cell = load_sdrf_data_file_to_cell_line(sdrf_path)
+    # SDRF data files end in `.mzML` (after the .wiff -> .mzML rewrite the
+    # loader does); the parquet's `Run` column carries the bare basename
+    # without extension. Strip both possible suffixes.
+    sdrf_no_ext = {}
+    for k, v in sdrf_run_to_cell.items():
+        stem = re.sub(r"\.(mzML|wiff)$", "", k, flags=re.IGNORECASE)
+        sdrf_no_ext[stem] = v
+    cl_to_tissue = parse_procan_mapping(procan_mapping_path)
+
+    out: dict[str, set[str]] = {}
+    cols = ["Run", "Protein.Group", "Global.Q.Value", "Proteotypic"]
+    source = str(parquet_source)
+    if source.startswith(("http://", "https://")):
+        import fsspec
+        fs = fsspec.filesystem("https")
+        opener = lambda: fs.open(source, "rb")
+    else:
+        opener = lambda: open(source, "rb")
+
+    with opener() as fh:
+        pf = pq.ParquetFile(fh)
+        for batch in pf.iter_batches(batch_size=batch_size, columns=cols):
+            runs = batch.column("Run").to_pylist()
+            pgs = batch.column("Protein.Group").to_pylist()
+            gqv = batch.column("Global.Q.Value").to_pylist()
+            prot = batch.column("Proteotypic").to_pylist()
+            for r, pg, g, p in zip(runs, pgs, gqv, prot):
+                if p != 1 or g is None or g > qvalue_cutoff:
+                    continue
+                cell = sdrf_no_ext.get(r)
+                if cell is None:
+                    continue
+                tissue = cl_to_tissue.get(cell)
+                if tissue is None:
+                    continue
+                out.setdefault(tissue, set()).add(pg)
+    return out
 
 
 def proteins_per_tissue_quantmsdiann(
@@ -539,8 +627,10 @@ def write_counts_tsv(
             "Global.Q.Value filtering, NOT per-cell strict identification"
         )
         note_diann = (
-            "per-run union over pr_matrix.tsv at 1% precursor + 1% PG FDR "
-            "per cell (DIA-NN's strictest per-cell filter)"
+            "per-tissue union of Protein.Group from diann_report.parquet "
+            "filtered to Proteotypic == 1 AND Global.Q.Value <= 0.01 "
+            "(ProCan's filter applied to the long-format report; no "
+            "per-cell quant FDR)"
         )
         for t in tissues:
             rows.append((f"Per-tissue proteins | {t}",
@@ -615,9 +705,18 @@ def main() -> int:  # pragma: no cover
     )
     print(f"  {len(procan_per_tissue)} tissues")
 
-    print("Computing per-tissue protein sets (quantmsdiann)...")
-    diann_per_tissue = proteins_per_tissue_quantmsdiann(
-        pr_path, sdrf_path, fs_paths["mapping_file_averaged.txt"],
+    print("Computing per-tissue protein sets (quantmsdiann, ProCan-style filter)...")
+    # Apply Gonçalves et al. 2022's filter (Proteotypic == 1 AND
+    # Global.Q.Value <= 0.01, no per-cell quant FDR) so the per-tissue
+    # comparison is methodologically equivalent on both sides. Streams the
+    # 33 GB diann_report.parquet over HTTP with column projection on the
+    # 4 columns we need; the result is cached to a small JSON so subsequent
+    # runs are instant.
+    diann_per_tissue = _compute_or_load_diann_procan_filter(
+        DATA_DIR / "diann_per_tissue_procan_filter.json",
+        DIANN_PARQUET_URL,
+        sdrf_path,
+        fs_paths["mapping_file_averaged.txt"],
     )
     print(f"  {len(diann_per_tissue)} tissues")
 

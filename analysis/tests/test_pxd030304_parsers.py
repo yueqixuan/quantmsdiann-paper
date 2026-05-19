@@ -82,6 +82,55 @@ def test_parse_procan_replicates_mapping_excludes_hek293t(tmp_path: Path) -> Non
     }
 
 
+def test_proteins_per_tissue_quantmsdiann_procan_filter_global_fdr(
+    tmp_path: Path,
+) -> None:
+    """ProCan-style filter applied to quantmsdiann's long-format parquet:
+    Proteotypic == 1 AND Global.Q.Value <= 0.01 (no per-cell quant FDR).
+    Per tissue, union of Protein.Group across runs of that tissue."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from analysis.figure_pxd030304_procan_vs_quantmsdiann import (
+        proteins_per_tissue_quantmsdiann_procan_filter,
+    )
+    # SDRF rewrites .wiff -> .mzML; the parquet 'Run' uses the bare basename.
+    # The fixture's Run values are the basenames that match SDRF stems.
+    parquet_table = pa.table({
+        "Run": ["run_a", "run_a", "run_b", "run_c", "run_a", "run_c"],
+        "Protein.Group": ["P1", "P2", "P1", "P3", "P4", "P5"],
+        "Global.Q.Value": [0.001, 0.5,   0.005, 0.001, 0.001, 0.05],
+        "Proteotypic":   [1,     1,     1,     1,     0,     1],
+        # Per-cell Q.Value left out — proves we don't read or filter on it.
+    })
+    parquet_path = tmp_path / "report.parquet"
+    pq.write_table(parquet_table, parquet_path)
+    sdrf = (
+        "source name\tcharacteristics[cell line]\tcomment[data file]\n"
+        "S1\tBC-1\trun_a.wiff\n"
+        "S2\tBC-1\trun_b.wiff\n"
+        "S3\tHCT-116\trun_c.wiff\n"
+    )
+    sdrf_p = tmp_path / "sdrf.tsv"
+    sdrf_p.write_text(sdrf)
+    mapping = (
+        "Cell_line\tSIDM\tProject_Identifier\tTissue_type\tCancer_type\tCancer_subtype\n"
+        "BC-1\tSIDM00896\tSIDM00896;BC-1\tHaematopoietic and Lymphoid\t\t\n"
+        "HCT-116\tSIDM00783\tSIDM00783;HCT-116\tLarge Intestine\t\t\n"
+    )
+    map_p = tmp_path / "mapping.txt"
+    map_p.write_text(mapping)
+    out = proteins_per_tissue_quantmsdiann_procan_filter(
+        parquet_path, sdrf_p, map_p, batch_size=2,
+    )
+    # P2 dropped (Global.Q.Value 0.5 > 0.01). P4 dropped (Proteotypic == 0).
+    # P5 dropped (Global.Q.Value 0.05 > 0.01).
+    # P1: in run_a (BC-1) and run_b (BC-1) -> leukemia. P3: in run_c -> colorectal.
+    assert out == {
+        "Haematopoietic and Lymphoid": {"P1"},
+        "Large Intestine": {"P3"},
+    }
+
+
 def test_proteins_per_tissue_procan_from_replicates_matrix(tmp_path: Path) -> None:
     """Each row of `protein_matrix_8498_replicates.txt` is one MS run; columns
     are protein IDs (`<accession>;<name>`). The header's first cell is

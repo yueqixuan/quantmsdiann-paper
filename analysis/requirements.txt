@@ -3,3 +3,7 @@ matplotlib>=3.7,<4
 matplotlib-venn>=1.1,<2
 requests>=2.31,<3
 pytest>=8.0
+pyarrow>=15.0,<22
+# fsspec ships with HTTPFileSystem used for streaming the PXD030304 33 GB
+# diann_report.parquet over PRIDE FTP without staging it to local disk.
+fsspec[http]>=2024.1.0

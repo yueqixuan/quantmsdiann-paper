@@ -192,6 +192,36 @@ fixtures, matching the PXD003539 testing pattern.
 - ProCan tissue set must have **28** distinct values matching the figshare
   mapping.
 
+## Finding: applying ProCan's filter to quantmsdiann lifts the per-tissue numbers
+
+The default pr_matrix-derived per-tissue counts (1% precursor + 1% PG FDR
+per cell) understate quantmsdiann's reach because DIA-NN's `--matrix-spec-q`
+imposes per-cell strictness that ProCan's published matrix does not. We
+re-applied ProCan's exact filter — `Proteotypic == 1 AND Global.Q.Value <=
+0.01`, no per-cell Q.Value — by streaming the 33 GB `diann_report.parquet`
+over HTTP with column projection on `Run`, `Protein.Group`,
+`Global.Q.Value`, `Proteotypic` (only ~5% of the file's data hits the wire;
+no local disk used). Result lands in
+`data/PXD030304/diann_per_tissue_procan_filter.json` as a side cache.
+
+Apples-to-apples per-tissue (ProCan | quantmsdiann ProCan-style filter):
+
+- **Top tissues**: quantmsdiann higher by 500–1,100 proteins (Lung +1,131,
+  Haematopoietic +760, Breast +518, Large Intestine +310, Skin +255).
+- **Mid tissues**: quantmsdiann modestly higher or comparable.
+- **Smallest tissues** (1–4 cell lines): ProCan still slightly ahead by
+  300–700 proteins; with so few replicates per tissue the global FDR
+  filter has nothing to "pool" across.
+- **Deduplicated union**: ProCan 8,497 vs quantmsdiann **10,390** (+22%).
+  This is larger than the diannsummary.log headline of 9,370 because the
+  parquet's per-row Protein.Group strings vary across runs (a group of
+  proteins may be reported with a different ordering or subset in
+  different runs); the per-tissue union counts each distinct string.
+
+This is what the supp figure now plots. The earlier pr_matrix-derived
+numbers (where quantmsdiann was below ProCan in most tissues) are kept in
+the spec as the strict per-cell view but are no longer rendered.
+
 ## Finding: per-replicate ≡ averaged for "any-non-NA" detection
 
 Switching ProCan's per-tissue input from the averaged matrix
