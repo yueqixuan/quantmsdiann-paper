@@ -302,6 +302,91 @@ PRIDE_CELL_LINE_BASE = (
     "quantms-collections/absolute-expression-2.0/cell-lines"
 )
 
+
+_PARAMS_FILENAME_RE = __import__("re").compile(
+    r"params_(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})\.json"
+)
+_PIPELINE_REPORT_COMPLETION_RE = __import__("re").compile(
+    r"completed at\s+(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?)"
+)
+
+
+def list_params_timestamps(pipeline_info_url: str) -> list:
+    """List `params_<ISO>.json` timestamps from a pipeline_info/ directory
+    listing. Each `params_*.json` file corresponds to one Nextflow
+    invocation; the earliest is the start of the user's wallclock.
+
+    Returns a list of `datetime.datetime` objects (naive, in the cluster's
+    local timezone) sorted ascending. The runs are typically run within the
+    same TZ so naive comparison is fine for span computation."""
+    import re, requests, datetime as _dt
+    listing = requests.get(pipeline_info_url, timeout=30).text
+    out: list[_dt.datetime] = []
+    seen: set[str] = set()
+    for m in _PARAMS_FILENAME_RE.finditer(listing):
+        token = m.group(1)
+        if token in seen:
+            continue
+        seen.add(token)
+        out.append(_dt.datetime.strptime(token, "%Y-%m-%d_%H-%M-%S"))
+    return sorted(out)
+
+
+def parse_pipeline_report_completion(report_path):
+    """Read `pipeline_info/pipeline_report.txt` and return the workflow
+    completion datetime (naive, cluster-local). Raises ValueError if the
+    line isn't present (e.g. an aborted run)."""
+    import datetime as _dt
+    text = report_path.read_text(encoding="utf-8")
+    m = _PIPELINE_REPORT_COMPLETION_RE.search(text)
+    if not m:
+        raise ValueError(
+            f"'completed at <ISO>' line not found in {report_path}"
+        )
+    # Parse ISO timestamp (drop microseconds if present, since strptime's
+    # %f handles only up to 6 digits and the pipeline report sometimes
+    # emits 9-digit nanosecond precision).
+    iso = m.group(1)
+    if "." in iso:
+        head, frac = iso.split(".", 1)
+        return _dt.datetime.fromisoformat(head + "." + frac[:6])
+    return _dt.datetime.fromisoformat(iso)
+
+
+def total_wallclock_with_resumes_seconds(
+    pipeline_info_url: str,
+    report_path,
+) -> float:
+    """Total wallclock the user actually waited, including all `-resume`
+    re-runs: earliest `params_*.json` timestamp to `pipeline_report.txt`'s
+    "completed at" datetime. For single-invocation workflows this matches
+    the report's reported duration; for multi-invocation workflows it's
+    larger because the cluster idle/queue time between resumes counts."""
+    starts = list_params_timestamps(pipeline_info_url)
+    if not starts:
+        raise ValueError(
+            f"No params_*.json files listed at {pipeline_info_url}"
+        )
+    completed = parse_pipeline_report_completion(report_path)
+    return (completed - starts[0]).total_seconds()
+
+
+def count_ms_runs(dataset_id: str, sdrf_path, log_path) -> int:
+    """Number of MS runs in the analysis. For cell-line datasets we count
+    SDRF rows (one per data file). For benchmarks we count `--f` arguments
+    in the DIA-NN command line at the head of `diannsummary.log`. Either
+    source is correct for the matching dataset family; we fall back from
+    SDRF to the DIA-NN log if the SDRF is unavailable."""
+    if sdrf_path.exists():
+        n = 0
+        with open(sdrf_path, "r", encoding="utf-8") as fh:
+            for i, _ in enumerate(fh):
+                n = i
+        return n  # header excluded
+    from analysis.figure_performance_runtime import parse_diann_command
+    _, n_files, _ = parse_diann_command(log_path)
+    return n_files
+
 # Cell-line datasets: each has a single Nextflow run with a report under
 # `pipeline_info/nextflow_report.html`. Versions are inferred from the
 # diannsummary.log command line (all currently 2.5.0).
@@ -340,52 +425,87 @@ def iter_analyses() -> Iterable[tuple[str, str, str, str, Path]]:
 # ---------------------------------------------------------------------------
 
 def collect_parallelism_rows(*, fetch: bool = True) -> pd.DataFrame:
-    """One row per analysis (3 cell-line + 20 benchmark = 23). Primary
-    source is each `nextflow_report.html`'s embedded `window.data.trace`
-    JSON, which gives peak/median concurrency and wallclock. For analyses
-    where the report's trace is incomplete (PXD003539 / PXD030304 used
-    `-resume` so their published reports only include the 0-2 tasks that
-    re-ran after the resume), we fall back to total wallclock from
-    `pipeline_info/pipeline_report.txt` and mark `trace_complete=False`;
-    `peak_concurrent` is left as `NaN` to be honest about the missing
-    observation."""
-    import math
+    """One row per analysis (3 cell-line + 20 benchmark = 23) with:
+
+    - n_runs: number of MS data files in the analysis (SDRF rows for
+      cell-lines, --f count from diannsummary.log for benchmarks).
+    - total_wallclock_seconds: earliest `params_*.json` timestamp to
+      `pipeline_report.txt`'s "completed at" datetime — captures the real
+      wall time the user waited, including queue time between `-resume`
+      re-runs. For single-invocation workflows this matches the report's
+      reported duration; for multi-resume workflows it's larger.
+    - n_invocations: how many `params_*.json` invocations the dataset
+      went through.
+    - n_tasks: number of tasks observed in the report's trace JSON (low
+      for `-resume`d cell-line runs since only the post-resume tasks are
+      traced).
+    """
     rows: list[dict] = []
     for dataset, version, instrument, url, local in iter_analyses():
         if fetch:
             download_if_missing(url, local)
         df = load_report_window_data(local)
-        n = int(len(df))
-        if n >= MIN_ROWS_COMPLETE:
-            peak, med = peak_concurrent_tasks(df)
-            wallclock = trace_wallclock_seconds(df)
-            source = local
-            trace_complete = True
+        n_tasks = int(len(df))
+
+        # pipeline_info/ directory URL (for params listing + report.txt).
+        pipeline_info_url = url.rsplit("/", 1)[0]
+        # Cell-line reports already live under pipeline_info/; benchmarks
+        # have the report at the version root with pipeline_info/ as a
+        # subdir. Compute the URL that hosts params_*.json + pipeline_report.txt.
+        if pipeline_info_url.endswith("/pipeline_info"):
+            params_listing_url = pipeline_info_url + "/"
+            report_txt_url = pipeline_info_url + "/pipeline_report.txt"
+            report_txt_local = local.parent / "pipeline_report.txt"
         else:
-            # Fall back to pipeline_report.txt for total wallclock so the
-            # dataset still appears on the figure with an honest "trace
-            # incomplete" marker.
-            report_txt = local.parent / "pipeline_report.txt"
-            if fetch:
-                base = url.rsplit("/", 1)[0]
-                download_if_missing(f"{base}/pipeline_report.txt", report_txt)
-            try:
-                wallclock = parse_pipeline_report_duration(report_txt)
-            except (FileNotFoundError, ValueError):
-                continue
-            peak, med = float("nan"), float("nan")
-            source = report_txt
-            trace_complete = False
+            params_listing_url = pipeline_info_url + "/pipeline_info/"
+            report_txt_url = (pipeline_info_url
+                              + "/pipeline_info/pipeline_report.txt")
+            report_txt_local = (local.parent / "pipeline_info"
+                                / "pipeline_report.txt")
+        if fetch:
+            download_if_missing(report_txt_url, report_txt_local)
+
+        # Wallclock = the final run's "duration:" line from
+        # pipeline_report.txt — well-defined and matches the real compute
+        # cost of finishing the workflow (post-resume). The "span from
+        # first params_*.json to last completion" metric we tried earlier
+        # was confounded by benchmark re-tests done days apart (idle gaps
+        # between unrelated invocations dwarfing the actual run time).
+        # n_invocations is reported separately so the resume count is
+        # visible without polluting Y.
+        try:
+            wallclock = parse_pipeline_report_duration(report_txt_local)
+            starts = list_params_timestamps(params_listing_url)
+            n_invocations = len(starts) if starts else 1
+        except (ValueError, FileNotFoundError, OSError):
+            continue
+
+        # n_runs: SDRF rows for cell-lines, --f count for benchmarks.
+        # SDRF caches are dataset-scoped from earlier downloads.
+        if dataset in CELL_LINE_ANALYSES:
+            sdrf_local = DATA_DIR / dataset / f"{dataset}.sdrf.tsv"
+        else:
+            sdrf_local = (DATA_DIR / "quantmsdiann_benchmarks" / dataset
+                          / f"{dataset}.sdrf.tsv")
+        log_local = (DATA_DIR / dataset / "diannsummary.log"
+                     if dataset in CELL_LINE_ANALYSES
+                     else DATA_DIR / "quantmsdiann_benchmarks" / dataset
+                          / version / "quant_tables" / "diannsummary.log")
+        try:
+            n_runs = count_ms_runs(dataset, sdrf_local, log_local)
+        except (FileNotFoundError, ValueError):
+            n_runs = 0
+
         rows.append({
             "dataset": dataset,
             "version": version,
             "instrument": instrument,
-            "n_tasks": n,
-            "peak_concurrent": peak,
-            "median_concurrent": med,
+            "n_runs": n_runs,
+            "n_tasks_observed": n_tasks,
+            "n_invocations": n_invocations,
             "wallclock_seconds": wallclock,
-            "trace_complete": trace_complete,
-            "source_file": str(source.relative_to(REPO_ROOT)),
+            "trace_complete": n_tasks >= MIN_ROWS_COMPLETE,
+            "source_file": str(report_txt_local.relative_to(REPO_ROOT)),
         })
     return pd.DataFrame(rows)
 
@@ -435,78 +555,72 @@ def render_parallelism_scatter(
     png_path: Path,
     svg_path: Path | None = None,
 ) -> None:
-    """One-panel scatter: x = peak concurrent tasks (log), y = wallclock
-    hours, colour = instrument family. Analyses with `trace_complete=False`
-    are plotted at the left edge of the x-axis with hollow markers to
-    indicate the per-task trace was incomplete (only total wallclock from
-    pipeline_report.txt is shown)."""
+    """One-panel scatter: x = number of MS data files (log), y = final-run
+    wallclock from pipeline_report.txt (hours), colour = instrument family,
+    dot size = number of Nextflow `-resume` invocations the workflow needed
+    to finish. The post-resume wallclock matches the real compute cost of
+    completing the workflow; size shows how many attempts were necessary."""
     plot_df = df.copy()
-    fig, ax = plt.subplots(figsize=(7.5, 5.0))
+    fig, ax = plt.subplots(figsize=(8.0, 5.0))
 
     hours = plot_df["wallclock_seconds"] / 3600.0
-    DOT_SIZE = 140.0
+    # Marker area scales with n_invocations so a 7-invocation dataset stands
+    # out from a single-shot run. Base size 90 pt^2; each extra invocation
+    # adds 60 pt^2 (so 1 inv -> 90, 7 inv -> 450).
+    sizes = 90.0 + 60.0 * (plot_df["n_invocations"].clip(lower=1) - 1)
 
     complete_mask = plot_df["trace_complete"].astype(bool)
-    complete_df = plot_df[complete_mask]
-    incomplete_df = plot_df[~complete_mask]
 
     for instrument in sorted(plot_df["instrument"].unique()):
-        comp_mask = complete_df["instrument"] == instrument
+        # Filled (trace complete)
+        comp_mask = (plot_df["instrument"] == instrument) & complete_mask
         if comp_mask.any():
             ax.scatter(
-                complete_df.loc[comp_mask, "peak_concurrent"],
-                hours[complete_df.index[comp_mask]],
-                s=DOT_SIZE,
+                plot_df.loc[comp_mask, "n_runs"],
+                hours[comp_mask],
+                s=sizes[comp_mask],
                 c=INSTRUMENT_COLOURS.get(instrument, "#9e9e9e"),
                 alpha=0.78,
                 edgecolors="#222222",
                 linewidths=0.6,
                 label=instrument,
             )
-
-    # Hollow markers for incomplete-trace rows. Anchor them at x = 1
-    # (left of any complete-trace value) so they read as "trace not
-    # observed" rather than "1 concurrent task".
-    if not incomplete_df.empty:
-        for instrument in sorted(incomplete_df["instrument"].unique()):
-            mask = incomplete_df["instrument"] == instrument
-            xs = [1.0] * int(mask.sum())
-            ys = hours[incomplete_df.index[mask]]
+        # Hollow (trace incomplete) — same x/y semantics, distinct marker.
+        inc_mask = (plot_df["instrument"] == instrument) & ~complete_mask
+        if inc_mask.any():
             ax.scatter(
-                xs, ys, s=DOT_SIZE,
+                plot_df.loc[inc_mask, "n_runs"],
+                hours[inc_mask],
+                s=sizes[inc_mask],
                 facecolors="none",
                 edgecolors=INSTRUMENT_COLOURS.get(instrument, "#9e9e9e"),
                 linewidths=1.6,
                 label=(f"{instrument} (trace incomplete)"
-                       if instrument not in
-                       complete_df["instrument"].unique() else None),
-            )
-        # Annotate each hollow dot with the dataset id so the reader can
-        # identify which analyses are which.
-        for _, row in incomplete_df.iterrows():
-            ax.annotate(
-                row["dataset"],
-                xy=(1.0, row["wallclock_seconds"] / 3600.0),
-                xytext=(8, 0), textcoords="offset points",
-                fontsize=7, color="#555555", va="center",
+                       if not comp_mask.any() else None),
             )
 
-    ax.set_xlabel("Peak concurrent tasks (Nextflow trace, log scale)",
+    # Label each cell-line dot with its PXD id so the resume cost is
+    # legible at a glance. Benchmarks (all at x = 6) get a single
+    # annotation in the corner.
+    for _, row in plot_df.iterrows():
+        if row["dataset"].startswith("PXD") and row["n_runs"] >= 100:
+            ax.annotate(
+                row["dataset"],
+                xy=(row["n_runs"], row["wallclock_seconds"] / 3600.0),
+                xytext=(8, 4), textcoords="offset points",
+                fontsize=7, color="#444444",
+            )
+
+    ax.set_xlabel("Number of MS data files (log scale)", fontsize=10)
+    ax.set_ylabel("Final-run wallclock from pipeline_report (hours)",
                   fontsize=10)
-    ax.set_ylabel("Workflow wallclock (hours)", fontsize=10)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     ax.tick_params(axis="both", labelsize=9)
-
-    # Log x-axis: the benchmark analyses peak at 6-7 concurrent tasks while
-    # the cell-line PXD004701 run hits ~300; linear would crush the
-    # benchmarks against the y-axis. Incomplete-trace dots sit at x=1 so the
-    # axis floor starts there.
     ax.set_xscale("log")
-    xmax = float(complete_df["peak_concurrent"].max() if not complete_df.empty
-                 else 10) * 1.5
-    ax.set_xlim(0.8, xmax)
-    ax.set_ylim(0, max(hours) * 1.20 if len(hours) else 1.0)
+    xmax = float(plot_df["n_runs"].max()) * 1.6
+    ax.set_xlim(max(1, plot_df["n_runs"].min() * 0.7), xmax)
+    ax.set_ylim(0, max(hours) * 1.18 if len(hours) else 1.0)
 
     inst_legend = ax.legend(
         title="Instrument", loc="upper left", fontsize=8, title_fontsize=9,
@@ -514,24 +628,21 @@ def render_parallelism_scatter(
     )
     ax.add_artist(inst_legend)
 
-    # Per-instrument peak-concurrent median annotation, computed from the
-    # complete-trace rows only (incomplete dots have NaN peak).
-    by_inst = (
-        complete_df.groupby("instrument")["peak_concurrent"]
-        .median()
-        .sort_values(ascending=False)
-    )
-    lines = ["Peak concurrent (median per instrument):"]
-    for inst, val in by_inst.items():
-        lines.append(f"  {inst}: {val:.0f}")
-    n_incomplete = int((~complete_mask).sum())
-    if n_incomplete:
-        lines.append(f"({n_incomplete} hollow = trace incomplete on PRIDE)")
-    ax.text(
-        0.98, 0.02, "\n".join(lines),
-        transform=ax.transAxes, ha="right", va="bottom",
-        fontsize=8, family="monospace",
-        bbox=dict(facecolor="white", edgecolor="#cccccc", boxstyle="round,pad=0.4"),
+    # Size legend: 1/3/7 -resume invocations.
+    from matplotlib.lines import Line2D
+    size_handles = []
+    for n_inv in (1, 3, 7):
+        s = 90.0 + 60.0 * (n_inv - 1)
+        size_handles.append(Line2D(
+            [0], [0], marker="o", color="w", markerfacecolor="#bdbdbd",
+            markeredgecolor="#222222", markeredgewidth=0.6,
+            markersize=(s ** 0.5),
+            label=("1 run" if n_inv == 1 else f"{n_inv} runs (-resume)"),
+        ))
+    ax.legend(
+        handles=size_handles, title="Workflow invocations", loc="upper right",
+        fontsize=8, title_fontsize=9, frameon=False, labelspacing=1.4,
+        borderpad=0.9, handletextpad=1.0,
     )
 
     fig.tight_layout()
@@ -616,8 +727,8 @@ def render_per_step_boxplot(
 def write_parallelism_tsv(df: pd.DataFrame, tsv_path: Path) -> None:
     tsv_path.parent.mkdir(parents=True, exist_ok=True)
     cols = [
-        "dataset", "version", "instrument", "n_tasks", "peak_concurrent",
-        "median_concurrent", "wallclock_seconds", "trace_complete",
+        "dataset", "version", "instrument", "n_runs", "n_tasks_observed",
+        "n_invocations", "wallclock_seconds", "trace_complete",
         "source_file",
     ]
     out = df[cols].copy().sort_values(["dataset", "version"])
