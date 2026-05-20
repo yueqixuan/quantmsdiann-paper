@@ -513,15 +513,26 @@ def collect_parallelism_rows(*, fetch: bool = True) -> pd.DataFrame:
 def collect_step_runtime_rows(*, fetch: bool = True) -> tuple[
     dict[str, list[float]], pd.DataFrame,
 ]:
-    """Aggregate per-step task durations across every analysis (3 cell-line
-    + 20 benchmark = 23) by reading each `nextflow_report.html` trace.
+    """Aggregate per-step task durations across the **20 benchmark analyses
+    only**. We filter out the 3 cell-line analyses because they mix two
+    incompatible scales into the same step distribution: a single 300-file
+    PXD004701 cell-line run contributes 300 PRELIMINARY_ANALYSIS tasks
+    against the 20 × 6 = 120 benchmark tasks for the same step, with
+    per-task durations on a much slower legacy TripleTOF instrument. The
+    boxplots would then be skewed by PXD004701 alone and the
+    benchmark-class story would disappear into the noise. Cell-line
+    per-task data is still preserved in the underlying parquet/trace for
+    anyone who needs it; the per-step figure presents a homogeneous 6-file
+    distribution across DIA-NN versions and modern instruments only.
 
     Returns (durations_by_step, summary_df) where summary_df has columns
     `step, n, p05_seconds, p25_seconds, p50_seconds, p75_seconds,
     p95_seconds, min_seconds, max_seconds`.
     """
     traces: list[pd.DataFrame] = []
-    for _, _, _, url, local in iter_analyses():
+    for dataset, _, _, url, local in iter_analyses():
+        if dataset in CELL_LINE_ANALYSES:
+            continue
         if fetch:
             download_if_missing(url, local)
         traces.append(load_report_window_data(local))
