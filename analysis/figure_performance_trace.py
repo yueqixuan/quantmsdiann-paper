@@ -613,20 +613,6 @@ def render_parallelism_scatter(
             arrowprops=dict(arrowstyle="-", color="#888888", lw=0.6),
         )
 
-    # Manuscript point: wallclock grows sub-linearly with the number of
-    # files because the cluster parallelises larger jobs across more
-    # Nextflow worker processes simultaneously. The relationship would
-    # only flatten further with a bigger cluster.
-    ax.text(
-        0.02, 0.97,
-        "Wallclock and n_files do not scale\n"
-        "linearly: a larger cluster amortises\n"
-        "more files in parallel, flattening Y.",
-        transform=ax.transAxes, ha="left", va="top",
-        fontsize=7.5, color="#333333", fontstyle="italic",
-        bbox=dict(facecolor="white", edgecolor="#cccccc",
-                  boxstyle="round,pad=0.4"),
-    )
 
     ax.set_xlabel("Number of MS data files (log scale)", fontsize=10)
     ax.set_ylabel("Final-run wallclock from pipeline_report (hours)",
