@@ -556,54 +556,32 @@ def render_parallelism_scatter(
     svg_path: Path | None = None,
 ) -> None:
     """One-panel scatter: x = number of MS data files (log), y = final-run
-    wallclock from pipeline_report.txt (hours), colour = instrument family,
-    dot size = number of Nextflow `-resume` invocations the workflow needed
-    to finish. The post-resume wallclock matches the real compute cost of
-    completing the workflow; size shows how many attempts were necessary."""
+    wallclock from pipeline_report.txt (hours), colour = instrument family.
+    All dots filled with the same size — the `-resume` invocation count is
+    kept in `parallelism_data.tsv` for the audit trail but isn't visually
+    encoded because the re-runs reflect SDRF iteration during development,
+    not workflow reliability."""
     plot_df = df.copy()
-    # Canvas: a touch taller than wide-default to make room for the two
-    # stacked legends below the axes without compressing the data area.
-    fig, ax = plt.subplots(figsize=(8.5, 6.2))
+    fig, ax = plt.subplots(figsize=(6.6, 4.6))
 
     hours = plot_df["wallclock_seconds"] / 3600.0
-    # Marker area scales with n_invocations so a 7-invocation dataset stands
-    # out from a single-shot run. Base size 90 pt^2; each extra invocation
-    # adds 60 pt^2 (so 1 inv -> 90, 7 inv -> 450).
-    sizes = 90.0 + 60.0 * (plot_df["n_invocations"].clip(lower=1) - 1)
-
-    complete_mask = plot_df["trace_complete"].astype(bool)
+    DOT_SIZE = 150.0
 
     for instrument in sorted(plot_df["instrument"].unique()):
-        # Filled (trace complete)
-        comp_mask = (plot_df["instrument"] == instrument) & complete_mask
-        if comp_mask.any():
-            ax.scatter(
-                plot_df.loc[comp_mask, "n_runs"],
-                hours[comp_mask],
-                s=sizes[comp_mask],
-                c=INSTRUMENT_COLOURS.get(instrument, "#9e9e9e"),
-                alpha=0.78,
-                edgecolors="#222222",
-                linewidths=0.6,
-                label=instrument,
-            )
-        # Hollow (trace incomplete) — same x/y semantics, distinct marker.
-        inc_mask = (plot_df["instrument"] == instrument) & ~complete_mask
-        if inc_mask.any():
-            ax.scatter(
-                plot_df.loc[inc_mask, "n_runs"],
-                hours[inc_mask],
-                s=sizes[inc_mask],
-                facecolors="none",
-                edgecolors=INSTRUMENT_COLOURS.get(instrument, "#9e9e9e"),
-                linewidths=1.6,
-                label=(f"{instrument} (incomplete)"
-                       if not comp_mask.any() else None),
-            )
+        mask = plot_df["instrument"] == instrument
+        ax.scatter(
+            plot_df.loc[mask, "n_runs"],
+            hours[mask],
+            s=DOT_SIZE,
+            c=INSTRUMENT_COLOURS.get(instrument, "#9e9e9e"),
+            alpha=0.85,
+            edgecolors="#222222",
+            linewidths=0.6,
+            label=instrument,
+        )
 
-    # Label each cell-line dot with its PXD id. Default annotation goes to
-    # the LEFT of the dot for cell-lines so labels don't bleed off the
-    # right edge of the axes.
+    # Cell-line dataset labels — anchored to the LEFT of each dot so they
+    # don't bleed off the right edge of the axes.
     for _, row in plot_df.iterrows():
         if row["dataset"].startswith("PXD") and row["n_runs"] >= 100:
             ax.annotate(
@@ -624,33 +602,13 @@ def render_parallelism_scatter(
     ax.set_xlim(max(1, plot_df["n_runs"].min() * 0.7), xmax)
     ax.set_ylim(0, max(hours) * 1.18 if len(hours) else 1.0)
 
-    # Both legends sit BELOW the axes, STACKED vertically (instrument row
-    # above invocations row) so they never touch each other. Each legend
-    # uses ncol=5 / ncol=3 to keep itself narrow horizontally.
-    inst_legend = ax.legend(
+    # Single instrument-colour legend below the axes — no dot-size
+    # dimension to encode, so no second legend needed.
+    ax.legend(
         title="Instrument", loc="upper center",
         bbox_to_anchor=(0.5, -0.14), fontsize=8, title_fontsize=9,
-        frameon=False, borderaxespad=0.0, ncol=5,
-        columnspacing=1.4,
-    )
-    ax.add_artist(inst_legend)
-
-    from matplotlib.lines import Line2D
-    size_handles = []
-    for n_inv in (1, 3, 7):
-        s = 90.0 + 60.0 * (n_inv - 1)
-        size_handles.append(Line2D(
-            [0], [0], marker="o", color="w", markerfacecolor="#bdbdbd",
-            markeredgecolor="#222222", markeredgewidth=0.6,
-            markersize=(s ** 0.5),
-            label=("1 run" if n_inv == 1 else f"{n_inv} runs (-resume)"),
-        ))
-    ax.legend(
-        handles=size_handles, title="Workflow invocations",
-        loc="upper center", bbox_to_anchor=(0.5, -0.32),
-        fontsize=8, title_fontsize=9, frameon=False, labelspacing=1.0,
-        borderpad=0.5, handletextpad=1.0, borderaxespad=0.0, ncol=3,
-        columnspacing=2.0,
+        frameon=False, borderaxespad=0.0, ncol=4,
+        columnspacing=1.6,
     )
 
     # Reserve the bottom ~35% of the figure for the two stacked legends so
