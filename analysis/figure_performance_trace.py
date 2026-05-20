@@ -561,7 +561,8 @@ def render_parallelism_scatter(
     to finish. The post-resume wallclock matches the real compute cost of
     completing the workflow; size shows how many attempts were necessary."""
     plot_df = df.copy()
-    fig, ax = plt.subplots(figsize=(8.0, 5.0))
+    # Tall canvas: legends sit below the axes so they never overlap data.
+    fig, ax = plt.subplots(figsize=(8.5, 5.8))
 
     hours = plot_df["wallclock_seconds"] / 3600.0
     # Marker area scales with n_invocations so a 7-invocation dataset stands
@@ -595,20 +596,20 @@ def render_parallelism_scatter(
                 facecolors="none",
                 edgecolors=INSTRUMENT_COLOURS.get(instrument, "#9e9e9e"),
                 linewidths=1.6,
-                label=(f"{instrument} (trace incomplete)"
+                label=(f"{instrument} (incomplete)"
                        if not comp_mask.any() else None),
             )
 
-    # Label each cell-line dot with its PXD id so the resume cost is
-    # legible at a glance. Benchmarks (all at x = 6) get a single
-    # annotation in the corner.
+    # Label each cell-line dot with its PXD id. Default annotation goes to
+    # the LEFT of the dot for cell-lines so labels don't bleed off the
+    # right edge of the axes.
     for _, row in plot_df.iterrows():
         if row["dataset"].startswith("PXD") and row["n_runs"] >= 100:
             ax.annotate(
                 row["dataset"],
                 xy=(row["n_runs"], row["wallclock_seconds"] / 3600.0),
-                xytext=(8, 4), textcoords="offset points",
-                fontsize=7, color="#444444",
+                xytext=(-10, 6), textcoords="offset points",
+                fontsize=7, color="#444444", ha="right",
             )
 
     ax.set_xlabel("Number of MS data files (log scale)", fontsize=10)
@@ -622,13 +623,16 @@ def render_parallelism_scatter(
     ax.set_xlim(max(1, plot_df["n_runs"].min() * 0.7), xmax)
     ax.set_ylim(0, max(hours) * 1.18 if len(hours) else 1.0)
 
+    # Both legends sit BELOW the axes so no dot or annotation can overlap
+    # them. Instrument legend on the left half, invocations legend on the
+    # right half. bbox_to_anchor y < 0 places them under the x-axis.
     inst_legend = ax.legend(
-        title="Instrument", loc="upper left", fontsize=8, title_fontsize=9,
-        frameon=False,
+        title="Instrument", loc="upper left",
+        bbox_to_anchor=(0.0, -0.16), fontsize=8, title_fontsize=9,
+        frameon=False, borderaxespad=0.0, ncol=3,
     )
     ax.add_artist(inst_legend)
 
-    # Size legend: 1/3/7 -resume invocations.
     from matplotlib.lines import Line2D
     size_handles = []
     for n_inv in (1, 3, 7):
@@ -640,17 +644,20 @@ def render_parallelism_scatter(
             label=("1 run" if n_inv == 1 else f"{n_inv} runs (-resume)"),
         ))
     ax.legend(
-        handles=size_handles, title="Workflow invocations", loc="upper right",
-        fontsize=8, title_fontsize=9, frameon=False, labelspacing=1.4,
-        borderpad=0.9, handletextpad=1.0,
+        handles=size_handles, title="Workflow invocations",
+        loc="upper right", bbox_to_anchor=(1.0, -0.16),
+        fontsize=8, title_fontsize=9, frameon=False, labelspacing=1.0,
+        borderpad=0.5, handletextpad=1.0, borderaxespad=0.0, ncol=3,
     )
 
-    fig.tight_layout()
+    # Reserve ~30% of the figure height at the bottom for the two below-axis
+    # legends so neither overlaps any dot.
+    fig.tight_layout(rect=(0, 0.18, 1, 1))
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(pdf_path)
-    fig.savefig(png_path, dpi=300)
+    fig.savefig(pdf_path, bbox_inches="tight")
+    fig.savefig(png_path, dpi=300, bbox_inches="tight")
     if svg_path is not None:
-        fig.savefig(svg_path)
+        fig.savefig(svg_path, bbox_inches="tight")
     plt.close(fig)
 
 
