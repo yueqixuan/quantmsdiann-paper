@@ -561,8 +561,9 @@ def render_parallelism_scatter(
     to finish. The post-resume wallclock matches the real compute cost of
     completing the workflow; size shows how many attempts were necessary."""
     plot_df = df.copy()
-    # Tall canvas: legends sit below the axes so they never overlap data.
-    fig, ax = plt.subplots(figsize=(8.5, 5.8))
+    # Canvas: a touch taller than wide-default to make room for the two
+    # stacked legends below the axes without compressing the data area.
+    fig, ax = plt.subplots(figsize=(8.5, 6.2))
 
     hours = plot_df["wallclock_seconds"] / 3600.0
     # Marker area scales with n_invocations so a 7-invocation dataset stands
@@ -623,13 +624,14 @@ def render_parallelism_scatter(
     ax.set_xlim(max(1, plot_df["n_runs"].min() * 0.7), xmax)
     ax.set_ylim(0, max(hours) * 1.18 if len(hours) else 1.0)
 
-    # Both legends sit BELOW the axes so no dot or annotation can overlap
-    # them. Instrument legend on the left half, invocations legend on the
-    # right half. bbox_to_anchor y < 0 places them under the x-axis.
+    # Both legends sit BELOW the axes, STACKED vertically (instrument row
+    # above invocations row) so they never touch each other. Each legend
+    # uses ncol=5 / ncol=3 to keep itself narrow horizontally.
     inst_legend = ax.legend(
-        title="Instrument", loc="upper left",
-        bbox_to_anchor=(0.0, -0.16), fontsize=8, title_fontsize=9,
-        frameon=False, borderaxespad=0.0, ncol=3,
+        title="Instrument", loc="upper center",
+        bbox_to_anchor=(0.5, -0.14), fontsize=8, title_fontsize=9,
+        frameon=False, borderaxespad=0.0, ncol=5,
+        columnspacing=1.4,
     )
     ax.add_artist(inst_legend)
 
@@ -645,14 +647,17 @@ def render_parallelism_scatter(
         ))
     ax.legend(
         handles=size_handles, title="Workflow invocations",
-        loc="upper right", bbox_to_anchor=(1.0, -0.16),
+        loc="upper center", bbox_to_anchor=(0.5, -0.32),
         fontsize=8, title_fontsize=9, frameon=False, labelspacing=1.0,
         borderpad=0.5, handletextpad=1.0, borderaxespad=0.0, ncol=3,
+        columnspacing=2.0,
     )
 
-    # Reserve ~30% of the figure height at the bottom for the two below-axis
-    # legends so neither overlaps any dot.
-    fig.tight_layout(rect=(0, 0.18, 1, 1))
+    # Reserve the bottom ~35% of the figure for the two stacked legends so
+    # neither overlaps any dot, the x-axis label, or each other.
+    # bbox_inches="tight" trims unused outer whitespace, fitting the canvas
+    # to data + legends. tight_layout normalises internal spacing first.
+    fig.tight_layout()
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(pdf_path, bbox_inches="tight")
     fig.savefig(png_path, dpi=300, bbox_inches="tight")
