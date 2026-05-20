@@ -435,3 +435,232 @@ def test_consolidate_proteobench_datapoints_writes_list(
     # 'aaa' sorts before 'bbb', so tool_0 must be first.
     assert out[0]["software_name"] == "tool_0"
     assert out[1]["software_name"] == "tool_1"
+
+
+# ---------------------------------------------------------------------------
+# Parameter-signature extraction + matching (Step 1 / Step 2)
+# ---------------------------------------------------------------------------
+
+# A minimal quantmsdiann diannsummary.log preamble: the only required pieces
+# for `extract_quantmsdiann_param_signature` are the DIA-NN version banner
+# and the `diann ...` command-line invocation. Both are reproduced verbatim
+# from the four benchmark logs (PXD062685/v2_5_0, etc.).
+QUANTMSDIANN_LOG_BODY = (
+    "\n"
+    "DIA-NN 2.5.0 Academia  (Data-Independent Acquisition by Neural Networks)\n"
+    "Compiled on Apr 12 2026 10:45:33\n"
+    "Current date and time: Fri May 15 17:32:32 2026\n"
+    "Logical CPU cores: 128\n"
+    "diann --lib empirical_library.parquet --fasta ProteoBenchFASTA.fasta "
+    "--f run1.raw --f run2.raw --threads 12 --pg-level 2 --matrices "
+    "--qvalue 0.01 --matrix-qvalue 0.01 --matrix-spec-q 0.05 "
+    "--direct-quant --use-quant "
+    "--fixed-mod Carbamidomethyl,57.021464,C "
+    "--var-mod Oxidation,15.994915,M "
+    "--var-mod Acetyl,42.010565,*n\n"
+    "[0:00] Loading FASTA\n"
+)
+
+QUANTMSDIANN_LOG_V181_BODY = (
+    "DIA-NN 1.8.1 (Data-Independent Acquisition by Neural Networks)\n"
+    "diann --lib empirical_library.speclib --fasta ProteoBenchFASTA.fasta "
+    "--f run1.raw --pg-level 2 --qvalue 0.01 --use-quant "
+    "--fixed-mod Carbamidomethyl,57.021464,C "
+    "--var-mod Oxidation,15.994915,M "
+    "--var-mod Acetyl,42.010565,*n\n"
+)
+
+
+def test_extract_quantmsdiann_param_signature_v25(tmp_path: Path) -> None:
+    """The v2.5.0 quantmsdiann command line passes `--direct-quant` and
+    declares fixed Carbamidomethyl@C + variable Oxidation@M + Acetyl@*n.
+    The extractor must recover all of those + map empirical_library.parquet
+    to the `empirical` category."""
+    from analysis.figure_quantmsdiann_benchmarks_vs_proteobench import (
+        extract_quantmsdiann_param_signature,
+    )
+    p = tmp_path / "diannsummary.log"
+    p.write_text(QUANTMSDIANN_LOG_BODY)
+    sig = extract_quantmsdiann_param_signature(p)
+    assert sig["software_name"] == "DIA-NN"
+    assert sig["software_version"] == "2.5.0"
+    assert sig["predictors_library"] == "empirical"
+    assert sig["quantification_method"] == "Legacy (direct)"
+    assert sig["protein_inference"] == "2"
+    assert sig["enable_match_between_runs"] is False
+    assert sig["ident_fdr_psm"] == 0.01
+    assert sig["fixed_mods"] == frozenset({"carbamidomethyl@c"})
+    assert sig["variable_mods"] == frozenset({"oxidation@m", "acetyl@*n"})
+
+
+def test_extract_quantmsdiann_param_signature_v181_no_direct_quant(
+    tmp_path: Path,
+) -> None:
+    """DIA-NN 1.8.1 doesn't have the `--direct-quant` flag yet — the
+    extractor should mark quantification_method as plain 'Legacy', and
+    recognise the empirical_library.speclib filename."""
+    from analysis.figure_quantmsdiann_benchmarks_vs_proteobench import (
+        extract_quantmsdiann_param_signature,
+    )
+    p = tmp_path / "diannsummary.log"
+    p.write_text(QUANTMSDIANN_LOG_V181_BODY)
+    sig = extract_quantmsdiann_param_signature(p)
+    assert sig["software_version"] == "1.8.1"
+    assert sig["quantification_method"] == "Legacy"
+    assert sig["predictors_library"] == "empirical"
+
+
+def test_extract_proteobench_param_signature_strips_academia_suffix() -> None:
+    """ProteoBench DIA-NN versions are stored as e.g. '2.5.0 Academia '
+    (note trailing space). The extractor must strip the suffix AND
+    whitespace so downstream version comparisons line up cleanly."""
+    from analysis.figure_quantmsdiann_benchmarks_vs_proteobench import (
+        extract_proteobench_param_signature,
+    )
+    entry = {
+        "software_name": "DIA-NN",
+        "software_version": "2.5.0 Academia ",
+        "predictors_library": None,
+        "quantification_method": "Legacy (direct)",
+        "protein_inference": "2",
+        "enable_match_between_runs": False,
+        "ident_fdr_psm": 0.01,
+        "fixed_mods": "unimod4",
+        "variable_mods": "UniMod:35/15.994915/M,UniMod:1/42.010565/*n",
+    }
+    sig = extract_proteobench_param_signature(entry)
+    assert sig["software_name"] == "DIA-NN"
+    assert sig["software_version"] == "2.5.0"
+    assert sig["predictors_library"] == "empirical"
+    assert sig["fixed_mods"] == frozenset({"carbamidomethyl@c"})
+    assert sig["variable_mods"] == frozenset({"oxidation@m", "acetyl@*n"})
+
+
+def test_param_match_category_exact(tmp_path: Path) -> None:
+    """An apples-to-apples match: same DIA-NN version, same empirical lib,
+    same legacy direct-quant, identical mod sets → 'exact'."""
+    from analysis.figure_quantmsdiann_benchmarks_vs_proteobench import (
+        extract_proteobench_param_signature,
+        extract_quantmsdiann_param_signature,
+        param_match_category,
+    )
+    log = tmp_path / "log"
+    log.write_text(QUANTMSDIANN_LOG_BODY)
+    qm = extract_quantmsdiann_param_signature(log)
+    pb_entry = {
+        "software_name": "DIA-NN",
+        "software_version": "2.5.0 Academia ",
+        "predictors_library": None,  # empirical
+        "quantification_method": "Legacy (direct)",
+        "protein_inference": "2",
+        "enable_match_between_runs": False,
+        "ident_fdr_psm": 0.01,
+        "fixed_mods": "Carbamidomethyl (C)",
+        "variable_mods": "UniMod:35/15.994915/M,UniMod:1/42.010565/*n",
+    }
+    pb = extract_proteobench_param_signature(pb_entry)
+    assert param_match_category(qm, pb) == "exact"
+
+
+def test_param_match_category_near_quantums_swap(tmp_path: Path) -> None:
+    """Same version + same empirical lib + same mods, but ProteoBench's
+    submission uses QuantUMS instead of Legacy/direct → exactly one
+    categorical mismatch → 'near' (still informative)."""
+    from analysis.figure_quantmsdiann_benchmarks_vs_proteobench import (
+        extract_proteobench_param_signature,
+        extract_quantmsdiann_param_signature,
+        param_match_category,
+    )
+    log = tmp_path / "log"
+    log.write_text(QUANTMSDIANN_LOG_BODY)
+    qm = extract_quantmsdiann_param_signature(log)
+    pb_entry = {
+        "software_name": "DIA-NN",
+        "software_version": "2.5.0 Academia",
+        "predictors_library": None,  # empirical lib match
+        "quantification_method": "QuantUMS high-precision",  # MISMATCH
+        "protein_inference": "2",
+        "enable_match_between_runs": False,
+        "ident_fdr_psm": 0.01,
+        "fixed_mods": "unimod4",
+        "variable_mods": "UniMod:35/15.994915/M,UniMod:1/42.010565/*n",
+    }
+    pb = extract_proteobench_param_signature(pb_entry)
+    assert param_match_category(qm, pb) == "near"
+
+
+def test_param_match_category_far_when_not_diann(tmp_path: Path) -> None:
+    """A non-DIA-NN tool (AlphaDIA / FragPipe / Spectronaut) always lands
+    in 'far' regardless of mod / library overlap — the entire stack is
+    different, so the comparison is apples-to-pears."""
+    from analysis.figure_quantmsdiann_benchmarks_vs_proteobench import (
+        extract_proteobench_param_signature,
+        extract_quantmsdiann_param_signature,
+        param_match_category,
+    )
+    log = tmp_path / "log"
+    log.write_text(QUANTMSDIANN_LOG_BODY)
+    qm = extract_quantmsdiann_param_signature(log)
+    pb_entry = {
+        "software_name": "AlphaDIA",
+        "software_version": "1.10.4",
+        "fixed_mods": "Carbamidomethyl@C",
+        "variable_mods": "Oxidation@M;Acetyl@Protein_N-term",
+    }
+    pb = extract_proteobench_param_signature(pb_entry)
+    assert param_match_category(qm, pb) == "far"
+
+
+def test_param_match_category_far_on_major_version_mismatch(
+    tmp_path: Path,
+) -> None:
+    """quantmsdiann 1.8.1 versus a ProteoBench DIA-NN 2.5.0 submission:
+    even if every categorical lined up, the DIA-NN binary generation is
+    different and the comparison must drop into 'far'."""
+    from analysis.figure_quantmsdiann_benchmarks_vs_proteobench import (
+        extract_proteobench_param_signature,
+        extract_quantmsdiann_param_signature,
+        param_match_category,
+    )
+    log = tmp_path / "log"
+    log.write_text(QUANTMSDIANN_LOG_V181_BODY)
+    qm = extract_quantmsdiann_param_signature(log)
+    pb_entry = {
+        "software_name": "DIA-NN",
+        "software_version": "2.5.0 Academia",
+        "predictors_library": None,
+        "quantification_method": "Legacy",
+        "fixed_mods": "unimod4",
+        "variable_mods": "UniMod:35/15.994915/M,UniMod:1/42.010565/*n",
+    }
+    pb = extract_proteobench_param_signature(pb_entry)
+    assert param_match_category(qm, pb) == "far"
+
+
+def test_canonicalise_proteobench_mod_token_collapses_spellings() -> None:
+    """The ProteoBench mod-token canonicaliser must collapse the four
+    spelling families we see in the wild — `UniMod:N/delta/site`,
+    `unimodN`, `Carbamidomethyl (C)`, and bare `UniMod:N` — into a single
+    `name@site` lower-case token so set equality works."""
+    from analysis.figure_quantmsdiann_benchmarks_vs_proteobench import (
+        _canonicalise_proteobench_mod_token,
+        _parse_proteobench_mods,
+    )
+    assert _canonicalise_proteobench_mod_token(
+        "UniMod:35/15.994915/M"
+    ) == "oxidation@m"
+    assert _canonicalise_proteobench_mod_token("unimod4") == "carbamidomethyl@c"
+    assert _canonicalise_proteobench_mod_token(
+        "Carbamidomethyl (C)"
+    ) == "carbamidomethyl@c"
+    assert _canonicalise_proteobench_mod_token("UniMod:1") == "acetyl@*n"
+    # The composite parser must split on both ',' and ';' separators.
+    assert _parse_proteobench_mods(
+        "UniMod:35/15.994915/M,UniMod:1/42.010565/*n"
+    ) == frozenset({"oxidation@m", "acetyl@*n"})
+    assert _parse_proteobench_mods(
+        "Oxidation@M;Acetyl@Protein_N-term"
+    ) == frozenset({"oxidation@m", "acetyl@*n"})
+    # Empty / NaN mods → empty set (not an error).
+    assert _parse_proteobench_mods("") == frozenset()
+    assert _parse_proteobench_mods(None) == frozenset()

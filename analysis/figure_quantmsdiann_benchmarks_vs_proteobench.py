@@ -764,6 +764,726 @@ def write_counts_tsv(long_df: pd.DataFrame, tsv_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Parameter-signature extraction + matching (Step 1 / Step 2)
+# ---------------------------------------------------------------------------
+#
+# The goal of this section is to do parameter-matched comparisons between
+# quantmsdiann's DIA-NN invocations (recovered from the `diann ...` command
+# line at the top of each `diannsummary.log`) and the parameter set
+# published with each ProteoBench submission JSON. The matching surface
+# follows the fields the ProteoBench DIA-NN datapoints carry:
+#
+#   software_name, software_version, predictors_library,
+#   quantification_method, protein_inference, enable_match_between_runs,
+#   ident_fdr_psm, fixed_mods, variable_mods.
+#
+# Three buckets are emitted by `param_match_category`:
+#   - "exact":  same DIA-NN version + same library + same quant method +
+#               same canonicalised fixed/variable mod set
+#   - "near":   same DIA-NN version + 1-2 categorical mismatches
+#   - "far":    different software OR DIA-NN version-major mismatch OR
+#               3+ categorical mismatches
+
+
+_DIANN_CLI_RE = re.compile(r"^diann\s+(.*)$", re.MULTILINE)
+_DIANN_HEADER_VERSION_RE = re.compile(
+    r"^DIA-NN\s+([0-9][0-9.]*)", re.MULTILINE
+)
+
+
+def _split_diann_cli(cli: str) -> list[str]:
+    """Split a DIA-NN command-line string into tokens. The diannsummary log
+    embeds the literal shell-style cmd line with whitespace-separated
+    arguments; there are no quoted strings or shell escapes inside it, so a
+    plain split is sufficient (and avoids depending on shlex's quoting
+    semantics)."""
+    return cli.strip().split()
+
+
+def _parse_diann_mod_arg(arg: str) -> str:
+    """Canonicalise a DIA-NN `--fixed-mod` / `--var-mod` argument value into
+    'name@site' lowercase form. DIA-NN's cmd-line syntax is
+    `name,delta_mass,site` (e.g. `Carbamidomethyl,57.021464,C` or
+    `Acetyl,42.010565,*n`). The `*n` site refers to the protein N-term and
+    is preserved verbatim."""
+    parts = arg.split(",")
+    if len(parts) >= 3:
+        name = parts[0].strip().lower()
+        site = parts[2].strip().lower()
+        return f"{name}@{site}"
+    return arg.strip().lower()
+
+
+# Maps UniMod accession -> mod name (lower-case) so we can canonicalise
+# mixed ProteoBench mod spellings: `unimod4`, `UniMod:4`, `Carbamidomethyl
+# (C)` all collapse to `carbamidomethyl@c`. Only the mods that appear in
+# the four ProteoBench DIA modules are listed; an unknown accession falls
+# through to a generic `unimod:N@site` token so equality comparisons stay
+# stable.
+_UNIMOD_NAMES = {
+    "1": "acetyl",
+    "4": "carbamidomethyl",
+    "21": "phospho",
+    "35": "oxidation",
+    "121": "ggl",
+}
+
+# Default DIA-NN site assumption per UniMod accession when ProteoBench
+# records a bare `UniMod:N` token with no explicit site (some legacy DIA-NN
+# 1.9.2 submissions encode `fixed_mods='UniMod:4'`, `variable_mods='UniMod:35,UniMod:1'`).
+# Carbamidomethyl on C and Oxidation on M are the DIA-NN defaults; Acetyl
+# is N-terminal by default in DIA-NN.
+_UNIMOD_DEFAULT_SITES = {
+    "1": "*n",
+    "4": "c",
+    "35": "m",
+    "21": "sty",
+    "121": "k",
+}
+
+
+def _canonicalise_proteobench_mod_token(token: str) -> str | None:
+    """Canonicalise a single ProteoBench mod token into `name@site`
+    lower-case form, or return None if the token is empty / unparseable.
+
+    Handles the four spelling families observed across the four modules:
+      - `UniMod:35/15.994915/M`        — accession / delta / site
+      - `unimod4`, `UniMod:4`          — accession only (site defaults)
+      - `Carbamidomethyl (C)`,
+        `Oxidation (M)`                — name + parenthesised site
+      - `UniMod:35`, `UniMod:1`        — accession only (defaults)
+    """
+    s = token.strip()
+    if not s:
+        return None
+    s_lower = s.lower()
+
+    # Form 1: UniMod:N/delta/site  e.g. UniMod:35/15.994915/M
+    m = re.match(r"unimod[:_]?(\d+)\s*/[^/]+/\s*([a-z*]+)", s_lower)
+    if m:
+        acc, site = m.group(1), m.group(2)
+        name = _UNIMOD_NAMES.get(acc, f"unimod:{acc}")
+        return f"{name}@{site}"
+
+    # Form 2: name (site)  e.g. Carbamidomethyl (C), Oxidation (M)
+    m = re.match(r"([a-z]+)\s*\(([a-z\-]+(?:[\s_-]term)?)\)", s_lower)
+    if m:
+        name, site_raw = m.group(1), m.group(2)
+        # Normalise "n-term" / "protein n-term" / "Protein_N-term" → "*n"
+        if "n" in site_raw and "term" in site_raw:
+            site = "*n"
+        elif "c" in site_raw and "term" in site_raw:
+            site = "*c"
+        else:
+            site = site_raw
+        return f"{name}@{site}"
+
+    # Form 2b: name@SITE  e.g. Carbamidomethyl@C, Acetyl@Protein_N-term
+    m = re.match(r"([a-z]+)\s*@\s*([a-z_\- ]+)", s_lower)
+    if m:
+        name, site_raw = m.group(1), m.group(2).strip()
+        if "n" in site_raw and "term" in site_raw:
+            site = "*n"
+        elif "c" in site_raw and "term" in site_raw:
+            site = "*c"
+        else:
+            # Collapse e.g. "protein_n-term" with no 'term' marker; pick last
+            # alpha run as site letter.
+            cleaned = re.sub(r"[^a-z*]+", "", site_raw)
+            site = cleaned or site_raw
+        return f"{name}@{site}"
+
+    # Form 3: UniMod:N alone, or unimodN
+    m = re.match(r"unimod[:_]?(\d+)\s*$", s_lower)
+    if m:
+        acc = m.group(1)
+        name = _UNIMOD_NAMES.get(acc, f"unimod:{acc}")
+        site = _UNIMOD_DEFAULT_SITES.get(acc, "?")
+        return f"{name}@{site}"
+
+    return s_lower
+
+
+def _parse_proteobench_mods(blob) -> frozenset[str]:
+    """ProteoBench mod fields are comma- or semicolon-separated strings.
+    Returns a frozenset of canonical `name@site` tokens; the empty string
+    yields an empty set (some submissions record fdr=0.1 + empty mods,
+    which we want to compare as 'no mods declared')."""
+    if blob is None or (isinstance(blob, float) and pd.isna(blob)):
+        return frozenset()
+    s = str(blob).strip()
+    if not s:
+        return frozenset()
+    tokens = [t for t in re.split(r"[,;]", s) if t.strip()]
+    out: set[str] = set()
+    for t in tokens:
+        c = _canonicalise_proteobench_mod_token(t)
+        if c:
+            out.add(c)
+    return frozenset(out)
+
+
+def _normalise_version(version: str) -> str:
+    """Strip ProteoBench's '<version> Academia' suffix and surrounding
+    whitespace so that '2.5.0 Academia ' compares equal to '2.5.0'."""
+    s = str(version).strip()
+    s = re.sub(r"\s+Academia\s*$", "", s, flags=re.IGNORECASE)
+    return s
+
+
+def _version_tuple(version: str) -> tuple[int, ...]:
+    """Best-effort numeric tuple for major.minor[.patch] comparisons.
+    Non-numeric tokens are dropped; an empty tuple compares falsey."""
+    s = _normalise_version(version)
+    parts = re.findall(r"\d+", s)
+    return tuple(int(p) for p in parts)
+
+
+def extract_quantmsdiann_param_signature(log_path: Path) -> dict:
+    """Parse a quantmsdiann `diannsummary.log` into the same parameter
+    fingerprint shape ProteoBench publishes. Reads the DIA-NN command line
+    (the single `diann ...` line emitted at the top of the log) and the
+    `DIA-NN <version>` header line.
+
+    Returns a dict with these canonical keys:
+      software_name='DIA-NN', software_version (no 'Academia' suffix),
+      predictors_library ('empirical' / 'predicted (DIANN)' / ...),
+      quantification_method ('Legacy (direct)' / 'Legacy'),
+      protein_inference (string of the --pg-level int),
+      enable_match_between_runs (bool, --reanalyse),
+      ident_fdr_psm (float, --qvalue),
+      fixed_mods (frozenset of canonical tokens),
+      variable_mods (frozenset of canonical tokens).
+    """
+    text = Path(log_path).read_text(encoding="utf-8", errors="replace")
+    cli_match = _DIANN_CLI_RE.search(text)
+    if not cli_match:
+        raise ValueError(
+            f"No 'diann ...' command line found in {log_path}"
+        )
+    cli = cli_match.group(1)
+    tokens = _split_diann_cli(cli)
+
+    version_match = _DIANN_HEADER_VERSION_RE.search(text)
+    version = _normalise_version(
+        version_match.group(1) if version_match else ""
+    )
+
+    fixed_mods: set[str] = set()
+    variable_mods: set[str] = set()
+    lib_value: str | None = None
+    pg_level: str | None = None
+    qvalue: float | None = None
+    direct_quant = False
+    mbr = False
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        nxt = tokens[i + 1] if i + 1 < len(tokens) else None
+        if tok == "--lib" and nxt is not None:
+            lib_value = nxt
+            i += 2
+            continue
+        if tok == "--fixed-mod" and nxt is not None:
+            fixed_mods.add(_parse_diann_mod_arg(nxt))
+            i += 2
+            continue
+        if tok == "--var-mod" and nxt is not None:
+            variable_mods.add(_parse_diann_mod_arg(nxt))
+            i += 2
+            continue
+        if tok == "--pg-level" and nxt is not None:
+            pg_level = nxt
+            i += 2
+            continue
+        if tok == "--qvalue" and nxt is not None:
+            try:
+                qvalue = float(nxt)
+            except ValueError:
+                pass
+            i += 2
+            continue
+        if tok == "--direct-quant":
+            direct_quant = True
+            i += 1
+            continue
+        if tok == "--reanalyse":
+            mbr = True
+            i += 1
+            continue
+        i += 1
+
+    # quantmsdiann's empirical library is built two-pass from the data;
+    # detect the marker substring rather than the exact file extension
+    # (1.8.1 uses .speclib, 2.x uses .parquet).
+    if lib_value and "empirical_library" in lib_value:
+        library_kind = LIBRARY_KIND_EMPIRICAL
+    else:
+        # Defensive fallback; the four benchmark workflows always pass
+        # empirical_library.{speclib,parquet}.
+        library_kind = lib_value or LIBRARY_KIND_EMPIRICAL
+
+    # Both `--direct-quant` (2.1.0+) and the pre-2.1.0 absence-of-flag map
+    # to DIA-NN's classic / Legacy quantification family, which ProteoBench
+    # publishes under the 'Legacy' or 'Legacy (direct)' labels. We use the
+    # 'Legacy (direct)' label whenever --direct-quant is present so that
+    # comparisons against ProteoBench's 'Legacy (direct)' submissions hit
+    # the 'exact' bucket; 1.8.1 (no flag) maps to 'Legacy'.
+    quant_method = "Legacy (direct)" if direct_quant else "Legacy"
+
+    return {
+        "software_name": "DIA-NN",
+        "software_version": version,
+        "predictors_library": library_kind,
+        "quantification_method": quant_method,
+        "protein_inference": pg_level if pg_level is not None else "",
+        "enable_match_between_runs": bool(mbr),
+        "ident_fdr_psm": qvalue if qvalue is not None else 0.01,
+        "fixed_mods": frozenset(fixed_mods),
+        "variable_mods": frozenset(variable_mods),
+    }
+
+
+def extract_proteobench_param_signature(entry: dict) -> dict:
+    """Project a ProteoBench submission JSON entry into the same canonical
+    parameter-signature dict shape as `extract_quantmsdiann_param_signature`.
+    The Boolean / numeric coercions are defensive: ProteoBench stores
+    `enable_match_between_runs` as a Python bool literal in JSON but some
+    older submissions store it as `'True'`/`'False'` strings, and
+    `ident_fdr_psm` is occasionally `NaN` for legacy submissions."""
+    software_name = str(entry.get("software_name") or "").strip()
+    version = _normalise_version(entry.get("software_version") or "")
+    library_kind = classify_predictors_library(entry.get("predictors_library"))
+    quant_method = str(entry.get("quantification_method") or "").strip()
+    prot_inf = entry.get("protein_inference")
+    prot_inf_s = "" if prot_inf is None else str(prot_inf).strip()
+
+    mbr_raw = entry.get("enable_match_between_runs")
+    if isinstance(mbr_raw, bool):
+        mbr = mbr_raw
+    elif isinstance(mbr_raw, str):
+        mbr = mbr_raw.strip().lower() in {"true", "1", "yes"}
+    else:
+        mbr = False
+
+    fdr_raw = entry.get("ident_fdr_psm")
+    try:
+        fdr = float(fdr_raw) if fdr_raw is not None else float("nan")
+    except (TypeError, ValueError):
+        fdr = float("nan")
+
+    return {
+        "software_name": software_name,
+        "software_version": version,
+        "predictors_library": library_kind,
+        "quantification_method": quant_method,
+        "protein_inference": prot_inf_s,
+        "enable_match_between_runs": mbr,
+        "ident_fdr_psm": fdr,
+        "fixed_mods": _parse_proteobench_mods(entry.get("fixed_mods")),
+        "variable_mods": _parse_proteobench_mods(entry.get("variable_mods")),
+    }
+
+
+def param_match_category(qm_sig: dict, pb_sig: dict) -> str:
+    """Categorise a single ProteoBench submission relative to a
+    quantmsdiann signature into one of three bins:
+
+      - 'exact': same DIA-NN version + same predictors_library + same
+                 quantification_method + same fixed_mods + same
+                 variable_mods. (FDR + protein_inference are tolerated
+                 if equal modulo numeric form; MBR equality is required
+                 because it materially changes the precursor count.)
+      - 'near':  same software_name (DIA-NN) + same major.minor version
+                 + 1-2 categorical mismatches across the five signature
+                 fields above.
+      - 'far':   different software (not DIA-NN), OR major-version
+                 mismatch, OR 3+ categorical mismatches.
+
+    The function tolerates ProteoBench's 'Academia' version suffix and
+    case differences in the categorical strings; mod-set equality uses
+    the canonicalised `name@site` token sets produced by
+    `_parse_proteobench_mods` / `_parse_diann_mod_arg`.
+    """
+    if normalise_software_name(pb_sig.get("software_name", "")) != "dia-nn":
+        return "far"
+    qm_v = _version_tuple(qm_sig["software_version"])
+    pb_v = _version_tuple(pb_sig["software_version"])
+    # Major-version mismatch is a hard 'far' (e.g. quantmsdiann 1.8.1 vs PB
+    # 2.5.0 — even if every other categorical lines up, the binary is a
+    # different generation of DIA-NN).
+    if qm_v and pb_v and qm_v[0] != pb_v[0]:
+        return "far"
+
+    same_version = (
+        qm_sig["software_version"] == pb_sig["software_version"]
+        and qm_sig["software_version"] != ""
+    )
+
+    mismatches = 0
+    if qm_sig["predictors_library"] != pb_sig["predictors_library"]:
+        mismatches += 1
+    if (qm_sig["quantification_method"].lower()
+            != pb_sig["quantification_method"].lower()):
+        mismatches += 1
+    if qm_sig["fixed_mods"] != pb_sig["fixed_mods"]:
+        mismatches += 1
+    if qm_sig["variable_mods"] != pb_sig["variable_mods"]:
+        mismatches += 1
+    if (bool(qm_sig["enable_match_between_runs"])
+            != bool(pb_sig["enable_match_between_runs"])):
+        mismatches += 1
+
+    if same_version and mismatches == 0:
+        return "exact"
+    # Allow 'near' when the major.minor version aligns (e.g. quantmsdiann
+    # 2.5.0 vs PB 2.5.0 Academia → same after suffix strip; quantmsdiann
+    # 2.3.2 vs PB 2.3.0 share major.minor 2.3.x and count as 'near').
+    qm_majmin = qm_v[:2] if len(qm_v) >= 2 else qm_v
+    pb_majmin = pb_v[:2] if len(pb_v) >= 2 else pb_v
+    if qm_majmin and pb_majmin and qm_majmin == pb_majmin and mismatches <= 2:
+        return "near"
+    if same_version and mismatches <= 2:
+        return "near"
+    return "far"
+
+
+# ---------------------------------------------------------------------------
+# Step 1 — DIA-NN parity panel
+# ---------------------------------------------------------------------------
+
+
+def render_diann_parity(
+    quantmsdiann_rows_by_threshold: dict[int, list[tuple[str, str, int, int]]],
+    pb_rows_by_threshold: dict[int, dict[str, list[dict]]],
+    qm_signatures: dict[tuple[str, str], dict],
+    pb_signatures_by_dataset: dict[str, list[tuple[dict, int, dict]]],
+    pdf_path: Path,
+    png_path: Path,
+    svg_path: Path | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Step 1 figure: per dataset, plot quantmsdiann's `nr_prec` at ≥1 and
+    ≥3 replicates alongside the matched ProteoBench DIA-NN submissions'
+    same metric.
+
+    "Matched" = `param_match_category(qm, pb) == 'exact'`. If no exact
+    matches exist for a dataset, the 'near' set is used as a fall-back
+    so the panel is non-empty (annotated as such on the figure).
+
+    Returns (parity_long_df, epsilon_df) where:
+      - parity_long_df has columns
+          [dataset, version, threshold, source, label,
+           precursors, match_category]
+      - epsilon_df has columns
+          [dataset, threshold, n_matched, qm_median, matched_median,
+           epsilon_frac, match_level]
+    """
+    datasets = sorted(
+        quantmsdiann_rows_by_threshold[1] and {
+            r[0] for r in quantmsdiann_rows_by_threshold[1]
+        },
+        key=_dataset_sort_key,
+    )
+    rows: list[dict] = []
+    eps_rows: list[dict] = []
+    for dataset in datasets:
+        for threshold in (1, 3):
+            for ds, version, prec, _proteins in quantmsdiann_rows_by_threshold[threshold]:
+                if ds != dataset:
+                    continue
+                rows.append({
+                    "dataset": dataset,
+                    "threshold": threshold,
+                    "source": "quantmsdiann",
+                    "version": version,
+                    "label": f"quantmsdiann {_VERSION_LABELS.get(version, version)}",
+                    "precursors": prec,
+                    "match_category": "self",
+                })
+            # Locate the matched PB submissions for this dataset by
+            # cross-referencing each pb entry's full signature against
+            # every quantmsdiann signature for the same dataset.
+            qm_sigs = [qm_signatures.get((dataset, v)) for v in DIANN_VERSIONS]
+            qm_sigs = [s for s in qm_sigs if s is not None]
+            matched_entries: list[tuple[dict, int, str]] = []  # (pb_sig, nr_prec, match_level)
+            for pb_sig, pb_prec, raw_entry in pb_signatures_by_dataset.get(dataset, []):
+                # Skip submissions that don't carry a value for this
+                # replicate threshold; otherwise they'd masquerade as zero.
+                pb_thr_value = extract_nr_prec_at_replicate_threshold(
+                    raw_entry, threshold,
+                )
+                if pb_thr_value is None:
+                    continue
+                best_cat = "far"
+                for qm_sig in qm_sigs:
+                    cat = param_match_category(qm_sig, pb_sig)
+                    if cat == "exact":
+                        best_cat = "exact"
+                        break
+                    if cat == "near" and best_cat == "far":
+                        best_cat = "near"
+                if best_cat in {"exact", "near"}:
+                    matched_entries.append((pb_sig, pb_thr_value, best_cat))
+
+            exact_only = [m for m in matched_entries if m[2] == "exact"]
+            cohort = exact_only if exact_only else matched_entries
+            match_level = (
+                "exact" if exact_only
+                else ("near" if matched_entries else "none")
+            )
+            for pb_sig, pb_prec, cat in cohort:
+                rows.append({
+                    "dataset": dataset,
+                    "threshold": threshold,
+                    "source": "proteobench-matched",
+                    "version": pb_sig["software_version"],
+                    "label": f"DIA-NN {pb_sig['software_version']}".strip(),
+                    "precursors": pb_prec,
+                    "match_category": cat,
+                })
+
+            # Per-dataset epsilon: relative gap between quantmsdiann's
+            # median (across the five versions at this threshold) and the
+            # matched PB cohort's median.
+            qm_prec_vals = [
+                r[2] for r in quantmsdiann_rows_by_threshold[threshold]
+                if r[0] == dataset
+            ]
+            if cohort and qm_prec_vals:
+                qm_med = float(pd.Series(qm_prec_vals).median())
+                pb_med = float(pd.Series([m[1] for m in cohort]).median())
+                epsilon_frac = (
+                    abs(qm_med - pb_med) / pb_med if pb_med else float("nan")
+                )
+            else:
+                qm_med = float(pd.Series(qm_prec_vals).median()) if qm_prec_vals else float("nan")
+                pb_med = float("nan")
+                epsilon_frac = float("nan")
+            eps_rows.append({
+                "dataset": dataset,
+                "threshold": threshold,
+                "n_matched": len(cohort),
+                "qm_median": qm_med,
+                "matched_median": pb_med,
+                "epsilon_frac": epsilon_frac,
+                "match_level": match_level,
+            })
+
+    parity_long_df = pd.DataFrame(rows)
+    epsilon_df = pd.DataFrame(eps_rows)
+
+    # Render: 4 datasets stacked vertically, 2 threshold columns side by side.
+    fig, axes = plt.subplots(
+        nrows=len(datasets), ncols=2,
+        figsize=(11.5, 2.6 * len(datasets)),
+        sharex=False, squeeze=False,
+    )
+    for i, dataset in enumerate(datasets):
+        for j, threshold in enumerate((1, 3)):
+            ax = axes[i, j]
+            sub = parity_long_df[
+                (parity_long_df["dataset"] == dataset)
+                & (parity_long_df["threshold"] == threshold)
+            ].copy()
+            qm = sub[sub["source"] == "quantmsdiann"].sort_values(
+                "version",
+                key=lambda s: s.map(lambda v: DIANN_VERSIONS.index(v)),
+            )
+            pb = sub[sub["source"] == "proteobench-matched"].sort_values(
+                "precursors", ascending=True,
+            )
+            labels: list[str] = []
+            values: list[int] = []
+            colours: list[str] = []
+            for _, row in pb.iterrows():
+                labels.append(row["label"])
+                values.append(int(row["precursors"]))
+                # Teal for 'exact', light blue for 'near'.
+                colours.append(
+                    "#26a69a" if row["match_category"] == "exact"
+                    else "#90caf9"
+                )
+            for _, row in qm.iterrows():
+                labels.append(row["label"])
+                values.append(int(row["precursors"]))
+                colours.append("#d62728")
+            ys = list(range(len(labels)))
+            ax.barh(ys, values, color=colours, height=0.7)
+            ax.set_yticks(ys)
+            ax.set_yticklabels(labels, fontsize=7)
+            ax.set_xlabel("Precursors quantified" if i == len(datasets) - 1 else "")
+            thr_label = "≥1 replicate" if threshold == 1 else "≥3 replicates"
+            ax.set_title(
+                f"{_dataset_display_label(dataset).splitlines()[0]} — {thr_label}",
+                loc="left", fontsize=9, fontweight="bold",
+            )
+            ax.spines["top"].set_visible(False)
+            ax.spines["right"].set_visible(False)
+            ax.tick_params(axis="x", labelsize=8)
+            xmax = max(values) if values else 1
+            ax.set_xlim(0, xmax * 1.18)
+            for y, v in zip(ys, values):
+                ax.text(v + xmax * 0.005, y, f"{v:,}", va="center",
+                        ha="left", fontsize=6, color="#404040")
+            # Epsilon annotation in the top-right.
+            eps_sub = epsilon_df[
+                (epsilon_df["dataset"] == dataset)
+                & (epsilon_df["threshold"] == threshold)
+            ]
+            if len(eps_sub):
+                eps_row = eps_sub.iloc[0]
+                if pd.notna(eps_row["epsilon_frac"]):
+                    ax.text(
+                        0.98, 0.05,
+                        f"ε = {eps_row['epsilon_frac']*100:.1f}%   "
+                        f"n={int(eps_row['n_matched'])} ({eps_row['match_level']})",
+                        transform=ax.transAxes, ha="right", va="bottom",
+                        fontsize=7, color="#444444",
+                        bbox=dict(facecolor="white", edgecolor="none", alpha=0.7),
+                    )
+                else:
+                    ax.text(
+                        0.98, 0.05,
+                        "no parameter-matched DIA-NN submission",
+                        transform=ax.transAxes, ha="right", va="bottom",
+                        fontsize=7, color="#888888", fontstyle="italic",
+                    )
+    # Single figure-level legend.
+    from matplotlib.patches import Patch
+    handles = [
+        Patch(facecolor="#d62728", label="quantmsdiann (DIA-NN, empirical lib)"),
+        Patch(facecolor="#26a69a", label="ProteoBench DIA-NN, exact param match"),
+        Patch(facecolor="#90caf9", label="ProteoBench DIA-NN, near param match"),
+    ]
+    fig.legend(
+        handles=handles, loc="upper center", bbox_to_anchor=(0.5, 1.0),
+        ncol=3, frameon=False, fontsize=8,
+    )
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(pdf_path)
+    fig.savefig(png_path, dpi=300)
+    if svg_path is not None:
+        fig.savefig(svg_path)
+    plt.close(fig)
+    return parity_long_df, epsilon_df
+
+
+# ---------------------------------------------------------------------------
+# Step 2 — match-then-compare supp
+# ---------------------------------------------------------------------------
+
+
+def render_vs_proteobench_matched(
+    long_df: pd.DataFrame,
+    match_categories: dict[tuple[str, str, str, int], str],
+    pdf_path: Path,
+    png_path: Path,
+    svg_path: Path | None = None,
+) -> None:
+    """Same horizontal-bar layout as `render_vs_proteobench`, but bars are
+    colour-coded by match category. `match_categories` maps
+    `(dataset, tool, version, precursors)` to one of {'exact','near','far'};
+    bars that aren't in the map fall back to 'far' (treated as the neutral
+    cohort)."""
+    datasets = sorted(long_df["dataset"].unique(), key=_dataset_sort_key)
+    pb_counts = {
+        ds: int(((long_df["dataset"] == ds)
+                 & (long_df["source"] == "proteobench")).sum())
+        for ds in datasets
+    }
+    heights = [max(2.5, 0.18 * (pb_counts[ds] + 6)) for ds in datasets]
+    fig, axes = plt.subplots(
+        nrows=len(datasets), ncols=1,
+        figsize=(10, sum(heights) + 1),
+        gridspec_kw={"height_ratios": heights},
+        squeeze=False,
+    )
+    cat_palette = {
+        "exact": "#26a69a",
+        "near": "#90caf9",
+        "far": "#bdbdbd",
+    }
+    for i, dataset in enumerate(datasets):
+        ax = axes[i, 0]
+        sub = long_df[long_df["dataset"] == dataset].copy()
+        pb = (sub[sub["source"] == "proteobench"]
+              .sort_values("precursors", ascending=True)
+              .reset_index(drop=True))
+        labels = [f"{t} {v}".strip() for t, v in zip(pb["tool"], pb["version"])]
+        cats = [
+            match_categories.get(
+                (dataset, t, v, int(p)), "far"
+            )
+            for t, v, p in zip(pb["tool"], pb["version"], pb["precursors"])
+        ]
+        bar_colours = [cat_palette[c] for c in cats]
+        ax.barh(range(len(pb)), pb["precursors"], color=bar_colours, height=0.7)
+        xmax_pb = float(pb["precursors"].max()) if len(pb) else 0.0
+        for k, (precs, lab, cat) in enumerate(zip(pb["precursors"], labels, cats)):
+            ax.text(
+                precs + xmax_pb * 0.005, k, f"{lab}  [{cat}]",
+                va="center", ha="left", fontsize=6, color="#404040",
+            )
+        ax.set_yticks([])
+        qm = sub[sub["source"] == "quantmsdiann"].sort_values(
+            "version", key=lambda s: s.map(lambda v: DIANN_VERSIONS.index(v)),
+        )
+        qm_ys = [-1.0 - k for k in range(len(qm))]
+        qm_vals = list(qm["precursors"])
+        qm_labels = [
+            f"quantmsdiann {_VERSION_LABELS.get(v, v)}"
+            for v in qm["version"]
+        ]
+        xmax_qm = 0.0
+        if qm_ys:
+            top = qm_ys[0] + 0.55
+            bottom = qm_ys[-1] - 0.55
+            ax.axhspan(bottom, top, color="#ffebee", zorder=0)
+            ax.barh(
+                qm_ys, qm_vals, color="#d62728", height=0.7,
+                edgecolor="#7f1d1d", linewidth=0.6, zorder=2,
+            )
+            xmax_qm = max(qm_vals) if qm_vals else 0.0
+            for y, v, lab in zip(qm_ys, qm_vals, qm_labels):
+                ax.text(
+                    v + max(xmax_pb, xmax_qm) * 0.005, y, lab,
+                    va="center", ha="left", fontsize=7,
+                    color="#7f1d1d", fontweight="bold",
+                )
+        ax.set_ylim(min(qm_ys) - 1.0 if qm_ys else -1.5, len(pb))
+        ax.set_xlim(0, max(xmax_pb, xmax_qm) * 1.3)
+        ax.set_xlabel("Precursors quantified", fontsize=9)
+        ax.set_title(
+            _dataset_display_label(dataset),
+            loc="left", fontsize=10, fontweight="bold",
+        )
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["left"].set_visible(False)
+        ax.tick_params(axis="x", labelsize=8)
+    from matplotlib.patches import Patch
+    handles = [
+        Patch(facecolor="#d62728", edgecolor="#7f1d1d", linewidth=0.8,
+              label="quantmsdiann (DIA-NN, empirical library)"),
+        Patch(facecolor=cat_palette["exact"], label="ProteoBench — exact param match"),
+        Patch(facecolor=cat_palette["near"], label="ProteoBench — near param match"),
+        Patch(facecolor=cat_palette["far"], label="ProteoBench — far / different stack"),
+    ]
+    fig.legend(
+        handles=handles, loc="upper center", bbox_to_anchor=(0.5, 1.0),
+        ncol=2, frameon=False, fontsize=8,
+    )
+    fig.tight_layout(rect=(0, 0, 1, 0.97))
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(pdf_path)
+    fig.savefig(png_path, dpi=300)
+    if svg_path is not None:
+        fig.savefig(svg_path)
+    plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -938,6 +1658,159 @@ def main() -> int:  # pragma: no cover
     )
     write_median_table(
         median_df, FIGURES_DIR / "median_nr_prec_by_version.tsv",
+    )
+
+    # ---------------------------------------------------------------------
+    # Step 1 / Step 2 — parameter-signature comparison
+    # ---------------------------------------------------------------------
+    print("Building quantmsdiann parameter signatures from diannsummary.log...")
+    qm_signatures: dict[tuple[str, str], dict] = {}
+    for dataset in DATASET_TO_MODULE:
+        for version in DIANN_VERSIONS:
+            log_path = (DATA_DIR / dataset / version / "quant_tables"
+                        / "diannsummary.log")
+            if not log_path.exists():
+                print(f"  skip {dataset}/{version}: no diannsummary.log",
+                      file=sys.stderr)
+                continue
+            try:
+                qm_signatures[(dataset, version)] = (
+                    extract_quantmsdiann_param_signature(log_path)
+                )
+            except Exception as exc:
+                print(f"  WARN: failed to parse {log_path}: {exc}",
+                      file=sys.stderr)
+
+    print("Building ProteoBench parameter signatures from cached JSONs...")
+    # Per-dataset list of (pb_signature, top_level_nr_prec, raw_entry); the
+    # raw entry is kept so we can pull per-threshold nr_prec on demand.
+    pb_signatures_by_dataset: dict[str, list[tuple[dict, int, dict]]] = {}
+    for dataset, info in DATASET_TO_MODULE.items():
+        cache = DATA_DIR / "proteobench" / f"{dataset}.json"
+        if not cache.exists():
+            pb_signatures_by_dataset[dataset] = []
+            continue
+        with open(cache, encoding="utf-8") as fh:
+            payload = json.load(fh)
+        out_list: list[tuple[dict, int, dict]] = []
+        for entry in payload:
+            top_nrprec = entry.get("nr_prec")
+            if not isinstance(top_nrprec, (int, float)) or pd.isna(top_nrprec):
+                top_nrprec = 0
+            try:
+                sig = extract_proteobench_param_signature(entry)
+            except Exception as exc:
+                print(f"  WARN: failed to parse pb entry: {exc}",
+                      file=sys.stderr)
+                continue
+            out_list.append((sig, int(top_nrprec), entry))
+        pb_signatures_by_dataset[dataset] = out_list
+
+    # Per-(dataset,threshold) match counts for the spec doc.
+    match_counts: dict[tuple[str, int], dict[str, int]] = {}
+    for dataset, sig_rows in pb_signatures_by_dataset.items():
+        qm_sigs_for_dataset = [
+            qm_signatures.get((dataset, v)) for v in DIANN_VERSIONS
+        ]
+        qm_sigs_for_dataset = [s for s in qm_sigs_for_dataset if s is not None]
+        counts = {"exact": 0, "near": 0, "far": 0}
+        for pb_sig, _prec, _entry in sig_rows:
+            best = "far"
+            for qm_sig in qm_sigs_for_dataset:
+                cat = param_match_category(qm_sig, pb_sig)
+                if cat == "exact":
+                    best = "exact"
+                    break
+                if cat == "near" and best == "far":
+                    best = "near"
+            counts[best] += 1
+        match_counts[(dataset, 1)] = counts
+        match_counts[(dataset, 3)] = counts  # category is replicate-independent
+
+    print("Rendering Step 1 DIA-NN parity figure...")
+    parity_df, epsilon_df = render_diann_parity(
+        {1: quantmsdiann_rows, 3: quantmsdiann_rows_min3},
+        {1: proteobench_rows, 3: proteobench_rows_min3},
+        qm_signatures,
+        pb_signatures_by_dataset,
+        FIGURES_DIR / "main_diann_quantmsdiann_parity.pdf",
+        FIGURES_DIR / "main_diann_quantmsdiann_parity.png",
+        FIGURES_DIR / "main_diann_quantmsdiann_parity.svg",
+    )
+    epsilon_df.to_csv(
+        FIGURES_DIR / "diann_quantmsdiann_parity_epsilon.tsv",
+        sep="\t", index=False,
+    )
+    parity_df.to_csv(
+        FIGURES_DIR / "diann_quantmsdiann_parity_long.tsv",
+        sep="\t", index=False,
+    )
+
+    print("Rendering Step 2 match-then-compare supp figure (≥3 default)...")
+    # Map every (dataset, tool, version, precursors) -> match category for
+    # the bar-colour lookup inside render_vs_proteobench_matched. We build
+    # the map against the ≥3 supp; the ≥1 supp uses the same categories.
+    match_categories: dict[tuple[str, str, str, int], str] = {}
+    for dataset, sig_rows in pb_signatures_by_dataset.items():
+        qm_sigs_for_dataset = [
+            qm_signatures.get((dataset, v)) for v in DIANN_VERSIONS
+        ]
+        qm_sigs_for_dataset = [s for s in qm_sigs_for_dataset if s is not None]
+        # Iterate the cached entries in their declared order so the lookup
+        # remains deterministic even if precursor counts collide.
+        for pb_sig, _top_prec, entry in sig_rows:
+            for thr in (1, 3):
+                val = extract_nr_prec_at_replicate_threshold(entry, thr)
+                if val is None:
+                    continue
+                best = "far"
+                for qm_sig in qm_sigs_for_dataset:
+                    cat = param_match_category(qm_sig, pb_sig)
+                    if cat == "exact":
+                        best = "exact"
+                        break
+                    if cat == "near" and best == "far":
+                        best = "near"
+                # The supp figure's `tool` column is the verbatim
+                # ProteoBench `software_name`; use it as-is.
+                tool = entry.get("software_name") or ""
+                # Version stored in long_df is the verbatim PB version string
+                # ('2.5.0 Academia '), not the normalised form, so we key on
+                # that.
+                pb_version_raw = entry.get("software_version") or ""
+                match_categories[
+                    (dataset, str(tool), str(pb_version_raw), int(val))
+                ] = best
+
+    render_vs_proteobench_matched(
+        long_df_min3,
+        match_categories,
+        FIGURES_DIR / "supp_vs_proteobench_matched_min3.pdf",
+        FIGURES_DIR / "supp_vs_proteobench_matched_min3.png",
+        FIGURES_DIR / "supp_vs_proteobench_matched_min3.svg",
+    )
+    render_vs_proteobench_matched(
+        long_df,
+        match_categories,
+        FIGURES_DIR / "supp_vs_proteobench_matched_min1.pdf",
+        FIGURES_DIR / "supp_vs_proteobench_matched_min1.png",
+        FIGURES_DIR / "supp_vs_proteobench_matched_min1.svg",
+    )
+
+    # Per-dataset match-count summary; printed + saved.
+    summary_rows = []
+    for dataset in DATASET_TO_MODULE:
+        c = match_counts.get((dataset, 1), {"exact": 0, "near": 0, "far": 0})
+        print(f"  {dataset}: exact={c['exact']} near={c['near']} far={c['far']}")
+        summary_rows.append({
+            "dataset": dataset,
+            "exact": c["exact"],
+            "near": c["near"],
+            "far": c["far"],
+            "total": c["exact"] + c["near"] + c["far"],
+        })
+    pd.DataFrame(summary_rows).to_csv(
+        FIGURES_DIR / "match_category_counts.tsv", sep="\t", index=False,
     )
     return 0
 

@@ -330,3 +330,133 @@ Six new tests in
 cover: step-name extraction, peak-concurrent computation on a staggered
 interval fixture, trace wallclock from `max(submit+duration) − min(submit)`,
 per-step aggregator, and the header-only trace edge case.
+
+## Parameter matching (2026-05-20)
+
+The original bulk-overlay supp ([supp_vs_proteobench_min1](../../../analysis/figures/quantmsdiann_benchmarks/supp_vs_proteobench_min1.png) /
+[\_min3](../../../analysis/figures/quantmsdiann_benchmarks/supp_vs_proteobench_min3.png))
+shows quantmsdiann red bars alongside every public ProteoBench submission,
+DIA-NN or otherwise. That view answers "how do we look against the
+community at large?" but mixes parameter choices (library strategy,
+quantification method, MBR, mods) that materially shift `nr_prec`. The
+present extension adds two parameter-matched views.
+
+### Signature fields and categorisation rules
+
+Each ProteoBench DIA-NN submission and each quantmsdiann analysis is
+projected into a canonical signature dict with these keys:
+
+| Field | quantmsdiann source | ProteoBench source |
+|---|---|---|
+| `software_version` | `DIA-NN <ver>` line in diannsummary.log (`Academia` suffix stripped) | `software_version` (`Academia` suffix stripped) |
+| `predictors_library` | `--lib empirical_library.{speclib,parquet}` → `empirical` | `classify_predictors_library(predictors_library)` |
+| `quantification_method` | `--direct-quant` present → `Legacy (direct)`; absent → `Legacy` | `quantification_method` verbatim |
+| `protein_inference` | `--pg-level N` → string of N | `protein_inference` verbatim |
+| `enable_match_between_runs` | `--reanalyse` present → True (we never pass it; always False) | `enable_match_between_runs` |
+| `ident_fdr_psm` | `--qvalue` → float | `ident_fdr_psm` |
+| `fixed_mods` | `--fixed-mod name,delta,site` → `{name@site}` lower-case | `_parse_proteobench_mods(fixed_mods)` |
+| `variable_mods` | `--var-mod` ... | `_parse_proteobench_mods(variable_mods)` |
+
+[`_canonicalise_proteobench_mod_token`](../../../analysis/figure_quantmsdiann_benchmarks_vs_proteobench.py)
+collapses the four observed ProteoBench mod-spelling families (`UniMod:35/15.994915/M`,
+`unimod4`, `Carbamidomethyl (C)`, `UniMod:1` with default site) onto the
+same `name@site` lower-case tokens DIA-NN's CLI uses.
+
+Match category is computed per (quantmsdiann signature, ProteoBench
+signature) pair by
+[`param_match_category`](../../../analysis/figure_quantmsdiann_benchmarks_vs_proteobench.py):
+
+- **`exact`**: same DIA-NN version (post-suffix-strip) AND identical
+  `predictors_library`, `quantification_method`, `enable_match_between_runs`,
+  `fixed_mods`, `variable_mods`.
+- **`near`**: same DIA-NN major.minor version with 1-2 categorical
+  mismatches across those five fields.
+- **`far`**: different software (not DIA-NN), or DIA-NN major-version
+  mismatch (e.g. quantmsdiann 1.8.1 vs PB 2.5.0), or 3+ categorical
+  mismatches.
+
+The category of a ProteoBench submission against the full quantmsdiann
+analysis set is the best (most generous) bucket it lands in across all
+five quantmsdiann versions for that dataset.
+
+### Per-dataset match counts (against the full 5-version quantmsdiann set)
+
+Computed by `python -m analysis.figure_quantmsdiann_benchmarks_vs_proteobench`
+and saved to [match_category_counts.tsv](../../../analysis/figures/quantmsdiann_benchmarks/match_category_counts.tsv):
+
+| Dataset | `exact` | `near` | `far` | Total |
+|---|---|---|---|---|
+| PXD049412 — DIA single-cell | 0 | 4 | 8 | 12 |
+| PXD062685 — diaPASEF | 0 | 3 | 29 | 32 |
+| PXD070049 — ZenoTOF | 0 | 0 | 4 | 4 |
+| ProteoBench_Module_7 — Astral | 0 | 2 | 45 | 47 |
+
+`exact = 0` everywhere is the load-bearing finding. The ~95% policy
+Robbe described (DIA-NN predicted library) and the ProteoBench UI's default
+of QuantUMS quantification both diverge from quantmsdiann's empirical-lib +
+Legacy(direct)-quant defaults — so on a strict parameter signature, no
+community submission is identical to ours. The `near` cohort isolates the
+submissions that match on version + library and lets us read a fair
+epsilon.
+
+### Step 1 — DIA-NN parity per dataset
+
+[main_diann_quantmsdiann_parity.{pdf,png,svg}](../../../analysis/figures/quantmsdiann_benchmarks/main_diann_quantmsdiann_parity.png)
+plots the five quantmsdiann DIA-NN versions side-by-side with the
+parameter-matched ProteoBench DIA-NN cohort (preferring `exact`; falling
+back to `near` when none exist). Each panel carries the per-dataset
+epsilon = `|median(quantmsdiann) − median(matched-PB)| / median(matched-PB)`
+and the cohort size + match level. Per-dataset values from
+[diann_quantmsdiann_parity_epsilon.tsv](../../../analysis/figures/quantmsdiann_benchmarks/diann_quantmsdiann_parity_epsilon.tsv):
+
+| Dataset | ≥1-rep ε | ≥3-rep ε | n_matched | level |
+|---|---|---|---|---|
+| ProteoBench Module 7 (Astral) | 22.1% | 7.6% | 2 | near |
+| PXD049412 (single-cell) | 12.5% | 18.0% | 4 | near |
+| PXD062685 (diaPASEF) | 13.4% | 11.7% | 3 | near |
+| PXD070049 (ZenoTOF) | — | — | 0 | none |
+
+The ≥3-rep epsilon is the more honest comparator (Slack-driven correction
+above). At ≥3 replicates quantmsdiann lands within 7-18% of the matched
+ProteoBench DIA-NN cohort on the three datasets with comparable
+submissions; the residual is dominated by QuantUMS vs Legacy(direct)
+quantification, which is itself one of the categorical fields we count as a
+mismatch in `near`.
+
+PXD070049 has only four ProteoBench submissions total (one DIA-NN, with a
+user-defined speclib that doesn't match quantmsdiann's empirical-library
+strategy), so we cannot compute a matched-cohort epsilon. The panel
+renders an explicit "no parameter-matched DIA-NN submission" annotation
+rather than fabricating a comparison.
+
+### Step 2 — Match-then-compare supp
+
+[supp_vs_proteobench_matched_min3.{pdf,png,svg}](../../../analysis/figures/quantmsdiann_benchmarks/supp_vs_proteobench_matched_min3.png)
+(and `_min1.{...}`) reuses the original horizontal-bar layout but recolours
+each ProteoBench bar by its match category. quantmsdiann red bars stay at
+the bottom. Per-bar text annotations append `[exact|near|far]` so the
+match category is auditable on the figure itself. The narrative this
+encodes:
+
+- The handful of `near` bars cluster around the quantmsdiann band — the
+  apples-to-apples cohort.
+- The high-`nr_prec` `far` bars almost universally come from submissions
+  with DIANN-predicted libraries and/or QuantUMS — they're searching a
+  larger candidate space with a different quant model, so the headline
+  difference reflects those choices and not the underlying DIA-NN engine.
+
+### Step 3 — All-submissions context
+
+[supp_vs_proteobench_min1](../../../analysis/figures/quantmsdiann_benchmarks/supp_vs_proteobench_min1.png)
+and [\_min3](../../../analysis/figures/quantmsdiann_benchmarks/supp_vs_proteobench_min3.png)
+are retained unchanged as the "vs everyone" context view.
+
+### Tests
+
+Eight new tests in
+[analysis/tests/test_quantmsdiann_benchmarks.py](../../../analysis/tests/test_quantmsdiann_benchmarks.py)
+cover: v2.5.0 + v1.8.1 quantmsdiann signature extraction, ProteoBench
+Academia-suffix stripping, exact / near / far categorisation including the
+non-DIA-NN tool case and the cross-major-version case, and the mod-token
+canonicaliser across all four spelling families. Total suite count 108 →
+116; no network calls in tests.
