@@ -581,37 +581,15 @@ def render_parallelism_scatter(
         )
 
     # Cell-line dataset labels — anchored to the LEFT of each dot so they
-    # don't bleed off the right edge of the axes. Include the launched-task
-    # count so the reader sees how many Nextflow processes the cluster
-    # spawned for each analysis.
+    # don't bleed off the right edge of the axes.
     for _, row in plot_df.iterrows():
         if row["dataset"].startswith("PXD") and row["n_runs"] >= 100:
-            tasks = int(row["n_tasks_observed"])
-            label = (f"{row['dataset']}\n({tasks:,} tasks)"
-                     if tasks > 0 else f"{row['dataset']}\n(tasks n/a)")
             ax.annotate(
-                label,
+                row["dataset"],
                 xy=(row["n_runs"], row["wallclock_seconds"] / 3600.0),
-                xytext=(-12, 6), textcoords="offset points",
+                xytext=(-10, 6), textcoords="offset points",
                 fontsize=7, color="#444444", ha="right",
             )
-
-    # Median tasks observed across the benchmark cluster (x = 6 column),
-    # given the 20 benchmark analyses share the same workflow size.
-    benchmark_tasks = plot_df.loc[
-        plot_df["n_runs"] == plot_df["n_runs"].min(), "n_tasks_observed"
-    ]
-    if not benchmark_tasks.empty and benchmark_tasks.max() > 0:
-        median_bench_tasks = int(benchmark_tasks.median())
-        ax.annotate(
-            f"6-file benchmarks:\n~{median_bench_tasks} tasks each",
-            xy=(plot_df["n_runs"].min(),
-                plot_df.loc[plot_df["n_runs"] == plot_df["n_runs"].min(),
-                            "wallclock_seconds"].max() / 3600.0),
-            xytext=(20, 18), textcoords="offset points",
-            fontsize=7, color="#444444", ha="left",
-            arrowprops=dict(arrowstyle="-", color="#888888", lw=0.6),
-        )
 
 
     ax.set_xlabel("Number of MS data files (log scale)", fontsize=10)
