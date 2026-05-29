@@ -475,7 +475,9 @@ def test_extract_quantmsdiann_param_signature_v25(tmp_path: Path) -> None:
     """The v2.5.0 quantmsdiann command line passes `--direct-quant` and
     declares fixed Carbamidomethyl@C + variable Oxidation@M + Acetyl@*n.
     The extractor must recover all of those + map empirical_library.parquet
-    to the `empirical` category."""
+    to the `predicted (DIANN)` category — quantmsdiann's library is predicted
+    in-silico from the FASTA (DIA-NN library-free), not a user-supplied
+    experimental library, despite the `empirical_library` filename."""
     from analysis.figure_quantmsdiann_benchmarks_vs_proteobench import (
         extract_quantmsdiann_param_signature,
     )
@@ -484,7 +486,7 @@ def test_extract_quantmsdiann_param_signature_v25(tmp_path: Path) -> None:
     sig = extract_quantmsdiann_param_signature(p)
     assert sig["software_name"] == "DIA-NN"
     assert sig["software_version"] == "2.5.0"
-    assert sig["predictors_library"] == "empirical"
+    assert sig["predictors_library"] == "predicted (DIANN)"
     assert sig["quantification_method"] == "Legacy (direct)"
     assert sig["protein_inference"] == "2"
     assert sig["enable_match_between_runs"] is False
@@ -498,7 +500,8 @@ def test_extract_quantmsdiann_param_signature_v181_no_direct_quant(
 ) -> None:
     """DIA-NN 1.8.1 doesn't have the `--direct-quant` flag yet — the
     extractor should mark quantification_method as plain 'Legacy', and
-    recognise the empirical_library.speclib filename."""
+    recognise the empirical_library.speclib filename as the predicted
+    (DIANN) library (predicted in-silico from the FASTA)."""
     from analysis.figure_quantmsdiann_benchmarks_vs_proteobench import (
         extract_quantmsdiann_param_signature,
     )
@@ -507,7 +510,7 @@ def test_extract_quantmsdiann_param_signature_v181_no_direct_quant(
     sig = extract_quantmsdiann_param_signature(p)
     assert sig["software_version"] == "1.8.1"
     assert sig["quantification_method"] == "Legacy"
-    assert sig["predictors_library"] == "empirical"
+    assert sig["predictors_library"] == "predicted (DIANN)"
 
 
 def test_extract_proteobench_param_signature_strips_academia_suffix() -> None:
@@ -537,8 +540,11 @@ def test_extract_proteobench_param_signature_strips_academia_suffix() -> None:
 
 
 def test_param_match_category_exact(tmp_path: Path) -> None:
-    """An apples-to-apples match: same DIA-NN version, same empirical lib,
-    same legacy direct-quant, identical mod sets → 'exact'."""
+    """An apples-to-apples match: same DIA-NN version, same predicted
+    (DIANN) library, same legacy direct-quant, identical mod sets →
+    'exact'. The ProteoBench submission must use the DIANN-predicted
+    library too (predictors_library = {RT/IM/MS2 -> DIANN}) to match
+    quantmsdiann's library-free strategy."""
     from analysis.figure_quantmsdiann_benchmarks_vs_proteobench import (
         extract_proteobench_param_signature,
         extract_quantmsdiann_param_signature,
@@ -550,7 +556,8 @@ def test_param_match_category_exact(tmp_path: Path) -> None:
     pb_entry = {
         "software_name": "DIA-NN",
         "software_version": "2.5.0 Academia ",
-        "predictors_library": None,  # empirical
+        # predicted (DIANN) — matches quantmsdiann's predicted-from-FASTA library
+        "predictors_library": {"RT": "DIANN", "IM": "DIANN", "MS2_int": "DIANN"},
         "quantification_method": "Legacy (direct)",
         "protein_inference": "2",
         "enable_match_between_runs": False,
@@ -563,9 +570,9 @@ def test_param_match_category_exact(tmp_path: Path) -> None:
 
 
 def test_param_match_category_near_quantums_swap(tmp_path: Path) -> None:
-    """Same version + same empirical lib + same mods, but ProteoBench's
-    submission uses QuantUMS instead of Legacy/direct → exactly one
-    categorical mismatch → 'near' (still informative)."""
+    """Same version + same predicted (DIANN) library + same mods, but
+    ProteoBench's submission uses QuantUMS instead of Legacy/direct →
+    exactly one categorical mismatch → 'near' (still informative)."""
     from analysis.figure_quantmsdiann_benchmarks_vs_proteobench import (
         extract_proteobench_param_signature,
         extract_quantmsdiann_param_signature,
@@ -577,7 +584,8 @@ def test_param_match_category_near_quantums_swap(tmp_path: Path) -> None:
     pb_entry = {
         "software_name": "DIA-NN",
         "software_version": "2.5.0 Academia",
-        "predictors_library": None,  # empirical lib match
+        # predicted (DIANN) — library matches; only quant method differs
+        "predictors_library": {"RT": "DIANN", "IM": "DIANN", "MS2_int": "DIANN"},
         "quantification_method": "QuantUMS high-precision",  # MISMATCH
         "protein_inference": "2",
         "enable_match_between_runs": False,

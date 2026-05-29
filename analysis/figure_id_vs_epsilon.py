@@ -170,6 +170,14 @@ def render_id_vs_epsilon(
     for idx, dataset in enumerate(datasets):
         ax = axes[idx // 2][idx % 2]
         community = extract_community_id_vs_eps(dataset, threshold)
+        # Apples-to-apples: quantmsdiann predicts its library in-silico from
+        # the FASTA (DIA-NN library-free), so compare only against ProteoBench
+        # DIA-NN submissions that used the same predicted (DIANN) strategy.
+        # Modules with no predicted-library submission (single-cell, ZenoTOF)
+        # therefore show the quantmsdiann trajectory alone.
+        community = community[
+            community["library_kind"] == LIBRARY_KIND_PREDICTED
+        ].reset_index(drop=True)
         qm = extract_quantmsdiann_id_vs_eps(dataset, threshold)
         # Community cloud
         for kind in (
@@ -208,7 +216,7 @@ def render_id_vs_epsilon(
                 s=80, c="#d62728", edgecolors="#7f1d1d",
                 linewidths=0.8, zorder=3,
                 label=(
-                    "quantmsdiann (DIA-NN, empirical lib)"
+                    "quantmsdiann (DIA-NN, predicted-from-FASTA lib)"
                     if not qm_drawn else None
                 ),
             )
@@ -224,7 +232,7 @@ def render_id_vs_epsilon(
                     "dataset": dataset, "threshold": threshold,
                     "source": "quantmsdiann",
                     "label": f"quantmsdiann {row['version_label']}",
-                    "library_kind": LIBRARY_KIND_EMPIRICAL,
+                    "library_kind": LIBRARY_KIND_PREDICTED,
                     "nr_prec": int(row["nr_prec"]),
                     "median_abs_epsilon_global": float(
                         row["median_abs_epsilon_global"]

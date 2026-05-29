@@ -64,18 +64,18 @@
     invocation; identification counts grow monotonically with version
     (e.g.\ Module~5 91{,}075~$\to$~115{,}735).
     (\textbf{b})~Precursors quantified ($\geq$3 replicates) versus
-    median $|\epsilon|$ for every public ProteoBench submission per
-    module (snapshot 29 May 2026; coloured by
-    library mode); the \quantmsdiann{} trajectory across the five
-    \texttt{DIA-NN} versions is overlaid in red. Note that, unlike the
-    identification-count trend in panel~(a), median $|\epsilon|$ does
-    not always decrease with the newest \texttt{DIA-NN} version: per
-    module the best identification--accuracy trade-off may sit at an
-    intermediate version. Users wishing to maximise IDs should select
-    the most recent supported release; users prioritising lowest median
-    quantification error should consult this panel per module.
-    See Additional file~1: Figs.~S3, S4 for per-version detail and
-    head-to-head parity with the \texttt{DIA-NN} GUI.
+    median $|\epsilon|$ for the ProteoBench \texttt{DIA-NN} submissions
+    that used a predicted-from-FASTA library
+    (\texttt{predictors\_library}~$=$~DIANN; snapshot 29 May 2026) --- the
+    apples-to-apples set matching \quantmsdiann{}'s library-free strategy;
+    the \quantmsdiann{} trajectory across the five \texttt{DIA-NN}
+    versions is overlaid in red. The single-cell (Module~9) and ZenoTOF
+    (Module~10) panels carried no predicted-library \texttt{DIA-NN}
+    submission in the snapshot and so show the \quantmsdiann{} trajectory
+    alone. Unlike the identification-count trend in panel~(a), median
+    $|\epsilon|$ does not always decrease with the newest \texttt{DIA-NN}
+    version. See Additional file~1: Fig.~S3 for parameter-matched
+    per-submission comparisons.
   }
   \label{fig:proteobench}
 \end{figure}
@@ -162,11 +162,7 @@
     (ProCan-DepMapSanger, 949 lines), PXD004701 (Sun 2023, 76 breast
     cancer lines), PXD041421 (Mehnert 2023), and PXD017199 (Tognetti
     2021, 67 breast cancer lines), reanalysed under a single
-    \quantmsdiann{} invocation. The consolidated SDRF and per-cohort
-    \quantmsdiann{} configurations will be deposited on Zenodo
-    before publication so that the
-    input--configuration--output triple can be re-executed by third
-    parties.
+    \quantmsdiann{} invocation.
     (\textbf{a})~UpSet plot of pan-cohort UniProt-accession overlap
     with per-cohort headline counts: a 5{,}144-protein pan-cohort
     core is detected across all five cohorts.

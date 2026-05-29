@@ -155,14 +155,29 @@ LIBRARY_KIND_PREDICTED = "predicted (DIANN)"
 LIBRARY_KIND_USER_DEFINED = "user-defined speclib"
 LIBRARY_KIND_OTHER_TOOL = "other tool"
 
+# Library strategy quantmsdiann uses, expressed in ProteoBench's
+# `predictors_library` taxonomy. quantmsdiann runs DIA-NN library-free:
+# INSILICO_LIBRARY_GENERATION predicts a spectral library in-silico from the
+# FASTA with DIA-NN's deep-learning predictor, then ASSEMBLE_EMPIRICAL_LIBRARY
+# refines it from the first-pass IDs. There is NO externally supplied
+# experimental library. In ProteoBench terms that is `predictors_library =
+# {RT,IM,MS2 -> DIANN}` = "predicted (DIANN)" — NOT "empirical" (which marks a
+# submission that loaded a pre-existing experimental library without a
+# predictor). The `empirical_library.parquet` filename refers to DIA-NN's own
+# refined-from-prediction library, not a user experimental library, so the
+# apples-to-apples comparison set is the predicted-library DIA-NN submissions.
+QUANTMSDIANN_LIBRARY_KIND = LIBRARY_KIND_PREDICTED
+
 
 def classify_predictors_library(predictors_library) -> str:
     """Map a ProteoBench `predictors_library` value to one of three categories
-    used to color DIA-NN community submissions in the supp figure:
-      - 'empirical' (None / 'None') — DIA-NN built the library from the data
-        itself; matches quantmsdiann's two-pass workflow.
+    used to color DIA-NN community submissions:
+      - 'empirical' (None / 'None') — the submission loaded a pre-existing
+        experimental/curated spectral library WITHOUT a predictor. This does
+        NOT match quantmsdiann, which predicts its library from the FASTA.
       - 'predicted (DIANN)' — DIA-NN's built-in in-silico prediction (the
-        FASTA-derived predicted library); larger search space.
+        FASTA-derived predicted library). This is quantmsdiann's strategy
+        (see QUANTMSDIANN_LIBRARY_KIND) and the apples-to-apples set.
       - 'user-defined speclib' — externally uploaded/curated library.
     Any other value returns the original string."""
     if predictors_library is None or predictors_library == "None":
@@ -435,11 +450,10 @@ def build_long_table(
             "version": version,
             "precursors": precursors,
             "proteins": proteins,
-            # quantmsdiann's two-pass workflow uses an empirical library
-            # built from the data; tag it here so render_vs_proteobench can
-            # color-match against community submissions using the same
-            # library strategy.
-            "library_kind": LIBRARY_KIND_EMPIRICAL,
+            # quantmsdiann predicts its library in-silico from the FASTA
+            # (DIA-NN library-free); in ProteoBench's predictors_library
+            # taxonomy that is "predicted (DIANN)". See QUANTMSDIANN_LIBRARY_KIND.
+            "library_kind": QUANTMSDIANN_LIBRARY_KIND,
         })
     for dataset, entries in proteobench_rows.items():
         for tool, version, precursors, lib_kind in entries:
@@ -592,7 +606,7 @@ def render_vs_proteobench(
     long_df: pd.DataFrame,
     svg_path: Path,
     *,
-    library_kinds: tuple[str, ...] = (LIBRARY_KIND_EMPIRICAL,),
+    library_kinds: tuple[str, ...] = (LIBRARY_KIND_PREDICTED,),
 ) -> None:
     """One panel per dataset stacked vertically. Horizontal bar chart of
     matching-library ProteoBench DIA-NN submissions plus our five DIA-NN
@@ -600,10 +614,10 @@ def render_vs_proteobench(
     axis. Paper-ready: no title, no footer.
 
     `library_kinds` filters ProteoBench submissions to only those tagged
-    with one of the listed library strategies (default: empirical, matching
-    quantmsdiann). Pass e.g. `(LIBRARY_KIND_EMPIRICAL, LIBRARY_KIND_PREDICTED)`
-    to broaden the comparison; pass an empty tuple to include all
-    submissions."""
+    with one of the listed library strategies (default: predicted (DIANN),
+    matching quantmsdiann's library-free predicted-from-FASTA strategy — the
+    apples-to-apples set). Pass a broader tuple to widen the comparison; pass
+    an empty tuple to include all submissions."""
     datasets = sorted(long_df["dataset"].unique(), key=_dataset_sort_key)
     if library_kinds:
         long_df = long_df[
@@ -635,9 +649,9 @@ def render_vs_proteobench(
               .reset_index(drop=True))
         labels = [f"{t} {v}".strip() for t, v in zip(pb["tool"], pb["version"])]
         # Color ProteoBench bars by the library strategy each submission
-        # used: matching quantmsdiann's empirical library is the relevant
-        # apples-to-apples set; predicted (DIANN in-silico) and user-defined
-        # speclibs typically search a larger candidate space. Non-DIA-NN
+        # used: predicted (DIANN in-silico from FASTA) is the apples-to-apples
+        # set that matches quantmsdiann; empirical (user-loaded experimental
+        # library) and user-defined speclibs are a different strategy. Non-DIA-NN
         # tools stay neutral grey.
         library_palette = {
             LIBRARY_KIND_EMPIRICAL: "#80cbc4",
@@ -673,7 +687,7 @@ def render_vs_proteobench(
                     LIBRARY_KIND_EMPIRICAL, LIBRARY_KIND_PREDICTED,
                     LIBRARY_KIND_USER_DEFINED, LIBRARY_KIND_OTHER_TOOL,
                 )
-                if k in set(kinds) or k == LIBRARY_KIND_EMPIRICAL
+                if k in set(kinds) or k == LIBRARY_KIND_PREDICTED
             ]
         # Annotate each bar with its tool+version at the right tip; this is
         # much more legible than y-tick labels when N is >15 per panel.
@@ -730,7 +744,7 @@ def render_vs_proteobench(
     from matplotlib.patches import Patch
     quantms_handle = Patch(
         facecolor="#d62728", edgecolor="#7f1d1d", linewidth=0.8,
-        label="quantmsdiann (DIA-NN, empirical library)",
+        label="quantmsdiann (DIA-NN, predicted-from-FASTA library)",
     )
     lib_handles = getattr(axes[0, 0], "_library_legend_handles", [])
     # Relabel library-kind patches for the legend so they read like
@@ -835,7 +849,7 @@ def write_counts_tsv(
                 "version": version,
                 "precursors": precursors,
                 "proteins": proteins,
-                "library_kind": LIBRARY_KIND_EMPIRICAL,
+                "library_kind": QUANTMSDIANN_LIBRARY_KIND,
                 "filter_policy": "unfiltered",
             })
         out = pd.concat([out, pd.DataFrame(unf_rows)], ignore_index=True)
@@ -1098,15 +1112,17 @@ def extract_quantmsdiann_param_signature(log_path: Path) -> dict:
             continue
         i += 1
 
-    # quantmsdiann's empirical library is built two-pass from the data;
-    # detect the marker substring rather than the exact file extension
-    # (1.8.1 uses .speclib, 2.x uses .parquet).
+    # quantmsdiann's library is predicted in-silico from the FASTA (DIA-NN
+    # library-free) and then refined into empirical_library.{speclib,parquet};
+    # in ProteoBench's predictors_library taxonomy that is "predicted (DIANN)",
+    # not a user-supplied experimental ("empirical") library. Detect the marker
+    # substring rather than the exact extension (1.8.1 .speclib, 2.x .parquet).
     if lib_value and "empirical_library" in lib_value:
-        library_kind = LIBRARY_KIND_EMPIRICAL
+        library_kind = QUANTMSDIANN_LIBRARY_KIND
     else:
         # Defensive fallback; the four benchmark workflows always pass
-        # empirical_library.{speclib,parquet}.
-        library_kind = lib_value or LIBRARY_KIND_EMPIRICAL
+        # empirical_library.{speclib,parquet} built from the FASTA prediction.
+        library_kind = lib_value or QUANTMSDIANN_LIBRARY_KIND
 
     # Both `--direct-quant` (2.1.0+) and the pre-2.1.0 absence-of-flag map
     # to DIA-NN's classic / Legacy quantification family, which ProteoBench
@@ -1519,7 +1535,7 @@ def render_diann_parity(
     from matplotlib.patches import Patch
     present_categories = set(parity_long_df["match_category"].unique())
     handles = [
-        Patch(facecolor="#d62728", label="quantmsdiann (DIA-NN, empirical lib)"),
+        Patch(facecolor="#d62728", label="quantmsdiann (DIA-NN, predicted-from-FASTA lib)"),
     ]
     if "exact" in present_categories:
         handles.append(
@@ -1549,6 +1565,8 @@ def render_vs_proteobench_matched(
     long_df: pd.DataFrame,
     match_categories: dict[tuple[str, str, str, int], str],
     svg_path: Path,
+    *,
+    library_kinds: tuple[str, ...] = (LIBRARY_KIND_PREDICTED,),
 ) -> None:
     """Same horizontal-bar layout as `render_vs_proteobench`, but bars are
     colour-coded by **library strategy** (`predictors_library`) — the
@@ -1560,6 +1578,14 @@ def render_vs_proteobench_matched(
     one of {'exact','near','far'}; entries missing from the map fall
     back to 'far' (treated as the neutral cohort)."""
     datasets = sorted(long_df["dataset"].unique(), key=_dataset_sort_key)
+    # Restrict the ProteoBench comparison to the matching library strategy
+    # (default: predicted (DIANN), the apples-to-apples set for quantmsdiann);
+    # quantmsdiann rows always pass through.
+    if library_kinds:
+        long_df = long_df[
+            (long_df["source"] == "quantmsdiann")
+            | long_df["library_kind"].isin(library_kinds)
+        ].copy()
     pb_counts = {
         ds: int(((long_df["dataset"] == ds)
                  & (long_df["source"] == "proteobench")).sum())
@@ -1669,7 +1695,7 @@ def render_vs_proteobench_matched(
     }
     handles = [
         Patch(facecolor="#d62728", edgecolor="#7f1d1d", linewidth=0.8,
-              label="quantmsdiann (DIA-NN, empirical library)"),
+              label="quantmsdiann (DIA-NN, predicted-from-FASTA library)"),
     ]
     for k in LIB_ORDER:
         if k in present_lib_kinds:
