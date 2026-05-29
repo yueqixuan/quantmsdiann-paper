@@ -40,7 +40,11 @@ The cell-line bulk DIA cohorts were assembled by programmatic search of PRIDE Ar
 \begin{table}[htbp]
 \centering
 \small
-\caption{Datasets benchmarked and reanalysed with \quantmsdiann{}.}
+\caption{Datasets benchmarked and reanalysed with \quantmsdiann{}. The
+``Public date'' column is the PRIDE/MassIVE public-release year of the
+deposit, which can predate the associated publication year cited in the main
+text (e.g.\ PXD003539 was deposited in 2016 and published as Guo \textit{et al.}~2019;
+PXD004701 deposited 2016, published as Sun \textit{et al.}~2023).}
 \label{tab:datasets-supp}
 \begin{tabular}{llll}
 \hline
@@ -117,14 +121,16 @@ These figures complement main-text Fig.~2 by placing \quantmsdiann{} on the publ
   \centering
   \mcpincludegraphics[width=\textwidth,keepaspectratio]{quantmsdiann_benchmarks/main_diann_quantmsdiann_parity}
   \caption[ProteoBench parity]{%
-    \textbf{ProteoBench parity between \quantmsdiann{} and the standalone
-    \texttt{DIA-NN} GUI.}
-    Head-to-head precursor and protein-group identification counts for the
-    same raw data analysed by the official \texttt{DIA-NN} GUI submission to
-    ProteoBench (grey) and by \quantmsdiann{} (blue). The two pipelines
-    sit within $\pm$2\% on every module / version combination, confirming
-    that the SDRF-driven \quantmsdiann{} wrapper does not erode \texttt{DIA-NN}
-    performance.
+    \textbf{\quantmsdiann{} versus parameter-matched standalone
+    \texttt{DIA-NN} GUI submissions.}
+    Precursor and protein-group identification counts for \quantmsdiann{}'s
+    five \texttt{DIA-NN} versions (blue) alongside the ProteoBench
+    \texttt{DIA-NN} GUI submissions whose acquisition and search parameters
+    most closely match (grey). \quantmsdiann{}'s counts fall within the range
+    spanned by the parameter-matched GUI submissions, confirming that the
+    SDRF-driven wrapper does not erode \texttt{DIA-NN} performance; the
+    residual spread among the grey points reflects parameter and
+    \texttt{DIA-NN}-version differences between community submissions.
   }
   \label{fig:proteobench-parity}
 \end{figure}
@@ -237,7 +243,7 @@ These figures complement main-text Fig.~3 with per-condition completeness, per-p
     \quantmsdiann{} reanalysis versus the original.}
     (\textbf{a})~Protein groups per single cell (Galatidou $n=97$ post-QC
     oocytes; \quantmsdiann{} $n=107$ channel-confident cells): comparable
-    median depth (1{,}784 versus 1{,}736). (\textbf{b})~Total protein groups
+    median depth (1{,}784 original versus 1{,}736 \quantmsdiann{}). (\textbf{b})~Total protein groups
     across the dataset: 2{,}122 (original) versus 2{,}904 (\quantmsdiann{}).
     (\textbf{c})~UniProt-accession overlap: 2{,}013 shared, 109 original-only,
     1{,}539 \quantmsdiann{}-only --- 95\% of the original recovered plus
