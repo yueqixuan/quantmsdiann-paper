@@ -215,6 +215,40 @@ These figures complement main-text Fig.~3 with per-condition completeness, per-p
 
 \begin{figure}[htbp]
   \centering
+  \mcpincludegraphics[width=\mcponehalfcolwidth,keepaspectratio]{PXD004701/main_comparison}
+  \caption[PXD004701 reanalysis vs original]{%
+    \textbf{PXD004701 (Sun 2023, PCT-SWATH breast-cancer panel, 76 lines):
+    \quantmsdiann{} reanalysis versus the originally published quantification.}
+    Under the original consistency filter ($-90\%$ missing, proteotypic)
+    \quantmsdiann{} recovers 6{,}146 versus 6{,}091 protein groups
+    ($+0.9\%$); raw-matrix counts are within 10\% on both
+    proteotypic-peptide and protein-group metrics. This near-parity cohort
+    --- already analysed with a current DIA engine in the original study ---
+    is shown here rather than in the main reanalysis figure.
+  }
+  \label{fig:supp-pxd004701-comparison}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \mcpincludegraphics[width=\textwidth,keepaspectratio]{plexDIA/MSV000093870/main_galatidou_comparison}
+  \caption[MSV000093870 single-cell plexDIA reanalysis]{%
+    \textbf{MSV000093870 (Galatidou 2024, single-cell oocyte plexDIA):
+    \quantmsdiann{} reanalysis versus the original.}
+    (\textbf{a})~Protein groups per single cell (Galatidou $n=97$ post-QC
+    oocytes; \quantmsdiann{} $n=107$ channel-confident cells): comparable
+    median depth (1{,}784 versus 1{,}736). (\textbf{b})~Total protein groups
+    across the dataset: 2{,}122 (original) versus 2{,}904 (\quantmsdiann{}).
+    (\textbf{c})~UniProt-accession overlap: 2{,}013 shared, 109 original-only,
+    1{,}539 \quantmsdiann{}-only --- 95\% of the original recovered plus
+    1{,}539 additional proteins from the same raw data. This figure
+    underpins the single-cell panel of the main reanalysis figure.
+  }
+  \label{fig:supp-msv093870-plexdia}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
   \mcpincludegraphics[width=\mcponehalfcolwidth,keepaspectratio]{PXD030304/supp_proteins_per_tissue}
   \caption[PXD030304 per tissue]{%
     \textbf{PXD030304 (ProCan-DepMapSanger): protein groups per tissue.}

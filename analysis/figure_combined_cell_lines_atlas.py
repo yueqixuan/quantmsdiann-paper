@@ -109,7 +109,7 @@ DATASET_LABELS = {
     "PXD030304": "PXD030304\n(ProCan 2022)",
     "PXD004701": "PXD004701\n(Sun 2023)",
     "PXD017199": "PXD017199\n(Tognetti 2021)",
-    "PXD041421": "PXD041421\n(Wang 2023)",
+    "PXD041421": "PXD041421\n(Mehnert 2023)",
 }
 
 
@@ -1803,6 +1803,47 @@ def render_atlas_distribution(
     plt.close(fig)
 
 
+def render_atlas_main(
+    headlines: dict[str, DatasetHeadline],
+    tissue_rows: list[tuple[str, dict[str, int]]],
+    svg_path: Path,
+    *,
+    tissue_protein_rows: list[tuple[str, dict[str, int]]] | None = None,
+) -> None:
+    """Compose the main pan-cohort figure as three stacked, full-width
+    panels (drops the protein-accession UpSet overlap and the
+    detection-count histogram, which were too small to read in the
+    multi-panel layout):
+
+        A (top):    per-cohort headline counts (paper vs quantmsdiann)
+        B (middle): per-tissue cell-line coverage (stacked bars)
+        C (bottom): per-tissue unique-protein coverage (stacked bars)
+
+    Removing the UpSet panel also removes the upsetplot/numpy-2 render
+    dependency, so this figure renders on any supported NumPy."""
+    tissue_protein_rows = tissue_protein_rows or []
+    fig = plt.figure(figsize=(12, 15))
+    gs = fig.add_gridspec(
+        3, 1, height_ratios=[0.7, 1.15, 1.15], hspace=0.34,
+    )
+    ax_a = fig.add_subplot(gs[0, 0])
+    ax_b = fig.add_subplot(gs[1, 0])
+    ax_c = fig.add_subplot(gs[2, 0])
+
+    _render_panel_a_headlines(ax_a, headlines)
+    _annotate_panel_letter(ax_a, "A", subtitle="Headline counts (paper vs quantmsdiann)")
+
+    _render_panel_c_tissue_coverage(ax_b, tissue_rows)
+    _annotate_panel_letter(ax_b, "B", subtitle="Cell lines per tissue")
+
+    _render_panel_f_tissue_protein_counts(ax_c, tissue_protein_rows)
+    _annotate_panel_letter(ax_c, "C", subtitle="Proteins per tissue")
+
+    svg_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(svg_path, bbox_inches="tight")
+    plt.close(fig)
+
+
 def render_atlas(
     headlines: dict[str, DatasetHeadline],
     cellline_sets: dict[str, set[str]],
@@ -2263,19 +2304,13 @@ def main() -> int:  # pragma: no cover
                "PXD017199", "PXD041421"):
         print(f"  {ds}: {runs_per_cohort.get(ds, 0):,} runs")
 
-    print("Rendering atlas figures (overlap + distribution)...")
-    overlap_svg = FIGURES_DIR / "atlas_overlap.svg"
-    distribution_svg = FIGURES_DIR / "atlas_distribution.svg"
-    render_atlas_overlap(
-        DATASET_HEADLINES, cellline_sets, accession_sets, overlap_svg,
-    )
-    render_atlas_distribution(
-        tissue_rows, cellline_sets, accession_sets, distribution_svg,
+    print("Rendering main pan-cohort figure (headline + per-tissue panels)...")
+    main_svg = FIGURES_DIR / "atlas_main.svg"
+    render_atlas_main(
+        DATASET_HEADLINES, tissue_rows, main_svg,
         tissue_protein_rows=tissue_protein_rows,
-        runs_per_cohort=runs_per_cohort,
     )
-    print(f"  saved: {overlap_svg}")
-    print(f"  saved: {distribution_svg}")
+    print(f"  saved: {main_svg}")
 
     print("Writing combined counts.tsv...")
     data_dir = FIGURES_DIR / "data"

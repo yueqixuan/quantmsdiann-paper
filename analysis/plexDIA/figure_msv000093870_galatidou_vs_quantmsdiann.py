@@ -244,6 +244,33 @@ def render_comparison(
     plt.close(fig)
 
 
+def render_total_pg(orig_total: int, qm_total: int, svg_path: Path) -> None:
+    """Compact single-panel total-protein-group comparison for the main
+    cell-line-reanalysis figure (Fig 3): original (grey) vs quantmsdiann
+    (blue), matching the per-cohort `main_comparison` bar style. Conveys
+    the single-cell reanalysis benefit (more protein groups from the same
+    raw data) in one column-width panel."""
+    fig, ax = plt.subplots(figsize=(4.2, 4.8))
+    bars = ax.bar([0, 1], [orig_total, qm_total], width=0.6,
+                  color=[ORIG_COLOUR, QM_COLOUR], edgecolor="#37474f")
+    for b, v in zip(bars, (orig_total, qm_total)):
+        ax.text(b.get_x() + b.get_width() / 2, v, f"{v:,}", ha="center",
+                va="bottom", fontsize=11)
+    ax.set_xticks([0, 1])
+    ax.set_xticklabels(["Galatidou 2024\n(original)", "quantmsdiann\n(DIA-NN)"])
+    ax.set_ylabel("Protein groups (dataset, 1\\% FDR)".replace("\\%", "%"))
+    ax.set_ylim(0, max(orig_total, qm_total) * 1.16)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.tick_params(labelsize=9)
+    fig.tight_layout()
+    svg_path.parent.mkdir(parents=True, exist_ok=True)
+    stem = svg_path.with_suffix("")
+    for ext in (".svg", ".pdf", ".png"):
+        fig.savefig(stem.with_suffix(ext), dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+
 def main() -> int:  # pragma: no cover
     confident = load_channel_confident(_cached_report())
     qm_cells = per_cell_counts(confident)
@@ -263,6 +290,12 @@ def main() -> int:  # pragma: no cover
         orig_per_cell, qm_cells, orig_total=len(orig_acc), qm_total=qm_total,
         shared=shared, orig_only=orig_only, qm_only=qm_only,
         svg_path=FIGURES_DIR / "main_galatidou_comparison.svg",
+    )
+
+    # Compact total-PG panel for the main cell-line-reanalysis figure (Fig 3).
+    render_total_pg(
+        orig_total=len(orig_acc), qm_total=qm_total,
+        svg_path=FIGURES_DIR / "main_galatidou_total_pg.svg",
     )
 
     # QC-matched, apples-to-apples per-oocyte comparison

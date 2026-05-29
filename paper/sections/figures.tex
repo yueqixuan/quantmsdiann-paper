@@ -93,8 +93,8 @@
     \end{minipage}\hfill
     \begin{minipage}[t]{0.32\linewidth}
       \centering
-      \textbf{(b)~PXD004701 \textemdash{} Sun 2023, breast cancer}\par\vspace{0.2em}
-      \mcpincludegraphics[width=\linewidth,keepaspectratio]{PXD004701/main_comparison}
+      \textbf{(b)~MSV000093870 \textemdash{} single-cell oocyte plexDIA}\par\vspace{0.2em}
+      \mcpincludegraphics[width=\linewidth,keepaspectratio]{plexDIA/MSV000093870/main_galatidou_total_pg}
     \end{minipage}\hfill
     \begin{minipage}[t]{0.32\linewidth}
       \centering
@@ -103,9 +103,9 @@
     \end{minipage}
   \end{minipage}
   \caption[Cell-line reanalyses]{%
-    \textbf{Independent reanalysis of three public cell-line DIA datasets
-    recovers as many or more identifications than the originally deposited
-    quantifications.}
+    \textbf{Independent reanalysis of public DIA datasets, spanning bulk
+    cell lines and single cells, recovers as many or more identifications
+    than the originally deposited quantifications.}
     Each panel compares the originally published peptide and/or
     protein-group counts (grey) against the \quantmsdiann{} reanalysis at
     1\% FDR (blue) using the same raw data.
@@ -118,11 +118,14 @@
     this gain reflects both SDRF-driven orchestration and the change of
     analysis engine; a like-for-like \texttt{DIA-NN}-on-original-library
     control is part of ongoing work.
-    (\textbf{b})~Sun \textit{et al.}, 2023 PCT-SWATH breast-cancer panel
-    (PXD004701, 76 cell lines): under the original consistency filter
-    (\textendash{}90\% missing, proteotypic) \quantmsdiann{} recovers
-    6{,}146 versus 6{,}091 protein groups (+0.9\%); the raw matrix counts
-    are within 10\% on both proteotypic-peptide and protein-group metrics.
+    (\textbf{b})~Galatidou \textit{et al.}, 2024 single-cell oocyte
+    plexDIA (MSV000093870; mTRAQ 3-channel, Q~Exactive): from the same raw
+    data \quantmsdiann{} quantifies 2{,}904 protein groups versus 2{,}122
+    in the original analysis ($+37$\%), recovering 95\% of the original
+    accessions plus 1{,}539 additional proteins at comparable per-cell
+    median depth (1{,}736 versus 1{,}784 protein groups; full per-cell,
+    total and accession-overlap comparison in Additional file~1). This is
+    the first plexDIA cohort processed through \quantmsdiann{}.
     (\textbf{c})~ProCan-DepMapSanger 2022 pan-cancer cell-line panel
     (PXD030304, 949 lines): \quantmsdiann{} recovers 8{,}921 protein groups
     at 1\% FDR versus 8{,}498 originally (+5\%), and 7{,}990 versus 6{,}692
@@ -143,19 +146,7 @@
 %% Fig. 4 — Pan-cohort of five DIA reanalyses
 \begin{figure}[htbp]
   \centering
-  \begin{minipage}{\textwidth}
-    \centering
-    \begin{minipage}[t]{0.49\linewidth}
-      \centering
-      \textbf{(a)~Protein-accession overlap across cohorts}\par\vspace{0.2em}
-      \mcpincludegraphics[width=\linewidth,keepaspectratio]{combined/atlas_overlap}
-    \end{minipage}\hfill
-    \begin{minipage}[t]{0.49\linewidth}
-      \centering
-      \textbf{(b)~Per-tissue coverage}\par\vspace{0.2em}
-      \mcpincludegraphics[width=\linewidth,keepaspectratio]{combined/atlas_distribution}
-    \end{minipage}
-  \end{minipage}
+  \mcpincludegraphics[width=0.62\textwidth,height=\mcpmaxfigheight,keepaspectratio]{combined/atlas_main}
   \caption[Pan-cohort of DIA reanalyses]{%
     \textbf{Pan-cohort of five public DIA cell-line reanalyses by
     \quantmsdiann{}.}
@@ -164,11 +155,14 @@
     cancer lines), PXD041421 (Mehnert 2023), and PXD017199 (Tognetti
     2021, 67 breast cancer lines), reanalysed under a single
     \quantmsdiann{} invocation.
-    (\textbf{a})~UpSet plot of pan-cohort UniProt-accession overlap
-    with per-cohort headline counts: a 5{,}144-protein pan-cohort
-    core is detected across all five cohorts.
-    (\textbf{b})~Per-tissue distribution of cell lines (top) and unique
-    proteins (bottom) across the combined panel.
+    (\textbf{a})~Per-cohort headline protein-group counts: the originally
+    published count (grey) and the \quantmsdiann{} reanalysis (blue);
+    PXD017199 and PXD041421 have no published DIA headline, so only the
+    \quantmsdiann{} bar is shown.
+    (\textbf{b})~Cell lines per pan-cancer tissue, stacked by contributing
+    cohort.
+    (\textbf{c})~Unique UniProt proteins detected per tissue across the
+    combined panel.
   }
   \label{fig:pancohort}
 \end{figure}
