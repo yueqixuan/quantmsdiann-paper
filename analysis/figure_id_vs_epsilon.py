@@ -247,6 +247,20 @@ def render_id_vs_epsilon(
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
         ax.tick_params(axis="both", labelsize=8)
+        # Enforce a minimum |ε| span per panel. Modules with a very narrow
+        # spread (e.g. ZenoTOF, ~0.007; single-cell, ~0.01) would otherwise be
+        # auto-scaled to fill the axis, stretching sub-0.01 version-to-version
+        # wobble into a dramatic-looking zig-zag. A fixed floor keeps those
+        # differences proportionate to the genuinely larger-spread panels.
+        y_all = list(qm["median_abs_epsilon_global"]) + list(
+            community["median_abs_epsilon_global"]
+        )
+        if y_all:
+            MIN_EPS_SPAN = 0.05
+            y_lo, y_hi = min(y_all), max(y_all)
+            if (y_hi - y_lo) < MIN_EPS_SPAN:
+                mid = (y_lo + y_hi) / 2.0
+                ax.set_ylim(mid - MIN_EPS_SPAN / 2.0, mid + MIN_EPS_SPAN / 2.0)
         # When quantmsdiann lands toward bottom-right (more IDs + lower ε),
         # the panel's headline holds — annotate the cohort sizes.
         if len(qm) and len(community):
