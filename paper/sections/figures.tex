@@ -49,33 +49,34 @@
 \begin{figure}[htbp]
   \centering
   \textbf{(a)}\par\vspace{0.1em}
-  \mcpincludegraphics[width=0.66\textwidth,keepaspectratio]{quantmsdiann_benchmarks/main_benchmarks_precursors}\par
+  \mcpincludegraphics[width=0.60\textwidth,keepaspectratio]{quantmsdiann_benchmarks/main_benchmarks_precursors}\par
   \vspace{0.5em}
-  \textbf{(b)}\par\vspace{0.1em}
-  \mcpincludegraphics[width=0.66\textwidth,keepaspectratio]{quantmsdiann_benchmarks/main_id_vs_epsilon}
+  \mcpincludegraphics[width=0.74\textwidth,keepaspectratio]{quantmsdiann_benchmarks/main_accuracy}
   \caption[ProteoBench across DIA-NN versions]{%
     \textbf{\quantmsdiann{} on ProteoBench across five \texttt{DIA-NN}
-    releases and four DIA modalities.}
-    Four ProteoBench DIA modules cover Orbitrap Astral (Module~7),
-    single-cell DIA (Module~9, PXD049412), timsTOF diaPASEF (Module~5,
-    PXD062685) and SCIEX ZenoTOF (Module~10, PXD070049).
+    releases and four DIA modalities} (Orbitrap Astral, Module~7;
+    single-cell, Module~9/PXD049412; timsTOF diaPASEF, Module~5/PXD062685;
+    SCIEX ZenoTOF, Module~10/PXD070049).
     (\textbf{a})~Precursors at 1\% FDR by \texttt{DIA-NN} version
     (1.8.1--2.5.0; light to dark blue) from one \quantmsdiann{}
-    invocation; identification counts grow monotonically with version
+    invocation; precursor counts grow monotonically with version
     (e.g.\ Module~5 91{,}075~$\to$~115{,}735).
-    (\textbf{b})~Precursors quantified ($\geq$3 replicates) versus
-    median $|\epsilon|$ for the ProteoBench \texttt{DIA-NN} submissions
-    that used a predicted-from-FASTA library
-    (\texttt{predictors\_library}~$=$~DIANN; snapshot 29 May 2026) --- the
-    apples-to-apples set matching \quantmsdiann{}'s library-free strategy;
-    the \quantmsdiann{} trajectory across the five \texttt{DIA-NN}
-    versions is overlaid in red. The single-cell (Module~9) and ZenoTOF
-    (Module~10) panels carried no predicted-library \texttt{DIA-NN}
-    submission in the snapshot and so show the \quantmsdiann{} trajectory
-    alone. Unlike the identification-count trend in panel~(a), median
-    $|\epsilon|$ does not always decrease with the newest \texttt{DIA-NN}
-    version. See Additional file~1: Fig.~S3 for parameter-matched
-    per-submission comparisons.
+    (\textbf{b})~Per-species quantification accuracy: measured log$_2$
+    fold-change for each HYE species against the ProteoBench-expected
+    ratio (dashed), with all five \texttt{DIA-NN} versions overlaid
+    (light to dark). The versions cluster tightly on every species and
+    module --- quantification accuracy is essentially invariant across
+    \texttt{DIA-NN} releases, the version-to-version median $|\epsilon|$
+    shift ($\sim$0.01 log$_2$) being far smaller than the per-precursor
+    spread; the mild attenuation at the extreme \emph{E.~coli} ratio is
+    the expected DIA ratio-compression.
+    (\textbf{c})~For the two modules with predicted-from-FASTA
+    (\texttt{predictors\_library}~$=$~DIANN) \texttt{DIA-NN} community
+    submissions (snapshot 29 May 2026), \quantmsdiann{}'s five versions
+    (red) sit within the community median-$|\epsilon|$ distribution
+    (grey; box = IQR). The single-cell and ZenoTOF modules had no
+    predicted-library community submission. See Additional file~1:
+    Fig.~S3 for parameter-matched per-submission comparisons.
   }
   \label{fig:proteobench}
 \end{figure}

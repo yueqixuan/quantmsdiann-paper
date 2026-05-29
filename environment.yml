@@ -29,3 +29,9 @@ dependencies:
   - librsvg                 # provides rsvg-convert, the SVG->PDF converter paper/Makefile prefers
   - pytest>=8.0
   - pip
+  - pip:
+      # ProteoBench is pip-only: supplies the quant-accuracy metric pipeline
+      # (QuantScoresHYE) and the authoritative per-species expected ratios for
+      # the Fig 2 accuracy panel. Pinned to the version used for the cached
+      # metrics so recomputation is reproducible.
+      - proteobench==0.15.5

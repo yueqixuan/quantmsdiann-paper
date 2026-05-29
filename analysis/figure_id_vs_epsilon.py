@@ -342,10 +342,12 @@ def extract_qm_per_species_log2(
 
 
 SPECIES_EXPECTED_LOG2_A_vs_B = {
-    # Module-specific expected log2(A/B). HYE mix on Modules 5/7/10 has
-    # the classic 1:2:0.5 design (human=0, yeast=+1, ecoli=-1). Module 9
-    # (singlecell) uses 1.2:0.2 (human=+0.26, yeast=-2.32). We display
-    # both the expected and empirical values per species per version.
+    # Module-specific expected log2(A_vs_B), validated against ProteoBench's
+    # ParseSettingsBuilder(...).build_parser("DIA-NN").species_expected_ratio():
+    # the HYE modules (Astral/diaPASEF/ZenoTOF) use A_vs_B ratios Human 1.0,
+    # Yeast 2.0, E. coli 0.25 -> log2 0 / +1 / -2; the single-cell module
+    # (PXD049412) uses Human 1.2, Yeast 0.2 -> log2 +0.263 / -2.322.
+    # test_per_species_expected_ratios asserts this dict matches ProteoBench.
     "quant_lfq_DIA_ion_singlecell": {
         "HUMAN": np.log2(1.2),
         "YEAST": np.log2(0.2),
@@ -440,6 +442,159 @@ def render_per_species_log2(
 
 
 # ---------------------------------------------------------------------------
+# Fig 2 accuracy figure — (b) per-species fold-change + (c) vs community
+# ---------------------------------------------------------------------------
+
+# Modules with predicted-library DIA-NN community comparators (for panel c).
+_COMMUNITY_COMPARATOR_DATASETS = ("ProteoBench_Module_7", "PXD062685")
+_SPECIES_X = {"HUMAN": 0, "YEAST": 1, "ECOLI": 2}
+_SPECIES_LABEL = {"HUMAN": "Human", "YEAST": "Yeast", "ECOLI": "E. coli"}
+_VERSION_BLUES = ["#bbdefb", "#64b5f6", "#1f77b4", "#1565c0", "#0d47a1"]
+
+
+def render_accuracy_panels(
+    threshold: int,
+    svg_path: Path,
+    *,
+    datasets: Iterable[str] | None = None,
+) -> pd.DataFrame:
+    """Fig 2 accuracy figure. Two stacked message-bearing panels:
+
+      (b) Per-species fold-change accuracy (2x2, one cell per module). x =
+          HYE species, y = measured log2 ratio; a dashed line marks the
+          ProteoBench-expected ratio per species (accuracy = distance to the
+          line) and the five DIA-NN versions are overlaid (light->dark) so
+          their tight clustering shows that accuracy is version-invariant.
+
+      (c) quantmsdiann within the predicted-library community (1x2, only the
+          modules with predicted-library DIA-NN comparators). Box + strip of
+          the community median |eps| with the five quantmsdiann versions
+          overlaid as a tight cluster.
+
+    Returns the long-format audit table of every plotted point."""
+    datasets = (
+        sorted(datasets, key=_dataset_sort_key)
+        if datasets is not None
+        else sorted(DATASET_TO_MODULE, key=_dataset_sort_key)
+    )
+    fig = plt.figure(figsize=(9.5, 7.4))
+    gs = fig.add_gridspec(3, 2, height_ratios=[1.0, 1.0, 0.95],
+                          hspace=0.5, wspace=0.26)
+    long_rows: list[dict] = []
+
+    # ---- Panel (b): per-species fold-change accuracy ----
+    for idx, dataset in enumerate(datasets):
+        ax = fig.add_subplot(gs[idx // 2, idx % 2])
+        df = extract_qm_per_species_log2(dataset, threshold)
+        expected = SPECIES_EXPECTED_LOG2_A_vs_B.get(
+            DATASET_TO_MODULE.get(dataset, ""), {}
+        )
+        present = [s for s in ("HUMAN", "YEAST", "ECOLI") if s in expected]
+        for species in present:
+            x = _SPECIES_X[species]
+            ax.hlines(expected[species], x - 0.32, x + 0.32,
+                      color="#444444", ls="--", lw=1.1, zorder=1)
+            sub = df[df["species"] == species]
+            for _, row in sub.iterrows():
+                vi = DIANN_VERSIONS.index(row["version"])
+                ax.scatter(
+                    x - 0.22 + 0.11 * vi, row["mean_log2_empirical"],
+                    s=34, color=_VERSION_BLUES[vi],
+                    edgecolor="#333333", linewidths=0.35, zorder=3,
+                )
+                long_rows.append({
+                    "panel": "b", "dataset": dataset, "threshold": threshold,
+                    "species": species, "version": row["version"],
+                    "measured_log2": float(row["mean_log2_empirical"]),
+                    "expected_log2": float(expected[species]),
+                })
+        ax.set_xticks([_SPECIES_X[s] for s in present])
+        ax.set_xticklabels([_SPECIES_LABEL[s] for s in present], fontsize=8)
+        ax.set_xlim(-0.5, max(_SPECIES_X[s] for s in present) + 0.5
+                    if present else 2.5)
+        _label_parts = _dataset_display_label(dataset).split("\n")
+        ax.set_title(
+            _label_parts[1] if len(_label_parts) > 1 else _label_parts[0],
+            loc="left", fontsize=9, fontweight="bold",
+        )
+        ax.set_ylabel("Measured log$_2$ ratio", fontsize=8)
+        ax.tick_params(axis="both", labelsize=7)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+    fig.text(0.005, 0.99,
+             "(b) Per-species fold-change accuracy "
+             "(dashed = expected ratio)",
+             fontsize=10, fontweight="bold", va="top")
+    # Version colour key (light -> dark = oldest -> newest DIA-NN release).
+    from matplotlib.lines import Line2D
+    version_handles = [
+        Line2D([0], [0], marker="o", linestyle="none", markersize=7,
+               markerfacecolor=_VERSION_BLUES[i], markeredgecolor="#333333",
+               label=_VERSION_LABELS.get(v, v))
+        for i, v in enumerate(DIANN_VERSIONS)
+    ]
+    fig.legend(handles=version_handles, loc="upper right",
+               bbox_to_anchor=(0.99, 1.005), ncol=5, fontsize=7.5,
+               frameon=False, title="DIA-NN version", title_fontsize=7.5,
+               handletextpad=0.2, columnspacing=0.9)
+
+    # ---- Panel (c): quantmsdiann within the predicted-library community ----
+    comp = [d for d in datasets if d in _COMMUNITY_COMPARATOR_DATASETS]
+    for j, dataset in enumerate(comp):
+        ax = fig.add_subplot(gs[2, j])
+        community = extract_community_id_vs_eps(dataset, threshold)
+        community = community[
+            community["library_kind"] == LIBRARY_KIND_PREDICTED
+        ]["median_abs_epsilon_global"].astype(float).values
+        qm = extract_quantmsdiann_id_vs_eps(dataset, threshold)
+        qm_eps = qm["median_abs_epsilon_global"].astype(float).values
+        if len(community):
+            ax.boxplot([community], positions=[0], widths=0.5,
+                       showfliers=False,
+                       medianprops=dict(color="#37474f", lw=1.2))
+            cx = ([0.0] if len(community) == 1
+                  else list(np.linspace(-0.16, 0.16, len(community))))
+            ax.scatter(cx, community, s=34, color="#90a4ae",
+                       edgecolor="#555555", linewidths=0.3, alpha=0.85,
+                       label=f"community (n={len(community)})", zorder=3)
+        if len(qm_eps):
+            qx = ([1.0] if len(qm_eps) == 1
+                  else list(np.linspace(0.84, 1.16, len(qm_eps))))
+            ax.scatter(qx, qm_eps, s=60, color="#d62728",
+                       edgecolor="#7f1d1d", linewidths=0.6,
+                       label="quantmsdiann (5 versions)", zorder=4)
+        ax.set_xticks([0, 1])
+        ax.set_xticklabels(["community", "quantmsdiann"], fontsize=8)
+        ax.set_xlim(-0.6, 1.6)
+        _label_parts = _dataset_display_label(dataset).split("\n")
+        ax.set_title(
+            _label_parts[1] if len(_label_parts) > 1 else _label_parts[0],
+            loc="left", fontsize=9, fontweight="bold",
+        )
+        ax.set_ylabel("Median |ε|", fontsize=8)
+        ax.tick_params(axis="both", labelsize=7)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.legend(fontsize=6.5, frameon=False, loc="upper right")
+        for _, row in qm.iterrows():
+            long_rows.append({
+                "panel": "c", "dataset": dataset, "threshold": threshold,
+                "species": None, "version": row["version"],
+                "measured_log2": None,
+                "median_abs_epsilon": float(row["median_abs_epsilon_global"]),
+            })
+    fig.text(0.005, 0.34,
+             "(c) quantmsdiann within the predicted-library community "
+             "(median |ε|; lower = more accurate)",
+             fontsize=10, fontweight="bold", va="top")
+
+    svg_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(svg_path, bbox_inches="tight")
+    plt.close(fig)
+    return pd.DataFrame(long_rows)
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -463,26 +618,38 @@ def main() -> int:  # pragma: no cover
                     "Populate via cached_proteobench_metrics(...)."
                 )
 
+    # Fig 2 accuracy figure (main): (b) per-species fold-change accuracy +
+    # (c) quantmsdiann within the predicted-library community.
+    acc_df = render_accuracy_panels(
+        threshold=3, svg_path=FIGURES_DIR / "main_accuracy.svg",
+    )
+    acc_df.to_csv(data_dir / "accuracy_min3.tsv", sep="\t", index=False)
+    print(
+        f"Fig 2b/c (≥3 rep): {acc_df.shape[0]} points rendered to "
+        f"{FIGURES_DIR / 'main_accuracy.svg'}"
+    )
+
+    # Identifications-vs-accuracy scatter, demoted to the supplement: it
+    # over-resolves the (non-significant) version-to-version |eps| spread, so
+    # it is no longer the main accuracy panel — kept for completeness.
     long_df = render_id_vs_epsilon(
-        threshold=3, svg_path=FIGURES_DIR / "main_id_vs_epsilon.svg",
+        threshold=3, svg_path=supp_dir / "supp_id_vs_epsilon_min3.svg",
     )
     long_df.to_csv(
         data_dir / "id_vs_epsilon_min3.tsv", sep="\t", index=False,
     )
     print(
-        f"F1b (≥3 rep): {long_df.shape[0]} points rendered to "
-        f"{FIGURES_DIR / 'main_id_vs_epsilon.svg'}"
+        f"supp id-vs-ε (≥3 rep): {long_df.shape[0]} points rendered to "
+        f"{supp_dir / 'supp_id_vs_epsilon_min3.svg'}"
     )
 
+    # Per-species strip (now subsumed by main panel (b)) retained as a
+    # supplementary cross-check.
     supp_df = render_per_species_log2(
         threshold=3, svg_path=supp_dir / "supp_per_species_log2_min3.svg",
     )
     supp_df.to_csv(
         data_dir / "per_species_log2_min3.tsv", sep="\t", index=False,
-    )
-    print(
-        f"F1c (≥3 rep): {supp_df.shape[0]} points rendered to "
-        f"{supp_dir / 'supp_per_species_log2_min3.svg'}"
     )
     return 0
 

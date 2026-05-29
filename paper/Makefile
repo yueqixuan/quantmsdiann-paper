@@ -21,7 +21,7 @@ SVGS := \
 	quantmsdiann_benchmarks/main_benchmarks_overview.svg \
 	quantmsdiann_benchmarks/main_benchmarks_precursors.svg \
 	quantmsdiann_benchmarks/main_diann_quantmsdiann_parity.svg \
-	quantmsdiann_benchmarks/main_id_vs_epsilon.svg \
+	quantmsdiann_benchmarks/main_accuracy.svg \
 	quantmsdiann_benchmarks/supp_vs_proteobench_matched_min3.svg \
 	quantmsdiann_benchmarks/supp_vs_proteobench_min3.svg \
 	PXD003539/main_comparison.svg \
