@@ -47,17 +47,17 @@ The cell-line bulk DIA cohorts were assembled by programmatic search of PRIDE Ar
 \textbf{Accession} & \textbf{Instrument} & \textbf{Type} & \textbf{Public date} \\
 \hline
 \multicolumn{4}{l}{\textit{ProteoBench benchmarks}} \\
-PXD049412 & Orbitrap Astral & Single-cell & 2025 \\
-PXD062685 & timsTOF SCP & diaPASEF & 2025 \\
-PXD070049 & ZenoTOF 7600 & Bulk (mixed-species) & 2025 \\
-Module 7  & Orbitrap Astral & Bulk (mixed-species) & 2025 \\
+PXD049412 & Orbitrap Astral & Single-cell (Module~9) & 2024 \\
+PXD062685 & timsTOF SCP & diaPASEF (Module~5) & 2025 \\
+PXD070049 & ZenoTOF 7600 & Mixed-species (Module~10) & 2025 \\
+Module 7  & Orbitrap Astral & Mixed-species (Module~7) & 2025 \\
 \hline
 \multicolumn{4}{l}{\textit{Bulk cell-line panel}} \\
 PXD003539 & TripleTOF 5600 & Cell line (NCI-60) & 2016 \\
 PXD030304 & TripleTOF 6600 & Cell line (ProCan) & 2022 \\
-PXD004701 & TripleTOF 5600 & Cell line (breast) & 2017 \\
+PXD004701 & TripleTOF 5600 & Cell line (Sun 2023) & 2016 \\
 PXD041421 & timsTOF (diaPASEF) & Cell line (Wang 2023) & 2023 \\
-PXD017199 & TripleTOF 6600 & Cell line (breast) & 2021 \\
+PXD017199 & TripleTOF 6600 & Cell line (Tognetti 2021) & 2021 \\
 \hline
 \multicolumn{4}{l}{\textit{Scalability experiment}} \\
 PXD071075 & Orbitrap Eclipse & Single-cell & 2025 \\
@@ -68,7 +68,7 @@ PXD071075 & Orbitrap Eclipse & Single-cell & 2025 \\
 \section{Identification filtering and protein counting}
 \label{sec:supp-filter}
 
-All identification counts reported in the cell-line reanalyses and pan-cohort (main-text Figs.~3, 4 and Figs.~S5--S12 below) are target-only under a conservative contaminant/decoy filter: any row whose \texttt{Protein.Group} field contains a token prefixed with \texttt{CONTAM\_}, \texttt{Cont\_}, \texttt{ENTRAP\_}, or \texttt{DECOY\_} is dropped before counting, including mixed groups.
+All identification counts reported in the cell-line reanalyses and pan-cohort (main-text Figs.~3, 4 and Figs.~S5--S13 below) are target-only under a conservative contaminant/decoy filter: any row whose \texttt{Protein.Group} field contains a token prefixed with \texttt{CONTAM\_}, \texttt{Cont\_}, \texttt{ENTRAP\_}, or \texttt{DECOY\_} is dropped before counting, including mixed groups.
 Original-paper headline counts were taken from the corresponding publication's table or text without re-filtering; where the original applied a per-protein peptide threshold (for example, the ProCan-DepMapSanger paper reports both an 8{,}498 protein-group headline at Global.Q.Value~$\leq 0.01$ and a 6{,}692 count under the additional $\geq 2$ supporting-peptide rule), the like-for-like \quantmsdiann{} count is reported under the same threshold.
 
 \section{Per-process runtime and resource envelopes}

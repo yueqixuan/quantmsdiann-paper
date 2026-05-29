@@ -1831,13 +1831,13 @@ def render_atlas_main(
     ax_c = fig.add_subplot(gs[2, 0])
 
     _render_panel_a_headlines(ax_a, headlines)
-    _annotate_panel_letter(ax_a, "A", subtitle="Headline counts (paper vs quantmsdiann)")
+    _annotate_panel_letter(ax_a, "a", subtitle="Headline counts (paper vs quantmsdiann)")
 
     _render_panel_c_tissue_coverage(ax_b, tissue_rows)
-    _annotate_panel_letter(ax_b, "B", subtitle="Cell lines per tissue")
+    _annotate_panel_letter(ax_b, "b", subtitle="Cell lines per tissue")
 
     _render_panel_f_tissue_protein_counts(ax_c, tissue_protein_rows)
-    _annotate_panel_letter(ax_c, "C", subtitle="Proteins per tissue")
+    _annotate_panel_letter(ax_c, "c", subtitle="Proteins per tissue")
 
     svg_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(svg_path, bbox_inches="tight")

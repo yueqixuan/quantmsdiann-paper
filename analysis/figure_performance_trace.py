@@ -898,8 +898,7 @@ def render_parallelism_scatter(
 
     ax.set_xlabel("Number of MS data files", fontsize=label_size)
     ax.set_ylabel(
-        "Final-run wallclock (hours)" if composite else
-        "Final-run wallclock from pipeline_report (hours)",
+        "Final-run wall-clock (hours)",
         fontsize=label_size,
     )
     ax.spines["top"].set_visible(False)
