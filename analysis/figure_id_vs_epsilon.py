@@ -450,6 +450,9 @@ _COMMUNITY_COMPARATOR_DATASETS = ("ProteoBench_Module_7", "PXD062685")
 _SPECIES_X = {"HUMAN": 0, "YEAST": 1, "ECOLI": 2}
 _SPECIES_LABEL = {"HUMAN": "Human", "YEAST": "Yeast", "ECOLI": "E. coli"}
 _VERSION_BLUES = ["#bbdefb", "#64b5f6", "#1f77b4", "#1565c0", "#0d47a1"]
+# Distinct marker per DIA-NN version so versions are told apart by shape as
+# well as by the blue shade (accessible, and legible when points overlap).
+_VERSION_MARKERS = ["o", "^", "s", "D", "v"]
 
 
 def render_accuracy_panels(
@@ -499,8 +502,9 @@ def render_accuracy_panels(
                 vi = DIANN_VERSIONS.index(row["version"])
                 ax.scatter(
                     x - 0.22 + 0.11 * vi, row["mean_log2_empirical"],
-                    s=34, color=_VERSION_BLUES[vi],
-                    edgecolor="#333333", linewidths=0.35, zorder=3,
+                    s=20, marker=_VERSION_MARKERS[vi],
+                    color=_VERSION_BLUES[vi],
+                    edgecolor="#333333", linewidths=0.3, zorder=3,
                 )
                 long_rows.append({
                     "panel": "b", "dataset": dataset, "threshold": threshold,
@@ -528,8 +532,9 @@ def render_accuracy_panels(
     # Version colour key (light -> dark = oldest -> newest DIA-NN release).
     from matplotlib.lines import Line2D
     version_handles = [
-        Line2D([0], [0], marker="o", linestyle="none", markersize=7,
-               markerfacecolor=_VERSION_BLUES[i], markeredgecolor="#333333",
+        Line2D([0], [0], marker=_VERSION_MARKERS[i], linestyle="none",
+               markersize=6, markerfacecolor=_VERSION_BLUES[i],
+               markeredgecolor="#333333",
                label=_VERSION_LABELS.get(v, v))
         for i, v in enumerate(DIANN_VERSIONS)
     ]
@@ -554,15 +559,23 @@ def render_accuracy_panels(
                        medianprops=dict(color="#37474f", lw=1.2))
             cx = ([0.0] if len(community) == 1
                   else list(np.linspace(-0.16, 0.16, len(community))))
-            ax.scatter(cx, community, s=34, color="#90a4ae",
+            ax.scatter(cx, community, s=16, color="#90a4ae",
                        edgecolor="#555555", linewidths=0.3, alpha=0.85,
                        label=f"community (n={len(community)})", zorder=3)
         if len(qm_eps):
-            qx = ([1.0] if len(qm_eps) == 1
-                  else list(np.linspace(0.84, 1.16, len(qm_eps))))
-            ax.scatter(qx, qm_eps, s=60, color="#d62728",
-                       edgecolor="#7f1d1d", linewidths=0.6,
-                       label="quantmsdiann (5 versions)", zorder=4)
+            # Match the community box so the two distributions read side by side.
+            ax.boxplot([qm_eps], positions=[1], widths=0.5, showfliers=False,
+                       boxprops=dict(color="#7f1d1d"),
+                       whiskerprops=dict(color="#7f1d1d"),
+                       capprops=dict(color="#7f1d1d"),
+                       medianprops=dict(color="#d62728", lw=1.2))
+            qx = (list(np.linspace(0.84, 1.16, len(qm_eps)))
+                  if len(qm_eps) > 1 else [1.0])
+            for k, (xk, yk) in enumerate(zip(qx, qm_eps)):
+                ax.scatter(xk, yk, s=22, marker=_VERSION_MARKERS[k],
+                           color="#d62728", edgecolor="#7f1d1d",
+                           linewidths=0.5, zorder=4,
+                           label="quantmsdiann (5 versions)" if k == 0 else None)
         ax.set_xticks([0, 1])
         ax.set_xticklabels(["community", "quantmsdiann"], fontsize=8)
         ax.set_xlim(-0.6, 1.6)
