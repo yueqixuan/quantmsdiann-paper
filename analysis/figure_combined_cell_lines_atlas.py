@@ -2,7 +2,7 @@
 
 Integrates the five independent cell-line reanalyses already shipped
 (PXD003539 NCI-60, PXD030304 ProCan-DepMapSanger 949 lines, PXD004701
-BC 76 lines, PXD017199 Tognetti 67 breast lines, PXD041421 Mehnert)
+BC 76 lines, PXD017199 Tognetti 67 breast lines, PXD041421 Wang 2023)
 into two paper-ready figures that position the quantmsdiann pipeline as
 a single uniform tool covering broad cancer cell-line / tissue / proteome
 space. The original single A–H grid was split in two for readability.
@@ -109,7 +109,7 @@ DATASET_LABELS = {
     "PXD030304": "PXD030304\n(ProCan 2022)",
     "PXD004701": "PXD004701\n(Sun 2023)",
     "PXD017199": "PXD017199\n(Tognetti 2021)",
-    "PXD041421": "PXD041421\n(Mehnert 2023)",
+    "PXD041421": "PXD041421\n(Wang 2023)",
 }
 
 
