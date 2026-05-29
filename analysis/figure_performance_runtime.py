@@ -340,6 +340,7 @@ INSTRUMENT_COLOURS = {
     "TripleTOF 6600": "#e53935",   # red
     "timsTOF SCP":   "#8e24aa",    # purple
     "Orbitrap Astral": "#1e88e5",  # blue
+    "Orbitrap Eclipse": "#3949ab", # indigo (PXD071075 single-cell sweep)
     "ZenoTOF 7600":  "#00897b",    # teal
     "unknown":       "#9e9e9e",    # grey
 }

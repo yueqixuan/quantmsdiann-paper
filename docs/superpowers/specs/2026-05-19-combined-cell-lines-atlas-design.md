@@ -172,7 +172,13 @@ fallback.
 
 Under `analysis/figures/combined/`:
 
-- `atlas.pdf`, `atlas.png`, `atlas.svg` — the single multi-panel figure.
+- `atlas_overlap.svg` (panels A/B/D/G — cohort headlines, cell-line UpSet,
+  protein UpSet, detection histogram) and `atlas_distribution.svg`
+  (panels C/E/F/H — per-tissue cell-line stack, rarefaction, per-tissue
+  protein stack, Expression-Atlas overlap). The original combined
+  `atlas.svg` was split into these two SVGs on 2026-05-21 to give each
+  half breathing room (the 8-panel 4×2 stack was too tall to read in a
+  paper figure).
 - `combined_counts.tsv` — the panel-feeding numbers (Panel A bars,
   Panel B Venn region sizes, Panel C per-tissue per-dataset cell-line
   counts, Panel D Venn region sizes).

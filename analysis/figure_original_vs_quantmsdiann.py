@@ -14,6 +14,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import requests
 
+from analysis.contaminant_filter import is_target_protein_group
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = REPO_ROOT / "data" / "PXD003539"
 FIGURES_DIR = REPO_ROOT / "analysis" / "figures" / "PXD003539"
@@ -105,8 +107,14 @@ class Counts:
     walzer_proteins: int
     walzer_ea_genes: int  # new
     diann_peptides: int
+    # Headline target-only protein groups (post conservative contaminant
+    # filter applied to pr_matrix.tsv unique Protein.Group rows).
     diann_proteins: int
     diann_precursors: int
+    # Audit baseline: diannsummary.log "Protein groups with global
+    # q-value <= 0.01" line (unfiltered). Default keeps backwards-
+    # compatibility with callers that don't yet populate it.
+    diann_proteins_unfiltered: int = 0
 
 
 def download_if_missing(url: str, dest: Path, *, retries: int = 2) -> Path:
@@ -332,20 +340,26 @@ def unique_peptides_per_protein_diann(matrix_path: Path) -> dict[str, int]:
     identify the protein (the natural definition of 'unique peptides per
     protein'). Multiple charge states / modforms of the same peptide collapse
     to a single Stripped.Sequence entry."""
-    df = pd.read_csv(matrix_path, sep="\t", dtype=str)
-    missing = [c for c in PR_METADATA_COLS if c not in df.columns]
+    # Stream in chunks: the ProCan pr_matrix is ~2 GB and loading it whole
+    # exhausts memory. We accumulate, per Protein.Group, the set of distinct
+    # proteotypic Stripped.Sequence values seen in any quantified row.
+    header = pd.read_csv(matrix_path, sep="\t", nrows=0)
+    missing = [c for c in PR_METADATA_COLS if c not in header.columns]
     if missing:
         raise ValueError(
             f"DIA-NN matrix missing metadata columns: {missing}"
         )
-    sample_cols = [c for c in df.columns if c not in PR_METADATA_COLS]
-    quantified = df[df[sample_cols].notna().any(axis=1)]
-    proteotypic = quantified[quantified["Proteotypic"] == "1"]
-    return (
-        proteotypic.groupby("Protein.Group")["Stripped.Sequence"]
-        .nunique()
-        .to_dict()
-    )
+    sample_cols = [c for c in header.columns if c not in PR_METADATA_COLS]
+    pg_to_peps: dict[str, set[str]] = {}
+    for chunk in pd.read_csv(matrix_path, sep="\t", dtype=str, chunksize=100_000):
+        proteotypic = chunk[chunk["Proteotypic"] == "1"]
+        if proteotypic.empty:
+            continue
+        quantified = proteotypic[proteotypic[sample_cols].notna().any(axis=1)]
+        for pg, seq in zip(quantified["Protein.Group"], quantified["Stripped.Sequence"]):
+            if is_target_protein_group(pg):
+                pg_to_peps.setdefault(pg, set()).add(seq)
+    return {pg: len(s) for pg, s in pg_to_peps.items()}
 
 
 def unique_peptides_per_protein_openswath(
@@ -766,11 +780,35 @@ def parse_summary_log(log_path: Path) -> int:
     )
 
 
+def count_target_protein_groups_pr_matrix(pr_matrix_path: Path) -> tuple[int, int]:
+    """Return `(unfiltered_unique_pg, target_unique_pg)` from a DIA-NN
+    `pr_matrix.tsv`. PXD003539 has no `pg_matrix.tsv` on disk, so the
+    target-only protein-group headline must be derived from the
+    pr_matrix's unique `Protein.Group` strings.
+
+    Unfiltered = the count of distinct Protein.Group strings among rows
+    quantified in at least one run (matches the historical baseline).
+    Target = the same set, restricted to Protein.Group strings whose
+    every semicolon-separated token has no
+    CONTAM_/Cont_/ENTRAP_/DECOY_/decoy_ prefix per the 2026-05-21
+    conservative-filter spec.
+    """
+    df = pd.read_csv(pr_matrix_path, sep="\t", dtype=str)
+    missing = [c for c in PR_METADATA_COLS if c not in df.columns]
+    if missing:
+        raise ValueError(
+            f"PXD003539 pr_matrix missing metadata columns: {missing}"
+        )
+    sample_cols = [c for c in df.columns if c not in PR_METADATA_COLS]
+    quantified = df[df[sample_cols].notna().any(axis=1)]
+    pg_unique = set(quantified["Protein.Group"].dropna().unique().tolist())
+    target_unique = {pg for pg in pg_unique if is_target_protein_group(pg)}
+    return (len(pg_unique), len(target_unique))
+
+
 def render_figure(
     counts: Counts,
-    pdf_path: Path,
-    png_path: Path,
-    svg_path: Path | None = None,
+    svg_path: Path,
 ) -> None:
     """Render a 2-condition x 2-metric grouped bar chart. Paper-ready: only
     bars, value labels, axis labels, and legend — no title, no footer."""
@@ -839,20 +877,15 @@ def render_figure(
     ax.legend(loc="upper right", frameon=False)
 
     fig.tight_layout()
-    pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(pdf_path)
-    fig.savefig(png_path, dpi=300)
-    if svg_path is not None:
-        fig.savefig(svg_path)
+    svg_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(svg_path)
     plt.close(fig)
 
 
 def render_missing_values_per_run(
     guo_per_run: dict[str, float],
     diann_per_run: dict[str, float],
-    pdf_path: Path,
-    png_path: Path,
-    svg_path: Path | None = None,
+    svg_path: Path,
 ) -> None:
     """Plot per-run non-NA fraction for both pipelines. Paper-ready: no title,
     no footer; only lines, axis labels, and legend.
@@ -888,11 +921,8 @@ def render_missing_values_per_run(
     ax.legend(loc="lower right", frameon=False)
 
     fig.tight_layout()
-    pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(pdf_path)
-    fig.savefig(png_path, dpi=300)
-    if svg_path is not None:
-        fig.savefig(svg_path)
+    svg_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(svg_path)
     plt.close(fig)
 
 
@@ -906,9 +936,7 @@ _DISEASE_LABEL_ORDER = [
 def render_genes_per_condition(
     walzer_per_cond: dict[str, set[str]],
     diann_per_cond: dict[str, set[str]],
-    pdf_path: Path,
-    png_path: Path,
-    svg_path: Path | None = None,
+    svg_path: Path,
 ) -> None:
     """Grouped bar chart: per disease condition, two bars (Walzer 2022
     E-PROT-73 vs quantmsdiann) showing the number of distinct Ensembl gene IDs
@@ -956,20 +984,15 @@ def render_genes_per_condition(
 
     fig.tight_layout(rect=(0, 0.12, 1, 1))
 
-    pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(pdf_path)
-    fig.savefig(png_path, dpi=300)
-    if svg_path is not None:
-        fig.savefig(svg_path)
+    svg_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(svg_path)
     plt.close(fig)
 
 
 def render_peptides_per_protein(
     guo_peptide_counts: dict[str, int],
     diann_peptide_counts: dict[str, int],
-    pdf_path: Path,
-    png_path: Path,
-    svg_path: Path | None = None,
+    svg_path: Path,
     thresholds: tuple[int, ...] = (1, 2, 3, 5, 10),
 ) -> None:
     """Grouped bar chart: number of protein groups with >=k unique peptides,
@@ -1009,11 +1032,8 @@ def render_peptides_per_protein(
     ax.legend(loc="upper right", frameon=False)
 
     fig.tight_layout()
-    pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(pdf_path)
-    fig.savefig(png_path, dpi=300)
-    if svg_path is not None:
-        fig.savefig(svg_path)
+    svg_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(svg_path)
     plt.close(fig)
 
 
@@ -1035,9 +1055,15 @@ def write_counts_tsv(counts: Counts, tsv_path: Path) -> None:
         ("Protein groups", "Walzer 2022 (CAL + OpenSWATH, top3)",
          counts.walzer_proteins,
          "Supplementary Table S2 (PXD003539, 1% FDR, top3, unfiltered)"),
-        ("Protein groups", "quantmsdiann (DIA-NN, 1% FDR)",
+        ("Protein groups", "quantmsdiann (DIA-NN, 1% FDR, target-only)",
          counts.diann_proteins,
-         "from diannsummary.log (Protein groups with global q-value <= 0.01)"),
+         "pr_matrix.tsv unique Protein.Group rows (quantified, target-only); "
+         "post conservative contaminant filter "
+         "(CONTAM_/Cont_/ENTRAP_/DECOY_/decoy_ token) per 2026-05-21 spec"),
+        ("Protein groups", "quantmsdiann (DIA-NN, 1% FDR, diannsummary.log)",
+         counts.diann_proteins_unfiltered,
+         "audit baseline: diannsummary.log 'Protein groups with "
+         "global q-value <= 0.01' line (unfiltered)"),
         ("Precursors aux", "Guo 2019 (OpenSWATH, deposited)",
          counts.guo_precursors,
          "target rows with >=1 non-NA Intensity in feature_alignment matrix"),
@@ -1093,7 +1119,14 @@ def main() -> int:  # pragma: no cover
         pr_path, PR_METADATA_COLS, unique_by="Stripped.Sequence"
     )
     diann_precursors = count_quantified_rows(pr_path, PR_METADATA_COLS)
-    diann_proteins = parse_summary_log(log_path)
+    # Apply conservative contaminant filter at the Protein.Group level:
+    # headline = unique target-only PGs in pr_matrix; the log value is
+    # kept as the unfiltered audit baseline.
+    diann_proteins_log = parse_summary_log(log_path)
+    pg_unf, pg_target = count_target_protein_groups_pr_matrix(pr_path)
+    print(f"  pr_matrix unique Protein.Group: unfiltered={pg_unf:,}  "
+          f"target_only={pg_target:,} (delta {pg_unf - pg_target:,})")
+    diann_proteins = pg_target
 
     print("Computing Guo 2019 (OpenSWATH) counts...")
     guo_precursors, guo_peptides, guo_proteins = count_openswath_quantified(opensw_path)
@@ -1112,17 +1145,18 @@ def main() -> int:  # pragma: no cover
         diann_peptides=diann_peptides,
         diann_proteins=diann_proteins,
         diann_precursors=diann_precursors,
+        diann_proteins_unfiltered=diann_proteins_log,
     )
 
     # 4. Render figure
-    pdf_path = FIGURES_DIR / "main_comparison.pdf"
-    png_path = FIGURES_DIR / "main_comparison.png"
     svg_path = FIGURES_DIR / "main_comparison.svg"
-    render_figure(counts, pdf_path, png_path, svg_path)
-    print(f"Figure saved to {pdf_path}, {png_path}, {svg_path}")
+    render_figure(counts, svg_path)
+    print(f"Figure saved to {svg_path}")
 
     # 5. Write auditable TSV
-    tsv_path = FIGURES_DIR / "counts.tsv"
+    data_dir = FIGURES_DIR / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    tsv_path = data_dir / "counts.tsv"
     write_counts_tsv(counts, tsv_path)
     print(f"Counts TSV saved to {tsv_path}")
 
@@ -1130,14 +1164,12 @@ def main() -> int:  # pragma: no cover
     print("Computing per-run completeness for supplementary figure B...")
     guo_per_run = per_run_real_detection_fraction_openswath(opensw_path)
     diann_per_run = per_run_real_detection_fraction_diann_parquet(parquet_path)
-    suppB_pdf = FIGURES_DIR / "supp_missing_values_per_run.pdf"
-    suppB_png = FIGURES_DIR / "supp_missing_values_per_run.png"
     suppB_svg = FIGURES_DIR / "supp_missing_values_per_run.svg"
     render_missing_values_per_run(
-        guo_per_run, diann_per_run, suppB_pdf, suppB_png, suppB_svg,
+        guo_per_run, diann_per_run, suppB_svg,
     )
     print(
-        f"Supplementary B figure saved to {suppB_pdf}, {suppB_png}, {suppB_svg}"
+        f"Supplementary B figure saved to {suppB_svg}"
     )
 
     # Also print median per-run fraction for each pipeline.
@@ -1152,14 +1184,12 @@ def main() -> int:  # pragma: no cover
     print("Computing unique peptides per protein for supplementary figure C...")
     guo_pep_per_prot = unique_peptides_per_protein_openswath(opensw_path)
     diann_pep_per_prot = unique_peptides_per_protein_diann(pr_path)
-    suppC_pdf = FIGURES_DIR / "supp_peptides_per_protein.pdf"
-    suppC_png = FIGURES_DIR / "supp_peptides_per_protein.png"
     suppC_svg = FIGURES_DIR / "supp_peptides_per_protein.svg"
     render_peptides_per_protein(
-        guo_pep_per_prot, diann_pep_per_prot, suppC_pdf, suppC_png, suppC_svg,
+        guo_pep_per_prot, diann_pep_per_prot, suppC_svg,
     )
     print(
-        f"Supplementary C figure saved to {suppC_pdf}, {suppC_png}, {suppC_svg}"
+        f"Supplementary C figure saved to {suppC_svg}"
     )
     print(
         f"Proteins with >=2 unique peptides: "
@@ -1184,12 +1214,10 @@ def main() -> int:  # pragma: no cover
     diann_ensg, diann_unmapped = quantmsdiann_genes_as_ensembl(
         diann_genes_path, symbol_to_ensg, min_detection_fraction=0.5,
     )
-    suppD_pdf = FIGURES_DIR / "supp_walzer_vs_quantms_genes_ensembl.pdf"
-    suppD_png = FIGURES_DIR / "supp_walzer_vs_quantms_genes_ensembl.png"
     suppD_svg = FIGURES_DIR / "supp_walzer_vs_quantms_genes_ensembl.svg"
     from analysis.venn_protein_accessions import render_venn_diagram
     render_venn_diagram(
-        walzer_ensg, diann_ensg, suppD_pdf, suppD_png, suppD_svg,
+        walzer_ensg, diann_ensg, suppD_svg,
         left_label="Walzer 2022\n(E-PROT-73)",
         right_label="quantmsdiann\n(DIA-NN, $\\geq$50% of runs)",
         left_color="#90caf9",
@@ -1197,7 +1225,7 @@ def main() -> int:  # pragma: no cover
     )
     inter_ensg = walzer_ensg & diann_ensg
     print(
-        f"Supplementary D figure saved to {suppD_pdf}, {suppD_png}, {suppD_svg}"
+        f"Supplementary D figure saved to {suppD_svg}"
     )
     print(
         f"Ensembl gene IDs (DIA-NN >=50% of runs): Walzer={len(walzer_ensg):,}  "
@@ -1233,14 +1261,12 @@ def main() -> int:  # pragma: no cover
         diann_genes_path, sdrf_path, ea_design_path, symbol_to_ensg,
         min_global_detection_fraction=0.5,
     )
-    suppF_pdf = FIGURES_DIR / "supp_genes_per_condition.pdf"
-    suppF_png = FIGURES_DIR / "supp_genes_per_condition.png"
     suppF_svg = FIGURES_DIR / "supp_genes_per_condition.svg"
     render_genes_per_condition(
-        walzer_per_cond, diann_per_cond, suppF_pdf, suppF_png, suppF_svg,
+        walzer_per_cond, diann_per_cond, suppF_svg,
     )
     print(
-        f"Supplementary F figure saved to {suppF_pdf}, {suppF_png}, {suppF_svg}"
+        f"Supplementary F figure saved to {suppF_svg}"
     )
     print("Per-condition gene detections (Walzer | quantmsdiann):")
     for cond in sorted(set(walzer_per_cond) | set(diann_per_cond)):
@@ -1257,13 +1283,11 @@ def main() -> int:  # pragma: no cover
     )
     guo_acc = accessions_with_min_peptides_openswath(opensw_path, min_peptides=2)
     diann_acc = accessions_with_min_peptides_diann(pr_path, min_peptides=2)
-    suppE_pdf = FIGURES_DIR / "supp_venn_protein_accessions.pdf"
-    suppE_png = FIGURES_DIR / "supp_venn_protein_accessions.png"
     suppE_svg = FIGURES_DIR / "supp_venn_protein_accessions.svg"
-    render_venn_diagram(guo_acc, diann_acc, suppE_pdf, suppE_png, suppE_svg)
+    render_venn_diagram(guo_acc, diann_acc, suppE_svg)
     inter = guo_acc & diann_acc
     print(
-        f"Supplementary E figure saved to {suppE_pdf}, {suppE_png}, {suppE_svg}"
+        f"Supplementary E figure saved to {suppE_svg}"
     )
     print(
         f"Accessions (>=2 unique peptides): "
@@ -1297,9 +1321,12 @@ def main() -> int:  # pragma: no cover
             f"WARNING: diann_precursors={diann_precursors:,} deviates >1% from expected 117,720",
             file=sys.stderr,
         )
-    if diann_proteins != 6927:
+    # diannsummary.log unfiltered baseline (pinned by the historical
+    # spec) — the post-filter target headline is lower.
+    if diann_proteins_log != 6927:
         print(
-            f"WARNING: diann_proteins={diann_proteins:,} != expected 6,927",
+            f"WARNING: diann_proteins (log, unfiltered)={diann_proteins_log:,} "
+            f"!= expected 6,927",
             file=sys.stderr,
         )
     if abs(guo_precursors - 48374) / 48374 > 0.01:

@@ -27,6 +27,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from analysis.contaminant_filter import (
+    count_target_protein_groups,
+    is_target_protein_group,
+)
 from analysis.figure_original_vs_quantmsdiann import (
     download_if_missing,
 )
@@ -169,8 +173,14 @@ class Counts:
     sun_peptides: int                       # 90,762 (paper)
     sun_tnbc: int                           # 39 (paper)
     sun_non_tnbc: int                       # 37 (paper)
-    quantmsdiann_proteins_strict: int       # 7,746 (diannsummary.log)
-    quantmsdiann_proteins_consistent: int   # post-consistency-filter union
+    # Headline = post-filter pg_matrix protein group count (target-only)
+    quantmsdiann_proteins_strict: int
+    # Audit: diannsummary.log "Protein groups with global q-value <= 0.01"
+    quantmsdiann_proteins_strict_unfiltered: int
+    # Audit: pg_matrix.tsv raw row count pre-filter
+    quantmsdiann_proteins_pg_matrix_unfiltered: int
+    quantmsdiann_proteins_consistent: int   # post-consistency-filter union (filtered)
+    quantmsdiann_proteins_consistent_unfiltered: int  # consistency union pre-filter
     quantmsdiann_peptides: int              # unique Stripped.Sequence
     quantmsdiann_precursors: int            # 100,499 (diannsummary.log)
 
@@ -369,9 +379,7 @@ def unique_peptides_quantified(pr_matrix_path: Path) -> int:
 
 def render_main_figure(
     counts: Counts,
-    pdf_path: Path,
-    png_path: Path,
-    svg_path: Path | None = None,
+    svg_path: Path,
 ) -> None:
     """Grouped bar chart: Sun et al. 2023 vs quantmsdiann across 3 metrics.
 
@@ -419,19 +427,14 @@ def render_main_figure(
     ax.legend(loc="upper right", frameon=False)
 
     fig.tight_layout()
-    pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(pdf_path)
-    fig.savefig(png_path, dpi=300)
-    if svg_path is not None:
-        fig.savefig(svg_path)
+    svg_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(svg_path)
     plt.close(fig)
 
 
 def render_proteins_per_subtype(
     diann_per_subtype: dict[str, set[str]],
-    pdf_path: Path,
-    png_path: Path,
-    svg_path: Path | None = None,
+    svg_path: Path,
     *,
     sun_reference: int = SUN_PROTEINS,
 ) -> None:
@@ -464,41 +467,107 @@ def render_proteins_per_subtype(
     ax.legend(loc="upper right", frameon=False)
 
     fig.tight_layout()
-    pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(pdf_path)
-    fig.savefig(png_path, dpi=300)
-    if svg_path is not None:
-        fig.savefig(svg_path)
+    svg_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(svg_path)
     plt.close(fig)
 
 
 def render_per_run_completeness(
     diann_per_run: dict[str, float],
-    pdf_path: Path,
-    png_path: Path,
-    svg_path: Path | None = None,
+    svg_path: Path,
+    *,
+    run_to_subtype: dict[str, str] | None = None,
 ) -> None:
-    """Line plot: per-run fraction of detected protein groups in
-    quantmsdiann's pg_matrix. Sun et al. publish no per-run completeness
-    data so this is single-condition. Paper-ready: no title, no footer."""
-    diann_vals = sorted(diann_per_run.values())
-    fig, ax = plt.subplots(figsize=(10, 4.5))
-    ax.plot(range(len(diann_vals)), diann_vals,
-            color="#1f77b4", linewidth=0.9,
-            label=f"quantmsdiann (DIA-NN) (n={len(diann_vals)} runs)")
-    ax.set_xlabel("Run rank (sorted ascending)")
-    ax.set_ylabel("Fraction of protein groups\ndetected per run")
-    ax.set_ylim(0, 1.0)
+    """Strip plot: one dot per MS run, y = fraction of the
+    quantmsdiann union catalog detected in that run, x-jittered within
+    a per-subtype lane. Sun et al. publish no per-run completeness
+    data, so we cannot overlay an original-paper curve; instead the
+    figure carries information by **splitting runs by BC subtype**
+    (TNBC / non-TNBC / normal-like), with per-subtype median bars
+    and an overall median reference.
+
+    `run_to_subtype` maps the bare run identifier (matrix column name
+    with `.mzML` / `.raw` / `.d` stripped) to one of the BC_SUBTYPES
+    labels. Runs whose subtype can't be resolved fall into an
+    `unmapped` lane so they remain visible on the figure rather than
+    being silently dropped. Paper-ready: no title, no footer."""
+    import re as _re
+
+    def _bare_run(run_label: str) -> str:
+        return _re.sub(r"\.(mzML|raw|d)$", "", run_label, flags=_re.IGNORECASE)
+
+    fig, ax = plt.subplots(figsize=(10, 4.8))
+
+    # Group by subtype.
+    by_subtype: dict[str, list[tuple[str, float]]] = {}
+    for run, v in diann_per_run.items():
+        subtype = "unmapped"
+        if run_to_subtype:
+            subtype = run_to_subtype.get(_bare_run(run), "unmapped")
+        by_subtype.setdefault(subtype, []).append((run, v))
+
+    # Display order: real subtypes first, unmapped last.
+    SUBTYPE_ORDER = ["TNBC", "non-TNBC", "normal-like", "unmapped"]
+    subtype_palette = {
+        "TNBC":          "#d62728",
+        "non-TNBC":      "#1f77b4",
+        "normal-like":   "#2ca02c",
+        "unmapped":      "#9e9e9e",
+    }
+    subtypes_present = [
+        s for s in SUBTYPE_ORDER if s in by_subtype and by_subtype[s]
+    ]
+
+    # Plot dots per subtype.
+    n_total = sum(len(v) for v in by_subtype.values())
+    median_overall = pd.Series(
+        [v for vals in by_subtype.values() for _, v in vals]
+    ).median()
+    import numpy as _np
+    rng = _np.random.default_rng(0)
+    for i, subtype in enumerate(subtypes_present):
+        ys = [v for _, v in by_subtype[subtype]]
+        xs = rng.uniform(i - 0.28, i + 0.28, size=len(ys))
+        ax.scatter(
+            xs, ys, s=22,
+            color=subtype_palette[subtype],
+            edgecolors="#222222", linewidths=0.3, alpha=0.75,
+            label=f"{subtype} (n={len(ys)})",
+        )
+        med = pd.Series(ys).median()
+        ax.hlines(
+            med, i - 0.34, i + 0.34,
+            color=subtype_palette[subtype], linewidth=2.2, zorder=4,
+        )
+        ax.text(
+            i, med, f"  median={med:.2f}",
+            va="center", ha="left", fontsize=8, color="#222222",
+        )
+
+    # Overall median reference.
+    ax.axhline(
+        median_overall, color="#444444", linestyle="--", linewidth=0.8,
+        label=f"overall median ({median_overall:.2f})", zorder=2,
+    )
+
+    ax.set_xticks(range(len(subtypes_present)))
+    ax.set_xticklabels(subtypes_present, fontsize=10)
+    ax.set_xlabel(
+        f"Breast-cancer subtype (n_total = {n_total} runs)", fontsize=10,
+    )
+    ax.set_ylabel(
+        "Fraction of protein groups\ndetected per run\n"
+        "(quantmsdiann DIA-NN)", fontsize=10,
+    )
+    ax.set_ylim(0, 1.05)
+    ax.set_xlim(-0.6, len(subtypes_present) - 0.4)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.legend(loc="lower right", frameon=False)
+    ax.legend(loc="lower right", frameon=False, fontsize=8)
 
     fig.tight_layout()
-    pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(pdf_path)
-    fig.savefig(png_path, dpi=300)
-    if svg_path is not None:
-        fig.savefig(svg_path)
+    svg_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(svg_path)
     plt.close(fig)
 
 
@@ -514,16 +583,33 @@ def write_counts_tsv(
          counts.sun_proteins,
          "6,091 SwissProt proteins; proteotypic, Global.Q.Value<=0.01, "
          ">=10% detection across samples (paper, Methods)"),
-        ("Protein groups (consistency filter)", "quantmsdiann (DIA-NN)",
+        ("Protein groups (consistency filter)",
+         "quantmsdiann (DIA-NN, target-only)",
          counts.quantmsdiann_proteins_consistent,
-         "post-filter union across all subtypes; same two-stage filter "
-         "applied to diann_report.parquet"),
+         "post-consistency-filter union; conservative contaminant filter "
+         "(CONTAM_/Cont_/ENTRAP_/DECOY_/decoy_) applied at Protein.Group "
+         "level per 2026-05-21 spec"),
+        ("Protein groups (consistency filter)",
+         "quantmsdiann (DIA-NN, unfiltered)",
+         counts.quantmsdiann_proteins_consistent_unfiltered,
+         "audit baseline: same consistency-filter union BEFORE the "
+         "contaminant filter; includes CONTAM_/ENTRAP_ rows"),
         ("Protein groups (1% FDR, no consistency)", "Sun et al. 2023 (paper pre-filter)",
          counts.sun_proteins_raw,
          "8,952 proteins identified pre-consistency-filter (paper, Methods)"),
-        ("Protein groups (1% FDR, no consistency)", "quantmsdiann (DIA-NN)",
+        ("Protein groups (1% FDR, no consistency)",
+         "quantmsdiann (DIA-NN, target-only)",
          counts.quantmsdiann_proteins_strict,
-         "from diannsummary.log (Protein groups with global q-value <= 0.01)"),
+         "post-filter: pg_matrix.tsv rows whose Protein.Group has no "
+         "CONTAM_/Cont_/ENTRAP_/DECOY_/decoy_ token (2026-05-21 spec)"),
+        ("Protein groups (1% FDR, no consistency)",
+         "quantmsdiann (DIA-NN, unfiltered pg_matrix)",
+         counts.quantmsdiann_proteins_pg_matrix_unfiltered,
+         "raw row count of diann_report.pg_matrix.tsv, pre-filter"),
+        ("Protein groups (1% FDR, no consistency)",
+         "quantmsdiann (DIA-NN, diannsummary.log)",
+         counts.quantmsdiann_proteins_strict_unfiltered,
+         "audit baseline: diannsummary.log unfiltered headline"),
         ("Proteotypic peptides", "Sun et al. 2023 (paper headline)",
          counts.sun_peptides,
          "90,762 proteotypic peptides under the same consistency filter "
@@ -603,8 +689,13 @@ def main() -> int:  # pragma: no cover
                                     DATA_DIR / "PXD004701.sdrf.tsv")
 
     print("Parsing DIA-NN summary log...")
-    pg, prec = parse_diann_summary_log(log_path)
-    print(f"  protein groups: {pg:,}  precursors: {prec:,}")
+    pg_log, prec = parse_diann_summary_log(log_path)
+    print(f"  protein groups (log, unfiltered): {pg_log:,}  precursors: {prec:,}")
+
+    print("Counting pg_matrix.tsv protein-group rows (unfiltered + target-only)...")
+    pg_unf, pg_target = count_target_protein_groups(pg_path)
+    print(f"  pg_matrix rows: unfiltered={pg_unf:,}  target_only={pg_target:,} "
+          f"(delta {pg_unf - pg_target:,})")
 
     print("Counting unique proteotypic peptides in pr_matrix.tsv...")
     pep = unique_peptides_quantified(pr_path)
@@ -620,11 +711,20 @@ def main() -> int:  # pragma: no cover
         sdrf_path,
         BC_SUBTYPES,
     )
+    diann_proteins_consistent_unf = set()
     diann_proteins_consistent = set()
     for s, pgs in diann_per_subtype.items():
-        diann_proteins_consistent.update(pgs)
+        diann_proteins_consistent_unf.update(pgs)
+        # Apply the conservative contaminant filter at the Protein.Group
+        # level (consistent with extract_accessions_diann's policy).
+        diann_proteins_consistent.update(
+            pg_str for pg_str in pgs if is_target_protein_group(pg_str)
+        )
         print(f"  {s:<14s} {len(pgs):>6,}")
-    print(f"  union across subtypes: {len(diann_proteins_consistent):,}")
+    print(f"  union across subtypes (unfiltered): "
+          f"{len(diann_proteins_consistent_unf):,}")
+    print(f"  union across subtypes (target_only): "
+          f"{len(diann_proteins_consistent):,}")
 
     counts = Counts(
         sun_proteins=SUN_PROTEINS,
@@ -632,8 +732,13 @@ def main() -> int:  # pragma: no cover
         sun_peptides=SUN_PEPTIDES,
         sun_tnbc=SUN_TNBC,
         sun_non_tnbc=SUN_NON_TNBC,
-        quantmsdiann_proteins_strict=pg,
+        quantmsdiann_proteins_strict=pg_target,
+        quantmsdiann_proteins_strict_unfiltered=pg_log,
+        quantmsdiann_proteins_pg_matrix_unfiltered=pg_unf,
         quantmsdiann_proteins_consistent=len(diann_proteins_consistent),
+        quantmsdiann_proteins_consistent_unfiltered=(
+            len(diann_proteins_consistent_unf)
+        ),
         quantmsdiann_peptides=pep,
         quantmsdiann_precursors=prec,
     )
@@ -641,16 +746,12 @@ def main() -> int:  # pragma: no cover
     print("Rendering main figure...")
     render_main_figure(
         counts,
-        FIGURES_DIR / "main_comparison.pdf",
-        FIGURES_DIR / "main_comparison.png",
         FIGURES_DIR / "main_comparison.svg",
     )
 
     print("Rendering per-subtype supp figure...")
     render_proteins_per_subtype(
         diann_per_subtype,
-        FIGURES_DIR / "supp_proteins_per_subtype.pdf",
-        FIGURES_DIR / "supp_proteins_per_subtype.png",
         FIGURES_DIR / "supp_proteins_per_subtype.svg",
     )
 
@@ -658,23 +759,40 @@ def main() -> int:  # pragma: no cover
     diann_per_run = per_run_completeness_quantmsdiann(pg_path)
     print(f"  {len(diann_per_run)} runs")
 
-    print("Rendering per-run completeness supp figure...")
+    # Build a bare-run-name -> subtype map so the supp can split by
+    # BC subtype. SDRF maps run filenames -> cell lines; BC_SUBTYPES
+    # maps cell lines -> subtypes. Bare run = filename without
+    # extension.
+    sdrf_run_to_cell = parse_sdrf_data_file_to_cell_line(sdrf_path)
+    run_to_subtype: dict[str, str] = {}
+    for data_file, cell in sdrf_run_to_cell.items():
+        bare = re.sub(r"\.(mzML|raw|d)$", "", data_file,
+                      flags=re.IGNORECASE)
+        cell_norm = (cell or "").strip().lower()
+        subtype = BC_SUBTYPES.get(cell_norm)
+        if subtype:
+            run_to_subtype[bare] = subtype
+
+    print("Rendering per-run completeness supp figure (by subtype)...")
     render_per_run_completeness(
         diann_per_run,
-        FIGURES_DIR / "supp_missing_values_per_run.pdf",
-        FIGURES_DIR / "supp_missing_values_per_run.png",
         FIGURES_DIR / "supp_missing_values_per_run.svg",
+        run_to_subtype=run_to_subtype,
     )
 
     print("Writing auditable counts TSV...")
+    data_dir = FIGURES_DIR / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
     write_counts_tsv(
-        counts, FIGURES_DIR / "counts.tsv",
+        counts, data_dir / "counts.tsv",
         diann_per_subtype=diann_per_subtype,
     )
 
-    # Cross-checks (non-gating)
-    if pg != 7746:
-        print(f"WARN: quantmsdiann protein groups {pg} != expected 7,746",
+    # Cross-checks (non-gating). The diannsummary.log number is the
+    # historical baseline; the post-filter target count is lower.
+    if pg_log != 7746:
+        print(f"WARN: quantmsdiann protein groups (log) {pg_log} != "
+              f"expected 7,746",
               file=sys.stderr)
     if prec != 100499:
         print(f"WARN: quantmsdiann precursors {prec} != expected 100,499",

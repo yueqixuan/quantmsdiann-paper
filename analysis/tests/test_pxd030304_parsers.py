@@ -292,3 +292,32 @@ def test_quantmsdiann_per_run_completeness_from_pg_matrix(tmp_path: Path) -> Non
         "run2.mzML": pytest.approx(1 / 4),
         "run3.mzML": pytest.approx(3 / 4),
     }
+
+
+def test_counts_tsv_carries_unfiltered_and_target_rows_pxd030304(
+    tmp_path: Path,
+) -> None:
+    """`write_counts_tsv` writes paired rows for the contaminant-filter
+    audit (2026-05-21 spec §1.7): the headline `target-only` row plus
+    the unfiltered pg_matrix and diannsummary.log baseline rows."""
+    from analysis.figure_pxd030304_procan_vs_quantmsdiann import (
+        Counts, write_counts_tsv,
+    )
+
+    counts = Counts(
+        procan_proteins=8498,
+        procan_proteins_stringent=6692,
+        quantmsdiann_proteins=9050,                       # target-only
+        quantmsdiann_proteins_unfiltered=9370,            # diannsummary.log
+        quantmsdiann_proteins_pg_matrix_unfiltered=9251,  # pg_matrix raw row count
+        quantmsdiann_proteins_stringent=8149,
+        quantmsdiann_precursors=153644,
+    )
+    p = tmp_path / "counts.tsv"
+    write_counts_tsv(counts, p)
+    text = p.read_text(encoding="utf-8")
+    assert "quantmsdiann (DIA-NN, 1% FDR, target-only)" in text
+    assert "quantmsdiann (DIA-NN, 1% FDR, unfiltered pg_matrix)" in text
+    assert "quantmsdiann (DIA-NN, 1% FDR, diannsummary.log)" in text
+    # All three numbers present.
+    assert "9050" in text and "9370" in text and "9251" in text

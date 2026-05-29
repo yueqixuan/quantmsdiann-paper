@@ -1,0 +1,25 @@
+\quantmsdiann{} lowers the engineering barrier between a deposited DIA dataset and a reproducible quantification table, and it does so at a scale that makes systematic reanalysis of public DIA archives tractable for the first time.
+The SDRF-first design encourages experiment annotation upstream of analysis and produces metadata that is interoperable with the wider proteomics ecosystem~\cite{dai2021sdrf}; the \qpx{} archive bundles the SDRF, harmonised quantification tables and pipeline provenance into a single Parquet container so that reanalysed results can be archived (e.g.\ on Zenodo) and re-queried alongside the original raw data.
+By focusing exclusively on \texttt{DIA-NN}, rather than the multi-engine scope of the related bigbio/quantms pipeline~\cite{dai2024quantms}, \quantmsdiann{} achieves a leaner dependency surface and faster pipeline-level execution for the DIA-only regime, where the dominant cost is per-file \texttt{DIA-NN} invocation rather than across-engine comparison.
+
+The demonstrations we present stress the workflow along three orthogonal axes.
+The ProteoBench benchmark (Fig.~\ref{fig:proteobench}) tests analytical fidelity across four instrument modalities and five \texttt{DIA-NN} releases; the three independent cell-line reanalyses (Fig.~\ref{fig:cell-line-reanalysis}) test recovery against published per-study quantifications, with results ranging from near-parity (Sun 2023, current DIA engine) to substantial recovery gains (Guo 2019 OpenSWATH; ProCan \texttt{DIA-NN}~1.7.x); and the pan-cohort of five public DIA cell-line reanalyses (Fig.~\ref{fig:pancohort}) tests archive-scale throughput on five concurrently reanalysed deposits.
+Single-cell and spatial proteomics biology demonstrations are part of ongoing work and are not part of this submission's biology figures; the single-cell PXD071075 cohort used as the throughput-scaling benchmark in Fig.~\ref{fig:architecture} is, however, real production data.
+Across the cell-line panels, the largest per-run gains accrue for deposits originally analysed with older or non-\texttt{DIA-NN} engines (Guo 2019 OpenSWATH, ProCan 1.7.x), and gains shrink to near-parity for the most recently processed cohorts (Sun 2023).
+This argues that the value of DIA reanalysis is real but time-limited: it is largest for old data and shrinks for new data, which is exactly the regime an SDRF-driven workflow is well-positioned to address as new \texttt{DIA-NN} versions ship.
+Demonstrations on flagship single-cell DIA and laser-microdissected spatial cohorts are part of the development roadmap; the workflow already supports these acquisition modes (Fig.~\ref{fig:architecture}a, library-handling branch) and SDRFs for the Brunner~\cite{brunner2022}, Derks~\cite{derks2023}, Leduc~\cite{leduc2024}, Wang~\cite{wang2025}, Mund~\cite{mund2022} and Makhmut~\cite{makhmut2023} datasets are in preparation.
+
+The cross-\texttt{DIA-NN}-version reproducibility view enabled by \quantmsdiann{} is, to our knowledge, the first pipeline-level treatment of this question for \texttt{DIA-NN}.
+We expect this to become increasingly important as \texttt{DIA-NN} evolves: a deposited single-cell DIA dataset analysed with \diannversion{1.8} today and re-analysed with \diannversion{2.x} in two years should not produce different biological conclusions for the same data and parameters, but in current practice such re-analyses are rarely performed because the bespoke per-study scripts make them prohibitively expensive.
+\quantmsdiann{}'s container-pinned, version-parametrised execution makes this kind of audit a single-command operation.
+
+Several limitations are worth noting.
+First, \quantmsdiann{} does not currently include batch correction, cell-type assignment, or differential-abundance modules; these are best handled in downstream R or Python packages such as scp~\cite{vanderaa2023}, which can read the \qpx{} or MSstats outputs directly.
+Second, library generation for plexDIA channel deconvolution remains internal to \texttt{DIA-NN}, and \quantmsdiann{} inherits any limitations of that step.
+Third, the \qpx{} format will continue to evolve as community feedback accumulates; backward compatibility is maintained through schema versioning.
+Fourth, we focused on bulk DIA cell-line reanalyses; plexDIA, TMT-DIA, and single-cell DIA demonstrations are part of the development roadmap but are not evaluated here.
+
+Finally, we note that \quantmsdiann{} is complementary to, rather than competing with, existing single-cell DIA workflows.
+The benchmarking work of Wang \textit{et al.}~\cite{wang2025} compared multiple search engines and rescoring strategies; \quantmsdiann{} adopts the broadly competitive \texttt{DIA-NN} engine and focuses on the orthogonal problem of orchestrating that engine reproducibly at scale.
+Similarly, the recent MHCquant2 nf-core pipeline~\cite{scheid2025mhcquant2} addresses an analogous orchestration problem for immunopeptidomics.
+Together, these contributions extend the nf-core proteomics ecosystem to cover the major MS-based proteomics modalities behind a common SDRF-driven interface.

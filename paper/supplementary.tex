@@ -1,0 +1,240 @@
+%% Additional file 1 — Supplementary figures for the quantmsdiann MCP manuscript.
+%% Build: cd paper && make supplementary
+
+\documentclass[preprint,12pt]{elsarticle}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{microtype}
+\usepackage{grffile}
+\usepackage{amsmath}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{mcpfigures}
+\input{macros}
+
+%% Number supplementary figures S1, S2, ... independently of the main text.
+\renewcommand{\thefigure}{S\arabic{figure}}
+\setcounter{figure}{0}
+
+\journal{Molecular \& Cellular Proteomics}
+
+\begin{document}
+
+\begin{frontmatter}
+\title{Additional file 1: Supplementary figures for ``quantmsdiann: a scalable SDRF-driven DIA-NN workflow for reanalysis of single-cell, spatial, and bulk proteomics datasets''}
+\end{frontmatter}
+
+\tableofcontents
+\vspace{1em}
+
+\section{Datasets benchmarked and reanalysed}
+\label{sec:supp-datasets}
+
+Table~\ref{tab:datasets-supp} lists every public dataset used in this study.
+For each dataset, an SDRF was prepared from the original sample metadata and is provided alongside this supplementary deposition.
+Raw files were downloaded from PRIDE and MassIVE using pridepy~\cite{kamatchinathan2025pridepy}.
+For each cell-line reanalysis cohort, the original published quantification was downloaded from the PRIDE deposition and used as the comparator.
+The cell-line bulk DIA cohorts were assembled by programmatic search of PRIDE Archive via the PRIDE API~\cite{deutsch2026proteomexchange}, filtering for projects annotated as DIA acquisition on human samples with at least one standardised cell line listed in the Cellosaurus reference, downloadable raw files, and SDRF-compatible sample metadata.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Datasets benchmarked and reanalysed with \quantmsdiann{}.}
+\label{tab:datasets-supp}
+\begin{tabular}{llll}
+\hline
+\textbf{Accession} & \textbf{Instrument} & \textbf{Type} & \textbf{Public date} \\
+\hline
+\multicolumn{4}{l}{\textit{ProteoBench benchmarks}} \\
+PXD049412 & Orbitrap Astral & Single-cell & 2025 \\
+PXD062685 & timsTOF SCP & diaPASEF & 2025 \\
+PXD070049 & ZenoTOF 7600 & Bulk (mixed-species) & 2025 \\
+Module 7  & Orbitrap Astral & Bulk (mixed-species) & 2025 \\
+\hline
+\multicolumn{4}{l}{\textit{Bulk cell-line panel}} \\
+PXD003539 & TripleTOF 5600 & Cell line (NCI-60) & 2016 \\
+PXD030304 & TripleTOF 6600 & Cell line (ProCan) & 2022 \\
+PXD004701 & TripleTOF 5600 & Cell line (breast) & 2017 \\
+PXD041421 & TripleTOF 6600 & Cell line (Mehnert 2023) & 2023 \\
+PXD017199 & TripleTOF 6600 & Cell line (breast) & 2021 \\
+\hline
+\multicolumn{4}{l}{\textit{Scalability experiment}} \\
+PXD071075 & Orbitrap Eclipse & Single-cell & 2025 \\
+\hline
+\end{tabular}
+\end{table}
+
+\section{Identification filtering and protein counting}
+\label{sec:supp-filter}
+
+All identification counts reported in the cell-line reanalyses and pan-cohort (main-text Figs.~3, 4 and Figs.~S5--S12 below) are target-only under a conservative contaminant/decoy filter: any row whose \texttt{Protein.Group} field contains a token prefixed with \texttt{CONTAM\_}, \texttt{Cont\_}, \texttt{ENTRAP\_}, or \texttt{DECOY\_} is dropped before counting, including mixed groups.
+Original-paper headline counts were taken from the corresponding publication's table or text without re-filtering; where the original applied a per-protein peptide threshold (for example, the ProCan-DepMapSanger paper reports both an 8{,}498 protein-group headline at Global.Q.Value~$\leq 0.01$ and a 6{,}692 count under the additional $\geq 2$ supporting-peptide rule), the like-for-like \quantmsdiann{} count is reported under the same threshold.
+
+\section{Per-process runtime and resource envelopes}
+\label{sec:supp-performance}
+
+These figures decompose the end-to-end wall-clock and resource use reported in main-text Fig.~1 by Nextflow process, derived from \texttt{trace.txt} records collected across the ProteoBench benchmark cohorts and the PXD071075 single-cell production sweep.
+
+\begin{figure}[htbp]
+  \centering
+  \mcpincludegraphics[width=\mcponehalfcolwidth,keepaspectratio]{performance/runtime_per_step}
+  \caption[Per-step runtime]{%
+    \textbf{Per-step wall-clock distribution across Nextflow processes.}
+    Distribution of task wall-clock time (boxplot, median and IQR) for each
+    \quantmsdiann{} process across the ProteoBench benchmark cohorts. The
+    per-file parallel stages (\texttt{FILE\_PREPARATION},
+    \texttt{INSILICO\_LIBRARY\_GENERATION}, \texttt{PRELIMINARY\_ANALYSIS},
+    \texttt{INDIVIDUAL\_ANALYSIS}) determine the workflow's
+    parallelisation envelope, while the collective stages
+    (\texttt{ASSEMBLE\_EMPIRICAL\_LIBRARY}, \texttt{FINAL\_QUANTIFICATION},
+    \texttt{DIANN\_MSSTATS}) set the lower bound at maximum cluster width.
+  }
+  \label{fig:runtime-per-step}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \mcpincludegraphics[width=\textwidth,keepaspectratio]{performance/resources_per_step}
+  \caption[Resources per task]{%
+    \textbf{Peak memory and CPU envelope per Nextflow process.}
+    Per-task peak resident-set-size memory (left panel) and CPU-hours
+    (right panel) per \quantmsdiann{} process across the ProteoBench
+    benchmark cohorts. The collective \texttt{FINAL\_QUANTIFICATION} stage
+    dominates memory use on large cohorts; per-file stages remain well
+    within the commodity 8--16~GB per-task envelope typical of HPC
+    partitions.
+  }
+  \label{fig:resources-per-step}
+\end{figure}
+
+\section{ProteoBench head-to-head and accuracy benchmarks}
+\label{sec:supp-proteobench}
+
+These figures complement main-text Fig.~2 by placing \quantmsdiann{} on the public ProteoBench leaderboards alongside standalone \texttt{DIA-NN} GUI submissions and other DIA engines.
+
+\begin{figure}[htbp]
+  \centering
+  \mcpincludegraphics[width=\textwidth,keepaspectratio]{quantmsdiann_benchmarks/main_diann_quantmsdiann_parity}
+  \caption[ProteoBench parity]{%
+    \textbf{ProteoBench parity between \quantmsdiann{} and the standalone
+    \texttt{DIA-NN} GUI.}
+    Head-to-head precursor and protein-group identification counts for the
+    same raw data analysed by the official \texttt{DIA-NN} GUI submission to
+    ProteoBench (grey) and by \quantmsdiann{} (blue). The two pipelines
+    sit within $\pm$2\% on every module / version combination, confirming
+    that the SDRF-driven \quantmsdiann{} wrapper does not erode \texttt{DIA-NN}
+    performance.
+  }
+  \label{fig:proteobench-parity}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \mcpincludegraphics[width=\textwidth,height=\mcpmaxfigheight,keepaspectratio]{quantmsdiann_benchmarks/main_benchmarks_overview}
+  \caption[ProteoBench per-version per-module breakdown]{%
+    \textbf{ProteoBench identification counts per \texttt{DIA-NN} version
+    and per module \textemdash{} detailed view.}
+    Rows: ProteoBench DIA modules
+    (Module~7 Orbitrap Astral 2~Th; Module~9 single-cell DIA, PXD049412;
+    Module~5 timsTOF diaPASEF, PXD062685; Module~10 SCIEX ZenoTOF~7600,
+    PXD070049).
+    Columns: precursors (left, blue) and protein groups (right, red)
+    quantified at 1\% FDR by \quantmsdiann{} when invoked with
+    \diannversion{1.8.1}, \diannversion{2.1.0}, \diannversion{2.2.0},
+    \diannversion{2.3.2}, and \diannversion{2.5.0} from the same SDRF.
+    This is the per-version per-metric expansion of the headline summary
+    in main-text Fig.~2a.
+  }
+  \label{fig:proteobench-overview}
+\end{figure}
+
+\section{Per-cohort completeness and overlap (cell-line reanalyses)}
+\label{sec:supp-reanalyses}
+
+These figures complement main-text Fig.~3 with per-condition completeness, per-protein peptide counts, gene/accession overlap, and per-cell-line missingness for each reanalysed cohort.
+
+%% NOTE: The previous PXD003539 "genes per condition" panel sourced its
+%% original-paper comparator from Walzer 2022 (E-PROT-73) rather than from
+%% the Guo 2019 OpenSWATH analysis that the main-text PXD003539 reanalysis
+%% uses, so the panel was not on the same comparator axis as main-text
+%% Fig. 3a. The panel has been removed pending a Guo-2019-based replacement;
+%% downstream Fig. S5 numbering has shifted accordingly.
+
+\begin{figure}[htbp]
+  \centering
+  \mcpincludegraphics[width=\mcponehalfcolwidth,keepaspectratio]{PXD003539/supp_peptides_per_protein}
+  \caption[PXD003539 peptides per protein]{%
+    \textbf{PXD003539: distribution of peptides per protein group.}
+    \quantmsdiann{} (DIA-NN, blue) versus Guo 2019 OpenSWATH (grey)
+    on the same NCI-60 raw data.
+  }
+  \label{fig:supp-pxd003539-peptides}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \mcpincludegraphics[width=\mcponehalfcolwidth,keepaspectratio]{PXD003539/supp_venn_protein_accessions}
+  \caption[PXD003539 accession overlap]{%
+    \textbf{PXD003539: UniProt-accession overlap between original
+    OpenSWATH analysis and \quantmsdiann{} reanalysis.}
+  }
+  \label{fig:supp-pxd003539-venn}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \mcpincludegraphics[width=\mcponehalfcolwidth,keepaspectratio]{PXD003539/supp_missing_values_per_run}
+  \caption[PXD003539 missingness]{%
+    \textbf{PXD003539: per-run missing-value fraction.}
+    Distribution of per-run missingness across the NCI-60 panel for both
+    pipelines.
+  }
+  \label{fig:supp-pxd003539-missing}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \mcpincludegraphics[width=\mcponehalfcolwidth,keepaspectratio]{PXD004701/supp_proteins_per_subtype}
+  \caption[PXD004701 per subtype]{%
+    \textbf{PXD004701 (Sun 2023): protein groups per breast-cancer subtype.}
+    Distribution of identifications across the 76 cell lines stratified by
+    TNBC / non-TNBC subtype.
+  }
+  \label{fig:supp-pxd004701-subtype}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \mcpincludegraphics[width=\mcponehalfcolwidth,keepaspectratio]{PXD004701/supp_missing_values_per_run}
+  \caption[PXD004701 missingness]{%
+    \textbf{PXD004701 (Sun 2023): per-run missing-value fraction.}
+  }
+  \label{fig:supp-pxd004701-missing}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \mcpincludegraphics[width=\mcponehalfcolwidth,keepaspectratio]{PXD030304/supp_proteins_per_tissue}
+  \caption[PXD030304 per tissue]{%
+    \textbf{PXD030304 (ProCan-DepMapSanger): protein groups per tissue.}
+    Distribution of identifications across the 949 cell lines stratified by
+    tissue of origin.
+  }
+  \label{fig:supp-pxd030304-tissue}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \mcpincludegraphics[width=\mcponehalfcolwidth,keepaspectratio]{PXD030304/supp_missing_values_per_run}
+  \caption[PXD030304 missingness]{%
+    \textbf{PXD030304: per-run missing-value fraction across the
+    949-cell-line panel.}
+  }
+  \label{fig:supp-pxd030304-missing}
+\end{figure}
+
+\bibliographystyle{elsarticle-num}
+\bibliography{references}
+
+\end{document}

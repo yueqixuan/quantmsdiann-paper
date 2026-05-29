@@ -254,7 +254,11 @@ def test_pxd004701_protein_accessions_extracts_from_cached_json(
     p = tmp_path / "cache.json"
     p.write_text(json.dumps(payload))
     out = pxd004701_protein_accessions(p)
-    # CONTAM_ prefix stripped, P02768 + Q9NQ29 + O15156.
+    # Conservative contaminant filter (2026-05-21 spec): the
+    # `CONTAM_P02768;P02768` row is DROPPED entirely — even though
+    # P02768 is also reachable via the unflagged `P02768;Q9NQ29` row
+    # in TNBC and the `P02768` row in non-TNBC, so the net protein
+    # set is still {P02768, Q9NQ29, O15156}.
     assert out == {"P02768", "Q9NQ29", "O15156"}
 
 
@@ -280,3 +284,159 @@ def test_venn_region_sizes_3_partitions_correctly() -> None:
     }
     total = sum(out.values())
     assert total == len(sets["A"] | sets["B"] | sets["C"]) == 7
+
+
+# ---------------------------------------------------------------------------
+# 4-set region helper (new generic _set_region_sizes)
+# ---------------------------------------------------------------------------
+
+
+def test_set_region_sizes_n4_returns_15_regions() -> None:
+    """A 4-set partition has 2^4 - 1 = 15 non-empty-membership regions.
+    Each accession in the union must land in exactly one region, so the
+    region sizes sum to the union size. Keys must include a singleton
+    `f"{ds},only"` per dataset and the all-4 key `"all_four"`."""
+    from analysis.figure_combined_cell_lines_atlas import _set_region_sizes
+
+    sets = {
+        "A": {"a", "b", "c", "d", "abcd"},          # only-A: a
+        "B": {"b", "e", "f", "abcd"},               # only-B: e
+        "C": {"c", "f", "g", "abcd"},               # only-C: g
+        "D": {"d", "h", "abcd"},                    # only-D: h
+    }
+    out = _set_region_sizes(sets, ["A", "B", "C", "D"])
+    assert len(out) == 15
+    # Singletons
+    for ds in ("A", "B", "C", "D"):
+        assert f"{ds},only" in out
+    # All-4 special key
+    assert "all_four" in out
+    assert out["all_four"] == 1  # the 'abcd' accession
+    # Partition property: sum of region sizes == size of 4-way union
+    union = sets["A"] | sets["B"] | sets["C"] | sets["D"]
+    assert sum(out.values()) == len(union)
+
+
+def test_set_region_sizes_n3_still_uses_all_three_key() -> None:
+    """3-set call path must keep the legacy `all_three` key shape so the
+    `_venn_region_sizes_3` shim stays exact."""
+    from analysis.figure_combined_cell_lines_atlas import _set_region_sizes
+
+    sets = {
+        "A": {"x1", "x2", "x4"},
+        "B": {"x2", "x4"},
+        "C": {"x4"},
+    }
+    out = _set_region_sizes(sets, ["A", "B", "C"])
+    assert "all_three" in out
+    assert "all_four" not in out
+    assert len(out) == 7
+
+
+# ---------------------------------------------------------------------------
+# PXD017199 tissue map
+# ---------------------------------------------------------------------------
+
+
+def test_pxd041421_tissue_map_routes_a549_and_k562(tmp_path: Path) -> None:
+    """`cell_line_tissue_pxd041421` must route A549 -> Lung and
+    K562 -> Haematopoietic and Lymphoid on the unified ProCan axis
+    (2026-05-21 spec §2.4)."""
+    from analysis.figure_combined_cell_lines_atlas import (
+        cell_line_tissue_pxd041421,
+    )
+
+    p = tmp_path / "sdrf.tsv"
+    _write_sdrf(p, [
+        # 4 A549 rows (different reps; all collapse to one entry)
+        {"characteristics[cell line]": "A549"},
+        {"characteristics[cell line]": "A549"},
+        {"characteristics[cell line]": "A549"},
+        {"characteristics[cell line]": "A549"},
+        # 2 K562 rows
+        {"characteristics[cell line]": "K562"},
+        {"characteristics[cell line]": "K562"},
+    ])
+    out = cell_line_tissue_pxd041421(p)
+    assert out.get("A549") == "Lung"
+    assert out.get("K562") == "Haematopoietic and Lymphoid"
+    # Two distinct cell lines, each rolled up once.
+    assert len(out) == 2
+
+
+def test_pxd041421_protein_accessions_filters_contam_rows(
+    tmp_path: Path,
+) -> None:
+    """`pxd041421_protein_accessions` must apply the conservative
+    contaminant filter at row level — rows whose Protein.Group has any
+    CONTAM_/Cont_/ENTRAP_/DECOY_ token are dropped entirely (the
+    accession is NOT recovered through the strip path)."""
+    from analysis.figure_combined_cell_lines_atlas import (
+        pxd041421_protein_accessions,
+    )
+
+    # Synthetic pr_matrix.tsv with 10 DIA-NN metadata columns + 1 sample
+    # column. 2 target rows + 1 contaminant row.
+    p = tmp_path / "pr_matrix.tsv"
+    header = "\t".join([
+        "Protein.Group", "Protein.Ids", "Protein.Names", "Genes",
+        "First.Protein.Description", "Proteotypic", "Stripped.Sequence",
+        "Modified.Sequence", "Precursor.Charge", "Precursor.Id",
+        "Run_A.d",
+    ])
+    rows = [
+        # Target: P00001
+        ["P00001", "P00001", "n1", "G1", "d", "1", "PEPTIDER", "PEPTIDER",
+         "2", "PEPTIDER_2", "100.0"],
+        # Target: P00002
+        ["P00002", "P00002", "n2", "G2", "d", "1", "PEPTIDEK", "PEPTIDEK",
+         "2", "PEPTIDEK_2", "200.0"],
+        # Pure contaminant — must be DROPPED
+        ["CONTAM_P12345", "CONTAM_P12345", "n3", "G3", "d", "1", "PEPTIDEM",
+         "PEPTIDEM", "2", "PEPTIDEM_2", "300.0"],
+    ]
+    with open(p, "w", encoding="utf-8") as fh:
+        fh.write(header + "\n")
+        for r in rows:
+            fh.write("\t".join(r) + "\n")
+    accessions = pxd041421_protein_accessions(p)
+    assert accessions == {"P00001", "P00002"}
+    # The CONTAM_-stripped token "P12345" must NOT appear.
+    assert "P12345" not in accessions
+
+
+def test_pxd017199_tissue_map_routes_normals_to_healthy(tmp_path: Path) -> None:
+    """`cell_line_tissue_pxd017199` must route rows whose
+    `characteristics[disease]` is exactly "normal" to
+    `Healthy (Non-cancer)` and everything else to `Breast`."""
+    from analysis.figure_combined_cell_lines_atlas import (
+        cell_line_tissue_pxd017199,
+    )
+
+    p = tmp_path / "sdrf.tsv"
+    _write_sdrf(p, [
+        # 2 BC lines (different disease text variants — all map to Breast)
+        {
+            "characteristics[cell line]": "MCF7",
+            "characteristics[disease]": "Breast ductal carcinoma",
+        },
+        {
+            "characteristics[cell line]": "T47D",
+            "characteristics[disease]": "Invasive breast carcinoma of no special type",
+        },
+        # 2 normal lines (disease == "normal")
+        {
+            "characteristics[cell line]": "MCF10A",
+            "characteristics[disease]": "normal",
+        },
+        {
+            "characteristics[cell line]": "184A1",
+            "characteristics[disease]": "normal",
+        },
+    ])
+    out = cell_line_tissue_pxd017199(p)
+    assert out.get("MCF7") == "Breast"
+    assert out.get("T47D") == "Breast"
+    assert out.get("MCF10A") == "Healthy (Non-cancer)"
+    # normalize_cell_line strips non-alphanumerics; 184A1 stays "184A1"
+    assert out.get("184A1") == "Healthy (Non-cancer)"

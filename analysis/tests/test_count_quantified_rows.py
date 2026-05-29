@@ -400,3 +400,35 @@ def test_count_quantified_genes_diann_excludes_empty_rows(tmp_path: Path) -> Non
     )
     # A2M and AAAS have >=1 non-NA cell. A1CF and AACS are empty.
     assert count_quantified_genes_diann(matrix) == 2
+
+
+def test_counts_tsv_carries_unfiltered_and_target_rows_pxd003539(
+    tmp_path: Path,
+) -> None:
+    """`write_counts_tsv` (PXD003539) writes paired rows for the
+    contaminant-filter audit (2026-05-21 spec §1.7): target-only headline
+    + unfiltered diannsummary.log baseline."""
+    from analysis.figure_original_vs_quantmsdiann import (
+        Counts, write_counts_tsv,
+    )
+
+    counts = Counts(
+        guo_peptides=40000,
+        guo_proteins=6000,
+        guo_precursors=48000,
+        walzer_peptides=20000,
+        walzer_proteins=5000,
+        walzer_ea_genes=2100,
+        diann_peptides=70000,
+        diann_proteins=6800,             # target-only headline
+        diann_precursors=117000,
+        diann_proteins_unfiltered=6927,  # diannsummary.log baseline
+    )
+    p = tmp_path / "counts.tsv"
+    write_counts_tsv(counts, p)
+    text = p.read_text(encoding="utf-8")
+    assert "quantmsdiann (DIA-NN, 1% FDR, target-only)" in text
+    assert "quantmsdiann (DIA-NN, 1% FDR, diannsummary.log)" in text
+    # Both numbers present.
+    assert "6800" in text
+    assert "6927" in text

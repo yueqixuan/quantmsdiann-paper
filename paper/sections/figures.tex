@@ -1,0 +1,177 @@
+%% Figure environments for the quantmsdiann MCP manuscript.
+
+%% Fig. 1 — pipeline architecture (subway, vector PDF from rsvg-convert)
+%% on the left, runtime scaling panels stacked on the right.
+\begin{figure}[htbp]
+  \centering
+  \begin{minipage}{\textwidth}
+    \centering
+    \begin{minipage}[t]{0.62\linewidth}
+      \centering
+      \textbf{(a)}\par\vspace{0.2em}
+      \mcpincludegraphics[width=\linewidth,keepaspectratio]{manuscript/workflow_panel}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.36\linewidth}
+      \centering
+      \textbf{(b)}\par\vspace{0.2em}
+      \mcpincludegraphics[width=\linewidth,keepaspectratio]{performance/queue_size_sweep}\par\vspace{1.0em}
+      \textbf{(c)}\par\vspace{0.2em}
+      \mcpincludegraphics[width=\linewidth,keepaspectratio]{performance/parallelism_vs_wallclock}
+    \end{minipage}
+  \end{minipage}
+  \caption[Pipeline and scaling]{%
+    \textbf{\quantmsdiann{} pipeline architecture and runtime scaling.}
+    (\textbf{a})~Subway diagram of the \quantmsdiann{} workflow. Mandatory
+    modules are shown as filled circles, optional/skippable modules as open
+    circles; per-file parallel stages are marked in red, collective cohort
+    stages in green. The pipeline consumes an SDRF and a FASTA reference,
+    optionally converts vendor raw files to mzML, generates an in-silico or
+    empirical spectral library, runs per-file \texttt{DIA-NN} analyses in
+    parallel, consolidates results in a single cohort-level final
+    quantification, and emits standard \texttt{DIA-NN} tables, an MSstats
+    input, a \qpx{} Parquet archive, and a \texttt{pmultiqc} quality-control
+    report.
+    (\textbf{b})~Workflow wall-clock time versus Nextflow
+    \texttt{executor.queueSize} (log-scaled cluster nodes; ticks at 10, 50,
+    100, 200, 300) on the PXD071075 single-cell cohort (Wang \textit{et al.},
+    2025); wall-clock drops from 37.7~h at 10 nodes to 2.4~h at 300 nodes,
+    with the practical knee near 200 nodes.
+    (\textbf{c})~Final-run wall-clock versus number of MS data files across
+    ProteoBench benchmark and cell-line cohorts, coloured by instrument
+    family; the PXD071075 production run (300 nodes) is annotated.
+  }
+  \label{fig:architecture}
+\end{figure}
+
+%% Fig. 2 — ProteoBench: precursors-vs-version (compact summary) +
+%% ID-vs-accuracy scatter (community context). The per-version per-module
+%% protein-group / precursor breakdown is in Additional file 1 (Fig. S3).
+\begin{figure}[htbp]
+  \centering
+  \textbf{(a)}\par\vspace{0.1em}
+  \mcpincludegraphics[width=\textwidth,keepaspectratio]{quantmsdiann_benchmarks/main_benchmarks_precursors}\par
+  \vspace{0.8em}
+  \textbf{(b)}\par\vspace{0.1em}
+  \mcpincludegraphics[width=\textwidth,keepaspectratio]{quantmsdiann_benchmarks/main_id_vs_epsilon}
+  \caption[ProteoBench across DIA-NN versions]{%
+    \textbf{\quantmsdiann{} on ProteoBench across five \texttt{DIA-NN}
+    releases and four DIA modalities.}
+    Four ProteoBench DIA modules cover Orbitrap Astral (Module~7),
+    single-cell DIA (Module~9, PXD049412), timsTOF diaPASEF (Module~5,
+    PXD062685) and SCIEX ZenoTOF (Module~10, PXD070049).
+    (\textbf{a})~Precursors at 1\% FDR by \texttt{DIA-NN} version
+    (1.8.1--2.5.0; light to dark blue) from one \quantmsdiann{}
+    invocation; identification counts grow monotonically with version
+    (e.g.\ Module~5 91{,}075~$\to$~115{,}735).
+    (\textbf{b})~Precursors quantified ($\geq$3 replicates) versus
+    median $|\epsilon|$ for every public ProteoBench submission per
+    module (snapshot \placeholder{snapshot date YYYY-MM-DD}; coloured by
+    library mode); the \quantmsdiann{} trajectory across the five
+    \texttt{DIA-NN} versions is overlaid in red. Note that, unlike the
+    identification-count trend in panel~(a), median $|\epsilon|$ does
+    not always decrease with the newest \texttt{DIA-NN} version: per
+    module the best identification--accuracy trade-off may sit at an
+    intermediate version. Users wishing to maximise IDs should select
+    the most recent supported release; users prioritising lowest median
+    quantification error should consult this panel per module.
+    See Additional file~1: Figs.~S3, S4 for per-version detail and
+    head-to-head parity with the \texttt{DIA-NN} GUI.
+  }
+  \label{fig:proteobench}
+\end{figure}
+
+%% Fig. 3 — Independent cell-line reanalyses (depth vs original)
+\begin{figure}[htbp]
+  \centering
+  \begin{minipage}{\textwidth}
+    \centering
+    \begin{minipage}[t]{0.32\linewidth}
+      \centering
+      \textbf{(a)~PXD003539 \textemdash{} Guo 2019, NCI-60}\par\vspace{0.2em}
+      \mcpincludegraphics[width=\linewidth,keepaspectratio]{PXD003539/main_comparison}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.32\linewidth}
+      \centering
+      \textbf{(b)~PXD004701 \textemdash{} Sun 2023, breast cancer}\par\vspace{0.2em}
+      \mcpincludegraphics[width=\linewidth,keepaspectratio]{PXD004701/main_comparison}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.32\linewidth}
+      \centering
+      \textbf{(c)~PXD030304 \textemdash{} ProCan, 949 lines}\par\vspace{0.2em}
+      \mcpincludegraphics[width=\linewidth,keepaspectratio]{PXD030304/main_comparison}
+    \end{minipage}
+  \end{minipage}
+  \caption[Cell-line reanalyses]{%
+    \textbf{Independent reanalysis of three public cell-line DIA datasets
+    recovers as many or more identifications than the originally deposited
+    quantifications.}
+    Each panel compares the originally published peptide and/or
+    protein-group counts (grey) against the \quantmsdiann{} reanalysis at
+    1\% FDR (blue) using the same raw data.
+    (\textbf{a})~Guo \textit{et al.}, 2019 NCI-60 OpenSWATH analysis
+    (PXD003539, original engine = OpenSWATH with the Guo 2019 assay
+    library): \quantmsdiann{} recovers 95{,}633~peptides versus 40{,}592
+    originally (+135\%) and a comparable 6{,}747 protein groups versus
+    6{,}556. Because \quantmsdiann{} runs \texttt{DIA-NN} in library-free
+    mode while the original ran OpenSWATH against a fixed assay library,
+    this gain reflects both SDRF-driven orchestration and the change of
+    analysis engine; a like-for-like \texttt{DIA-NN}-on-original-library
+    control is part of ongoing work.
+    (\textbf{b})~Sun \textit{et al.}, 2023 PCT-SWATH breast-cancer panel
+    (PXD004701, 76 cell lines): under the original consistency filter
+    (\textendash{}90\% missing, proteotypic) \quantmsdiann{} recovers
+    6{,}146 versus 6{,}091 protein groups (+0.9\%); the raw matrix counts
+    are within 10\% on both proteotypic-peptide and protein-group metrics.
+    (\textbf{c})~ProCan-DepMapSanger 2022 pan-cancer cell-line panel
+    (PXD030304, 949 lines): \quantmsdiann{} recovers 8{,}921 protein groups
+    at 1\% FDR versus 8{,}498 originally (+5\%), and 7{,}990 versus 6{,}692
+    after requiring~$\geq 2$~unique peptides per protein (+19\%). Both the
+    original 8{,}498 headline (Global.Q.Value~$\leq 0.01$) and the
+    stringent 6{,}692 count (Global.Q.Value~$\leq 0.01$ plus
+    $\geq 2$~supporting peptides) are reported in the
+    ProCan-DepMapSanger paper itself; the \quantmsdiann{} counts are
+    computed under the matching filters, so each side of the comparison
+    is like-for-like.
+    Per-condition completeness, peptide-per-protein distributions and gene-
+    versus accession-level overlap are shown in Additional file~1:
+    Figs.~S5--S10.
+  }
+  \label{fig:cell-line-reanalysis}
+\end{figure}
+
+%% Fig. 4 — Pan-cohort of five DIA reanalyses
+\begin{figure}[htbp]
+  \centering
+  \begin{minipage}{\textwidth}
+    \centering
+    \begin{minipage}[t]{0.49\linewidth}
+      \centering
+      \textbf{(a)~Protein-accession overlap across cohorts}\par\vspace{0.2em}
+      \mcpincludegraphics[width=\linewidth,keepaspectratio]{combined/atlas_overlap}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.49\linewidth}
+      \centering
+      \textbf{(b)~Per-tissue coverage}\par\vspace{0.2em}
+      \mcpincludegraphics[width=\linewidth,keepaspectratio]{combined/atlas_distribution}
+    \end{minipage}
+  \end{minipage}
+  \caption[Pan-cohort of DIA reanalyses]{%
+    \textbf{Pan-cohort of five public DIA cell-line reanalyses by
+    \quantmsdiann{}.}
+    Combines PXD003539 (NCI-60, Guo 2019), PXD030304
+    (ProCan-DepMapSanger, 949 lines), PXD004701 (Sun 2023, 76 breast
+    cancer lines), PXD041421 (Mehnert 2023), and PXD017199 (Tognetti
+    2021, 67 breast cancer lines), reanalysed under a single
+    \quantmsdiann{} invocation. The consolidated SDRF and per-cohort
+    \quantmsdiann{} configurations will be deposited on Zenodo
+    (\placeholder{Zenodo DOI}) before publication so that the
+    input--configuration--output triple can be re-executed by third
+    parties.
+    (\textbf{a})~UpSet plot of pan-cohort UniProt-accession overlap
+    with per-cohort headline counts: a 5{,}144-protein pan-cohort
+    core is detected across all five cohorts.
+    (\textbf{b})~Per-tissue distribution of cell lines (top) and unique
+    proteins (bottom) across the combined panel.
+  }
+  \label{fig:pancohort}
+\end{figure}

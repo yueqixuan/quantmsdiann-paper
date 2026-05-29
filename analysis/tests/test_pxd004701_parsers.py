@@ -361,3 +361,40 @@ def test_subtype_aggregation_unions_across_runs(tmp_path: Path) -> None:
     # P1: r1 only -> 1/2 = 50% kept. P2: r2 only -> 1/2 = 50% kept.
     # P3: both -> 2/2 = 100% kept. All three end up in TNBC union.
     assert out == {"TNBC": {"P1", "P2", "P3"}}
+
+
+def test_counts_tsv_carries_unfiltered_and_target_rows_pxd004701(
+    tmp_path: Path,
+) -> None:
+    """`write_counts_tsv` writes paired rows for the contaminant filter
+    audit (2026-05-21 spec §1.7): one `quantmsdiann (DIA-NN, target-only)`
+    row carrying the post-filter headline count and one `quantmsdiann
+    (DIA-NN, unfiltered ...)` row carrying the pre-filter count."""
+    from analysis.figure_pxd004701_sun_vs_quantmsdiann import (
+        Counts, write_counts_tsv,
+    )
+
+    counts = Counts(
+        sun_proteins=6091,
+        sun_proteins_raw=8952,
+        sun_peptides=90762,
+        sun_tnbc=39,
+        sun_non_tnbc=37,
+        quantmsdiann_proteins_strict=7600,             # target-only
+        quantmsdiann_proteins_strict_unfiltered=7746,  # diannsummary.log
+        quantmsdiann_proteins_pg_matrix_unfiltered=7700,
+        quantmsdiann_proteins_consistent=6200,
+        quantmsdiann_proteins_consistent_unfiltered=6296,
+        quantmsdiann_peptides=85000,
+        quantmsdiann_precursors=100499,
+    )
+    p = tmp_path / "counts.tsv"
+    write_counts_tsv(counts, p)
+    text = p.read_text(encoding="utf-8")
+    # Both filter policies represented for the strict (no-consistency) headline.
+    assert "quantmsdiann (DIA-NN, target-only)" in text
+    assert "quantmsdiann (DIA-NN, unfiltered pg_matrix)" in text
+    assert "quantmsdiann (DIA-NN, diannsummary.log)" in text
+    # And both for the consistency-filtered headline.
+    assert "7600" in text and "7746" in text and "7700" in text
+    assert "6200" in text and "6296" in text

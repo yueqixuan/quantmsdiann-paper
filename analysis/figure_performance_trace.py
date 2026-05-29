@@ -255,6 +255,123 @@ def peak_concurrent_tasks(df: pd.DataFrame) -> tuple[int, float]:
     return (peak, med)
 
 
+# ---------------------------------------------------------------------------
+# Resource-column parsers (memory + CPU). Nextflow's nextflow_trace.txt
+# stores these in human-readable units; the embedded report JSON does not
+# carry them, so the resources figure can only read trace.txt.
+# ---------------------------------------------------------------------------
+
+_SIZE_UNITS = {
+    "": 1,
+    "B": 1,
+    "KB": 1024,
+    "MB": 1024 ** 2,
+    "GB": 1024 ** 3,
+    "TB": 1024 ** 4,
+}
+
+
+def parse_size_to_bytes(text: str) -> float:
+    """Parse a Nextflow size string like `"165 MB"` / `"4.7 GB"` / `"3.2 KB"`
+    to bytes. Empty / `"-"` / unparseable strings return NaN."""
+    s = (text or "").strip()
+    if not s or s in {"-", "0"}:
+        return float("nan") if not s or s == "-" else 0.0
+    parts = s.split()
+    if len(parts) == 1:
+        # Bare number (bytes).
+        try:
+            return float(parts[0])
+        except ValueError:
+            return float("nan")
+    try:
+        value = float(parts[0])
+    except ValueError:
+        return float("nan")
+    unit = parts[1].strip().upper()
+    factor = _SIZE_UNITS.get(unit)
+    if factor is None:
+        return float("nan")
+    return value * factor
+
+
+def parse_pct_cpu(text: str) -> float:
+    """Parse a Nextflow `%cpu` cell like `"94.8%"` to a float (94.8). Empty
+    / `"-"` strings return NaN; values are *not* capped at 100 because
+    multi-thread tasks can legitimately exceed 100 %."""
+    s = (text or "").strip().rstrip("%").strip()
+    if not s or s == "-":
+        return float("nan")
+    try:
+        return float(s)
+    except ValueError:
+        return float("nan")
+
+
+def load_trace_resources(trace_path: Path) -> pd.DataFrame:
+    """Read a `nextflow_trace.txt` and return per-task resource rows.
+
+    Columns: `step`, `status`, `peak_rss_bytes`, `pct_cpu`,
+    `duration_s`. Drops rows with empty step or status. FAILED rows
+    are kept; callers filter as needed (the F2c box plot uses COMPLETED
+    rows only — same convention as `aggregate_step_durations`).
+
+    Empty / header-only traces return an empty DataFrame with the
+    expected columns."""
+    cols = ["step", "status", "peak_rss_bytes", "pct_cpu", "duration_s"]
+    try:
+        df = pd.read_csv(trace_path, sep="\t", dtype=str)
+    except (FileNotFoundError, OSError, pd.errors.EmptyDataError):
+        return pd.DataFrame(columns=cols)
+    if df.empty:
+        return pd.DataFrame(columns=cols)
+    needed = {"name", "status", "%cpu", "peak_rss", "duration"}
+    if not needed.issubset(df.columns):
+        return pd.DataFrame(columns=cols)
+    out = pd.DataFrame({
+        "step": df["name"].fillna("").map(extract_step_name),
+        "status": df["status"].fillna(""),
+        "peak_rss_bytes": df["peak_rss"].fillna("").map(parse_size_to_bytes),
+        "pct_cpu": df["%cpu"].fillna("").map(parse_pct_cpu),
+        "duration_s": df["duration"].fillna("").map(parse_duration_to_seconds),
+    })
+    out = out[out["step"].astype(bool)].reset_index(drop=True)
+    return out
+
+
+def aggregate_step_resources(
+    traces: Iterable[pd.DataFrame],
+    *,
+    completed_only: bool = True,
+) -> dict[str, dict[str, list[float]]]:
+    """Aggregate per-task `peak_rss_bytes` and `pct_cpu` across traces,
+    keyed first by step, then by metric. Mirrors
+    `aggregate_step_durations` but for resource columns. Returns a dict
+    `{step: {"peak_rss_bytes": [...], "pct_cpu": [...]}}`. NaN values
+    are dropped per-metric so a row missing one column still contributes
+    the other."""
+    out: dict[str, dict[str, list[float]]] = {}
+    for df in traces:
+        if df.empty:
+            continue
+        sub = df
+        if completed_only and "status" in df.columns:
+            sub = df[df["status"] == "COMPLETED"]
+        for step, rss, cpu in zip(
+            sub["step"], sub["peak_rss_bytes"], sub["pct_cpu"]
+        ):
+            if not step:
+                continue
+            bucket = out.setdefault(
+                step, {"peak_rss_bytes": [], "pct_cpu": []}
+            )
+            if pd.notna(rss):
+                bucket["peak_rss_bytes"].append(float(rss))
+            if pd.notna(cpu):
+                bucket["pct_cpu"].append(float(cpu))
+    return out
+
+
 def trace_wallclock_seconds(df: pd.DataFrame) -> float:
     """`max(submit + duration) - min(submit)` in seconds. Returns 0.0 for an
     empty frame. Handles both pandas Timestamp/Timedelta (from the legacy
@@ -510,20 +627,128 @@ def collect_parallelism_rows(*, fetch: bool = True) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _iter_pxd071075_sweep_trace_paths() -> Iterable[Path]:
+    """Yield local nextflow_trace.txt paths for the 5 PXD071075
+    cluster-node sweep points. Tolerates both zero-padded (q010) and
+    bare (q10) directory layouts. Missing sweep points are skipped
+    silently — callers (F2b/F2c aggregators) are happy with whatever
+    subset is staged."""
+    sweep_dir = DATA_DIR / "queue_size_sweep"
+    if not sweep_dir.exists():
+        return
+    for q in (10, 50, 100, 200, 300):
+        for cand in (sweep_dir / f"q{q:03d}", sweep_dir / f"q{q}"):
+            trace = cand / "nextflow_trace.txt"
+            if trace.exists():
+                yield trace
+                break
+
+
+def _load_pxd071075_sweep_traces() -> list[pd.DataFrame]:
+    """Return the per-task DataFrames for the PXD071075 sweep traces
+    in `load_trace` shape (`step, status, submit, duration_s, finish`).
+    Used by `collect_step_runtime_rows` to pool sweep tasks into the
+    F2b distribution alongside benchmark tasks."""
+    return [load_trace(p) for p in _iter_pxd071075_sweep_trace_paths()]
+
+
+def _load_pxd071075_sweep_resource_rows() -> list[pd.DataFrame]:
+    """Return per-task resource DataFrames for the PXD071075 sweep
+    (`step, status, peak_rss_bytes, pct_cpu, duration_s`). Used by
+    `collect_step_resource_rows` to pool sweep tasks into the F2c
+    distribution alongside benchmark tasks."""
+    return [
+        load_trace_resources(p)
+        for p in _iter_pxd071075_sweep_trace_paths()
+    ]
+
+
+def collect_pxd071075_sweep_rows() -> pd.DataFrame:
+    """Add the PXD071075 single-cell `executor.queueSize` sweep points
+    to the parallelism scatter. Same schema as
+    `collect_parallelism_rows` so the two frames can be concatenated.
+
+    Each sweep point sits at the same n_runs (PXD071075's 2,310 input
+    runs) and the same instrument (Orbitrap Eclipse), but varies the
+    Nextflow queueSize. The resulting vertical strip in the F2a
+    scatter is the "elastic" wallclock dimension — orthogonal to the
+    workload-scaling axis the other cohorts demonstrate. The extra
+    `queue_size` column lets the renderer annotate each point with
+    its queueSize without polluting non-sweep rows.
+
+    Reads `data/queue_size_sweep/q<NNN>/nextflow_trace.txt` for each
+    sweep point. Returns an empty DataFrame (right shape) when no
+    sweep data is staged."""
+    sweep_dir = DATA_DIR / "queue_size_sweep"
+    rows: list[dict] = []
+    if not sweep_dir.exists():
+        return pd.DataFrame(columns=[
+            "dataset", "version", "instrument", "n_runs",
+            "n_tasks_observed", "n_invocations", "wallclock_seconds",
+            "trace_complete", "source_file", "queue_size",
+        ])
+    # PXD071075's n_runs (count of --f flags) is constant across the
+    # sweep. Pull it once from any sweep point's diannsummary.log.
+    n_runs = 0
+    for q in (10, 50, 100, 200, 300):
+        for cand in (sweep_dir / f"q{q:03d}", sweep_dir / f"q{q}"):
+            log = cand / "diannsummary.log"
+            if log.exists():
+                try:
+                    with open(log, encoding="utf-8") as fh:
+                        text = fh.read()
+                    import re as _re
+                    n_runs = len(_re.findall(r"--f \S+", text))
+                except (FileNotFoundError, OSError):
+                    n_runs = 0
+                break
+        if n_runs:
+            break
+
+    for q in (10, 50, 100, 200, 300):
+        # Tolerate both zero-padded (q010) and bare (q10) layouts.
+        trace_path = None
+        for cand in (sweep_dir / f"q{q:03d}", sweep_dir / f"q{q}"):
+            if (cand / "nextflow_trace.txt").exists():
+                trace_path = cand / "nextflow_trace.txt"
+                break
+        if trace_path is None:
+            continue
+        df_trace = load_trace(trace_path)
+        if df_trace.empty:
+            continue
+        wallclock = trace_wallclock_seconds(df_trace)
+        n_tasks = int(len(df_trace))
+        rows.append({
+            "dataset": "PXD071075",
+            "version": f"v2_5_0_q{q:03d}",
+            "instrument": "Orbitrap Eclipse",
+            "n_runs": n_runs,
+            "n_tasks_observed": n_tasks,
+            "n_invocations": 1,
+            "wallclock_seconds": float(wallclock),
+            "trace_complete": n_tasks >= MIN_ROWS_COMPLETE,
+            "source_file": str(trace_path.relative_to(REPO_ROOT)),
+            "queue_size": q,
+        })
+    return pd.DataFrame(rows)
+
+
 def collect_step_runtime_rows(*, fetch: bool = True) -> tuple[
     dict[str, list[float]], pd.DataFrame,
 ]:
-    """Aggregate per-step task durations across the **20 benchmark analyses
-    only**. We filter out the 3 cell-line analyses because they mix two
-    incompatible scales into the same step distribution: a single 300-file
-    PXD004701 cell-line run contributes 300 PRELIMINARY_ANALYSIS tasks
-    against the 20 × 6 = 120 benchmark tasks for the same step, with
-    per-task durations on a much slower legacy TripleTOF instrument. The
-    boxplots would then be skewed by PXD004701 alone and the
-    benchmark-class story would disappear into the noise. Cell-line
-    per-task data is still preserved in the underlying parquet/trace for
-    anyone who needs it; the per-step figure presents a homogeneous 6-file
-    distribution across DIA-NN versions and modern instruments only.
+    """Aggregate per-step task durations across the **20 benchmark
+    analyses + the 5 PXD071075 cluster-node sweep runs**. The 3
+    cell-line analyses (PXD003539 / PXD030304 / PXD004701) are still
+    excluded — PRIDE publishes their `nextflow_report.html` but not
+    `nextflow_trace.txt` and the report's embedded JSON conflates
+    different scales (a single 300-file PXD004701 run contributes 300
+    PRELIMINARY_ANALYSIS tasks against 20×6=120 benchmark tasks on the
+    same step). The PXD071075 sweep is added because per-task duration
+    for a given step is roughly invariant to queueSize — only the
+    workflow-level parallelism shifts — so pooling the 5 sweep
+    traces gives the distribution more weight at the real-cohort
+    scale (~2,310 input files) without distorting the per-step shape.
 
     Returns (durations_by_step, summary_df) where summary_df has columns
     `step, n, p05_seconds, p25_seconds, p50_seconds, p75_seconds,
@@ -536,6 +761,10 @@ def collect_step_runtime_rows(*, fetch: bool = True) -> tuple[
         if fetch:
             download_if_missing(url, local)
         traces.append(load_report_window_data(local))
+    # Pool the PXD071075 cluster-node sweep traces alongside the
+    # benchmarks. Already cached locally; trace.txt has the same
+    # step / status / duration columns we need.
+    traces.extend(_load_pxd071075_sweep_traces())
     durations = aggregate_step_durations(traces)
 
     summary: list[dict] = []
@@ -562,28 +791,40 @@ def collect_step_runtime_rows(*, fetch: bool = True) -> tuple[
 
 def render_parallelism_scatter(
     df: pd.DataFrame,
-    pdf_path: Path,
-    png_path: Path,
     svg_path: Path | None = None,
+    *,
+    ax: plt.Axes | None = None,
+    legend_ncol: int = 4,
+    legend_bbox_y: float = -0.14,
+    composite: bool = False,
+    show_legend: bool = True,
 ) -> None:
     """One-panel scatter: x = number of MS data files (log), y = final-run
     wallclock from pipeline_report.txt (hours), colour = instrument family.
     All dots filled with the same size — the `-resume` invocation count is
     kept in `parallelism_data.tsv` for the audit trail but isn't visually
     encoded because the re-runs reflect SDRF iteration during development,
-    not workflow reliability."""
+    not workflow reliability.
+
+    Pass `ax` to draw into an existing axes (composite figures); omit
+    `svg_path` in that mode."""
     plot_df = df.copy()
-    fig, ax = plt.subplots(figsize=(6.6, 4.6))
+    own_fig = ax is None
+    if own_fig:
+        fig, ax = plt.subplots(figsize=(6.6, 4.6))
 
     hours = plot_df["wallclock_seconds"] / 3600.0
-    DOT_SIZE = 150.0
+    dot_size = 55.0 if composite else 150.0
+    label_size = 8 if composite else 10
+    tick_size = 7 if composite else 9
+    ann_size = 6 if composite else 7
 
     for instrument in sorted(plot_df["instrument"].unique()):
         mask = plot_df["instrument"] == instrument
         ax.scatter(
             plot_df.loc[mask, "n_runs"],
             hours[mask],
-            s=DOT_SIZE,
+            s=dot_size,
             c=INSTRUMENT_COLOURS.get(instrument, "#9e9e9e"),
             alpha=0.85,
             edgecolors="#222222",
@@ -591,57 +832,125 @@ def render_parallelism_scatter(
             label=instrument,
         )
 
-    # Cell-line dataset labels — anchored to the LEFT of each dot so they
-    # don't bleed off the right edge of the axes.
-    for _, row in plot_df.iterrows():
-        if row["dataset"].startswith("PXD") and row["n_runs"] >= 100:
+    # PXD071075 sweep points share an n_runs (~2,310) but span q=10..300
+    # in queueSize. Annotate each with its queueSize so the vertical
+    # strip reads correctly. For non-sweep cohorts annotate the dataset
+    # name once per cohort, on the topmost dot only (so PXD003539 +
+    # PXD030304 + PXD004701 each carry one label, not five).
+    is_sweep = (
+        plot_df.get("queue_size").notna()
+        if "queue_size" in plot_df.columns
+        else pd.Series([False] * len(plot_df))
+    )
+    # Per-cohort name annotation — one per non-sweep cohort, attached
+    # to the dot with the largest wallclock.
+    seen_datasets: set[str] = set()
+    for _, row in (
+        plot_df[~is_sweep]
+        .sort_values("wallclock_seconds", ascending=False)
+        .iterrows()
+    ):
+        ds = row["dataset"]
+        if not ds.startswith("PXD") or row["n_runs"] < 100:
+            continue
+        if ds in seen_datasets:
+            continue
+        seen_datasets.add(ds)
+        ax.annotate(
+            ds,
+            xy=(row["n_runs"], row["wallclock_seconds"] / 3600.0),
+            xytext=(-8, 5), textcoords="offset points",
+            fontsize=ann_size, color="#444444", ha="right",
+        )
+    # PXD071075 sweep annotation.
+    # - If exactly one sweep row is shown (the F2a default — q=300
+    #   production run), label the dot "PXD071075 (<q> nodes)" once.
+    # - If multiple sweep rows are shown, fall back to the original
+    #   vertical-strip annotation (per-dot q-label + a single "sweep"
+    #   header) — used by callers that pass the full sweep frame.
+    sweep_rows = plot_df[is_sweep] if is_sweep.any() else plot_df.iloc[0:0]
+    if len(sweep_rows) == 1:
+        row = sweep_rows.iloc[0]
+        ax.annotate(
+            f"{row['dataset']} ({int(row['queue_size'])} nodes)",
+            xy=(row["n_runs"], row["wallclock_seconds"] / 3600.0),
+            xytext=(-8, 5), textcoords="offset points",
+            fontsize=ann_size, color="#1a237e", ha="right",
+        )
+    elif len(sweep_rows) > 1:
+        for _, row in sweep_rows.iterrows():
             ax.annotate(
-                row["dataset"],
+                f"q={int(row['queue_size'])}",
                 xy=(row["n_runs"], row["wallclock_seconds"] / 3600.0),
-                xytext=(-10, 6), textcoords="offset points",
-                fontsize=7, color="#444444", ha="right",
+                xytext=(6, 0), textcoords="offset points",
+                fontsize=ann_size, color="#1a237e", ha="left", va="center",
             )
+        top_sweep = sweep_rows.sort_values(
+            "wallclock_seconds", ascending=False,
+        ).iloc[0]
+        ax.annotate(
+            "PXD071075 (queueSize sweep)",
+            xy=(top_sweep["n_runs"], top_sweep["wallclock_seconds"] / 3600.0),
+            xytext=(-8, 6), textcoords="offset points",
+            fontsize=ann_size, color="#1a237e", ha="right",
+        )
 
 
-    ax.set_xlabel("Number of MS data files (log scale)", fontsize=10)
-    ax.set_ylabel("Final-run wallclock from pipeline_report (hours)",
-                  fontsize=10)
+    ax.set_xlabel("Number of MS data files", fontsize=label_size)
+    ax.set_ylabel(
+        "Final-run wallclock (hours)" if composite else
+        "Final-run wallclock from pipeline_report (hours)",
+        fontsize=label_size,
+    )
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.tick_params(axis="both", labelsize=9)
+    ax.tick_params(axis="both", labelsize=tick_size)
     ax.set_xscale("log")
     xmax = float(plot_df["n_runs"].max()) * 1.6
     ax.set_xlim(max(1, plot_df["n_runs"].min() * 0.7), xmax)
     ax.set_ylim(0, max(hours) * 1.18 if len(hours) else 1.0)
+    # Explicit integer tick labels at round powers of 10 spanning the
+    # data range (currently n_runs ∈ {6, 120, 300, 2310, 5798}) — avoids
+    # matplotlib's default 10⁰ / 10¹ power-notation glyphs which read
+    # poorly in vector exports.
+    from matplotlib.ticker import FixedLocator, FixedFormatter
+    xmin_data = float(plot_df["n_runs"].min())
+    candidate_ticks = [10, 100, 1000, 10000]
+    xticks = [t for t in candidate_ticks if xmin_data / 1.6 <= t <= xmax]
+    if xticks:
+        ax.xaxis.set_major_locator(FixedLocator(xticks))
+        ax.xaxis.set_major_formatter(
+            FixedFormatter([f"{t:,}" for t in xticks])
+        )
+        ax.xaxis.set_minor_locator(FixedLocator([]))
 
     # Single instrument-colour legend below the axes — no dot-size
     # dimension to encode, so no second legend needed.
-    ax.legend(
-        title="Instrument", loc="upper center",
-        bbox_to_anchor=(0.5, -0.14), fontsize=8, title_fontsize=9,
-        frameon=False, borderaxespad=0.0, ncol=4,
-        columnspacing=1.6,
-    )
+    if show_legend:
+        legend_fs = 6 if composite else 8
+        legend_title_fs = 7 if composite else 9
+        ncol = 2 if composite else legend_ncol
+        bbox_y = -0.22 if composite else legend_bbox_y
+        ax.legend(
+            title="Instrument", loc="upper center",
+            bbox_to_anchor=(0.5, bbox_y), fontsize=legend_fs,
+            title_fontsize=legend_title_fs,
+            frameon=False, borderaxespad=0.0, ncol=ncol,
+            columnspacing=1.2 if composite else 1.6,
+        )
 
-    # Reserve the bottom ~35% of the figure for the two stacked legends so
-    # neither overlaps any dot, the x-axis label, or each other.
-    # bbox_inches="tight" trims unused outer whitespace, fitting the canvas
-    # to data + legends. tight_layout normalises internal spacing first.
-    fig.tight_layout()
-    pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(pdf_path, bbox_inches="tight")
-    fig.savefig(png_path, dpi=300, bbox_inches="tight")
-    if svg_path is not None:
+    if own_fig:
+        fig.tight_layout()
+        assert svg_path is not None
+        svg_path.parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(svg_path, bbox_inches="tight")
-    plt.close(fig)
+        plt.close(fig)
 
 
 def render_per_step_boxplot(
     durations: dict[str, list[float]],
     summary: pd.DataFrame,
-    pdf_path: Path,
-    png_path: Path,
-    svg_path: Path | None = None,
+    svg_path: Path,
 ) -> None:
     """Horizontal box plot of per-task durations, one row per step, ordered
     by descending median."""
@@ -694,11 +1003,8 @@ def render_per_step_boxplot(
     ax.grid(True, axis="x", which="both", alpha=0.25, linestyle=":")
 
     fig.tight_layout()
-    pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(pdf_path)
-    fig.savefig(png_path, dpi=300)
-    if svg_path is not None:
-        fig.savefig(svg_path)
+    svg_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(svg_path)
     plt.close(fig)
 
 
@@ -727,28 +1033,285 @@ def write_per_step_tsv(summary: pd.DataFrame, tsv_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# F2c resources panel — memory + CPU per step
+# ---------------------------------------------------------------------------
+
+def cell_line_trace_local_path(dataset: str) -> Path:
+    """Local path where a cell-line `nextflow_trace.txt` lands once
+    collected from a fresh quantmsdiann rerun (experiment #11). PRIDE
+    does not currently publish these files — they're collected with
+    `nextflow -with-trace` on the cluster and staged here. If the file
+    exists it is included in F2b/F2c/F2a automatically; if not, those
+    figures stay benchmarks-only.
+
+    See [docs/superpowers/specs/2026-05-20-experiment-11-cell-line-traces.md]
+    for the runbook."""
+    return DATA_DIR / dataset / "pipeline_info" / "nextflow_trace.txt"
+
+
+def has_cell_line_traces() -> bool:
+    """Return True iff every cell-line dataset has a local
+    `nextflow_trace.txt`. Used by F2c/F2b's collectors to opt in to the
+    broader cohort once experiment #11 lands. Until then the
+    benchmarks-only scope holds."""
+    return all(
+        cell_line_trace_local_path(d).exists()
+        for d in CELL_LINE_ANALYSES
+    )
+
+
+def collect_step_resource_rows(*, fetch: bool = True) -> tuple[
+    dict[str, dict[str, list[float]]], pd.DataFrame,
+]:
+    """Aggregate per-task resource rows across the benchmark analyses
+    + the 5 PXD071075 cluster-node sweep runs.
+
+    Cell-line traces are included automatically when
+    `has_cell_line_traces()` returns True — that is, once experiment #11
+    has staged `data/<PXD>/pipeline_info/nextflow_trace.txt` for all
+    three cell-line cohorts. PXD071075 sweep traces are always
+    included when staged under `data/queue_size_sweep/q<N>/` — each
+    sweep run executes the same workflow on the same 2,310 input
+    files, so pooling all 5 runs increases the effective sample size
+    of the per-step resource distribution without distorting it.
+
+    Returns (resources_by_step, summary_df) where summary_df has
+    columns `step, n_rss, peak_rss_p50_bytes, peak_rss_p95_bytes,
+    pct_cpu_p50, pct_cpu_p95`.
+    """
+    include_cell_lines = has_cell_line_traces()
+    traces: list[pd.DataFrame] = []
+    for dataset, version, *_ in iter_analyses():
+        if dataset in CELL_LINE_ANALYSES:
+            if not include_cell_lines:
+                continue
+            trace_local = cell_line_trace_local_path(dataset)
+            # No URL fetch path — these are local-only artefacts.
+        else:
+            trace_url = (
+                f"{BENCHMARK_BASE}/{dataset}/{version}/nextflow_trace.txt"
+            )
+            trace_local = (
+                DATA_DIR / "quantmsdiann_benchmarks" / dataset / version
+                / "nextflow_trace.txt"
+            )
+            if fetch:
+                download_if_missing(trace_url, trace_local)
+        traces.append(load_trace_resources(trace_local))
+    # Pool the PXD071075 cluster-node sweep traces alongside the
+    # benchmarks. Each sweep point is the same workflow at a different
+    # queueSize, so per-task resource usage is roughly equivalent
+    # across runs — pooling all 5 grows the effective sample without
+    # bias.
+    traces.extend(_load_pxd071075_sweep_resource_rows())
+    resources = aggregate_step_resources(traces)
+
+    summary: list[dict] = []
+    for step, metrics in resources.items():
+        rss = pd.Series(metrics["peak_rss_bytes"])
+        cpu = pd.Series(metrics["pct_cpu"])
+        pct_cpu_p50 = float(cpu.median()) if len(cpu) else float("nan")
+        pct_cpu_p95 = float(cpu.quantile(0.95)) if len(cpu) else float("nan")
+        # Thread efficiency = raw %cpu / 12 (the DIA-NN --threads baseline).
+        # Audited alongside raw %cpu so a reader can verify the divisor.
+        eff_p50 = (
+            pct_cpu_p50 / DIANN_THREADS_BASELINE
+            if not pd.isna(pct_cpu_p50) else float("nan")
+        )
+        eff_p95 = (
+            pct_cpu_p95 / DIANN_THREADS_BASELINE
+            if not pd.isna(pct_cpu_p95) else float("nan")
+        )
+        summary.append({
+            "step": step,
+            "n_rss": int(len(rss)),
+            "peak_rss_p50_bytes": (
+                float(rss.median()) if len(rss) else float("nan")
+            ),
+            "peak_rss_p95_bytes": (
+                float(rss.quantile(0.95)) if len(rss) else float("nan")
+            ),
+            "n_cpu": int(len(cpu)),
+            "pct_cpu_p50": pct_cpu_p50,
+            "pct_cpu_p95": pct_cpu_p95,
+            "thread_efficiency_p50": eff_p50,
+            "thread_efficiency_p95": eff_p95,
+        })
+    df = (
+        pd.DataFrame(summary)
+        .sort_values("peak_rss_p50_bytes", ascending=False)
+        .reset_index(drop=True)
+    )
+    return resources, df
+
+
+# quantmsdiann always launches DIA-NN with `--threads 12`, set in the
+# pipeline's `withLabel: diann` block. The CPU panel uses this as the
+# normalisation baseline so the axis reads as "fraction of the
+# 12-thread allocation used", not raw %cpu (which is unreadable
+# without knowing the Unix convention that 100 % == 1 core).
+DIANN_THREADS_BASELINE = 12
+
+
+def render_resources_boxplot(
+    resources: dict[str, dict[str, list[float]]],
+    summary: pd.DataFrame,
+    svg_path: Path,
+) -> None:
+    """Two-panel horizontal box plot: (left) `peak_rss` per step in GB,
+    (right) **threading efficiency** = `%cpu / (12 * 100 %)` per step.
+    Step order is fixed by descending median `peak_rss`, mirrored
+    across both panels so a reviewer can read the same step across
+    both axes.
+
+    The threading efficiency divisor (12) is `DIANN_THREADS_BASELINE`
+    — quantmsdiann's `--threads` setting for the heavy DIA-NN steps.
+    DIA-NN steps (INSILICO_LIBRARY_GENERATION / PRELIMINARY_ANALYSIS /
+    INDIVIDUAL_ANALYSIS) should sit near 100 % here. Glue steps that
+    Nextflow allocates 1-2 cores to (SDRF_PARSING, MSstats, raw
+    conversion) sit near 1/12 ≈ 8 % on this scale — this is the
+    expected pattern for single-threaded helpers, not a quantmsdiann
+    deficiency. The note in the figure footer spells this out."""
+    steps = summary["step"].tolist()
+    if not steps:
+        # No data at all — emit a minimal empty figure so callers don't
+        # crash; F2c is benchmarks-only and the data is always present
+        # in the published artefacts but defensive.
+        fig, ax = plt.subplots(figsize=(8, 3))
+        ax.text(0.5, 0.5, "no resource rows", ha="center", va="center",
+                transform=ax.transAxes, color="#888888")
+        ax.set_axis_off()
+        svg_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(svg_path)
+        plt.close(fig)
+        return
+    rss_data = [
+        [b / 1024 ** 3 for b in resources[s]["peak_rss_bytes"]]
+        for s in steps
+    ]
+    # Threading efficiency = %cpu / (12 * 100 %), shown as a percentage
+    # of the DIA-NN 12-thread allocation. Raw %cpu values are kept in
+    # the TSV for auditability.
+    cpu_data = [
+        [v / DIANN_THREADS_BASELINE for v in resources[s]["pct_cpu"]]
+        for s in steps
+    ]
+    fig, (ax_rss, ax_cpu) = plt.subplots(
+        nrows=1, ncols=2,
+        figsize=(11.5, max(3.0, 0.36 * len(steps) + 1.0)),
+        sharey=True,
+    )
+    ax_rss.boxplot(
+        rss_data, vert=False, widths=0.62,
+        labels=steps, showfliers=False,
+        medianprops=dict(color="#d62728", linewidth=1.4),
+        boxprops=dict(color="#445566"),
+        whiskerprops=dict(color="#445566"),
+        capprops=dict(color="#445566"),
+    )
+    ax_rss.set_xlabel("Peak RSS per task (GB)", fontsize=10)
+    ax_rss.spines["top"].set_visible(False)
+    ax_rss.spines["right"].set_visible(False)
+    ax_rss.tick_params(axis="both", labelsize=8)
+    ax_rss.invert_yaxis()  # highest-memory step at the top
+    # Annotate per-step n_rss to the right of each box.
+    for i, step in enumerate(steps, start=1):
+        n = len(resources[step]["peak_rss_bytes"])
+        if n:
+            xpos = max(rss_data[i - 1]) if rss_data[i - 1] else 0
+            ax_rss.text(
+                xpos * 1.04, i, f"n={n}",
+                va="center", ha="left", fontsize=7, color="#666666",
+            )
+
+    ax_cpu.boxplot(
+        cpu_data, vert=False, widths=0.62,
+        labels=steps, showfliers=False,
+        medianprops=dict(color="#d62728", linewidth=1.4),
+        boxprops=dict(color="#445566"),
+        whiskerprops=dict(color="#445566"),
+        capprops=dict(color="#445566"),
+    )
+    ax_cpu.set_xlabel("Threading efficiency (%)", fontsize=10)
+    # 100 % reference: full saturation of the 12-thread allocation.
+    ax_cpu.axvline(
+        100.0, color="#26a69a", linestyle="--", linewidth=0.9, zorder=1,
+    )
+    # 1/12 reference for single-threaded glue tasks Nextflow allocates
+    # 1 core to. Drawn light so it doesn't dominate.
+    ax_cpu.axvline(
+        100.0 / DIANN_THREADS_BASELINE,
+        color="#bdbdbd", linestyle=":", linewidth=0.8, zorder=1,
+    )
+    ax_cpu.spines["top"].set_visible(False)
+    ax_cpu.spines["right"].set_visible(False)
+    ax_cpu.tick_params(axis="both", labelsize=8)
+    # Explanatory footnote intentionally not rendered into the figure;
+    # the divisor (12-thread DIA-NN baseline) and the two reference
+    # lines (100 % / 1/12) are spelled out in the manuscript methods
+    # text.
+    fig.tight_layout()
+    svg_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(svg_path, bbox_inches="tight")
+    plt.close(fig)
+
+
+def write_per_step_resources_tsv(
+    summary: pd.DataFrame, tsv_path: Path,
+) -> None:
+    tsv_path.parent.mkdir(parents=True, exist_ok=True)
+    cols = [
+        "step", "n_rss",
+        "peak_rss_p50_bytes", "peak_rss_p95_bytes",
+        "n_cpu", "pct_cpu_p50", "pct_cpu_p95",
+        "thread_efficiency_p50", "thread_efficiency_p95",
+    ]
+    summary[cols].to_csv(tsv_path, sep="\t", index=False)
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
 def main() -> int:  # pragma: no cover
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+    data_dir = FIGURES_DIR / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
 
     par_df = collect_parallelism_rows(fetch=True)
-    write_parallelism_tsv(par_df, FIGURES_DIR / "parallelism_data.tsv")
+    sweep_df = collect_pxd071075_sweep_rows()
+    if not sweep_df.empty:
+        # Audit TSV gets ALL sweep rows (5 points: q=10 through q=300)
+        # so the F2d sweep is cross-referencable from F2a's data file.
+        full_df = pd.concat([par_df, sweep_df], ignore_index=True, sort=False)
+        write_parallelism_tsv(full_df, data_dir / "parallelism_data.tsv")
+        # F2a render: keep only the q=300 row (the production-quality
+        # cluster run) so PXD071075 contributes one dot, not a vertical
+        # strip that crowds the scatter. The five-point sweep curve
+        # itself is shown in F2d (queue_size_sweep.svg).
+        sweep_top = sweep_df[sweep_df["queue_size"] == 300]
+        par_df = pd.concat([par_df, sweep_top], ignore_index=True, sort=False)
+    else:
+        write_parallelism_tsv(par_df, data_dir / "parallelism_data.tsv")
     render_parallelism_scatter(
         par_df,
-        FIGURES_DIR / "parallelism_vs_wallclock.pdf",
-        FIGURES_DIR / "parallelism_vs_wallclock.png",
         FIGURES_DIR / "parallelism_vs_wallclock.svg",
     )
 
     durations, summary = collect_step_runtime_rows(fetch=True)
-    write_per_step_tsv(summary, FIGURES_DIR / "runtime_per_step.tsv")
+    write_per_step_tsv(summary, data_dir / "runtime_per_step.tsv")
     render_per_step_boxplot(
         durations, summary,
-        FIGURES_DIR / "runtime_per_step.pdf",
-        FIGURES_DIR / "runtime_per_step.png",
         FIGURES_DIR / "runtime_per_step.svg",
+    )
+
+    resources, resources_summary = collect_step_resource_rows(fetch=True)
+    write_per_step_resources_tsv(
+        resources_summary, data_dir / "resources_per_step.tsv",
+    )
+    render_resources_boxplot(
+        resources, resources_summary,
+        FIGURES_DIR / "resources_per_step.svg",
     )
 
     n_complete = int(par_df["trace_complete"].sum())

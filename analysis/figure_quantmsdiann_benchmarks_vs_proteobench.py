@@ -37,6 +37,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import requests
 
+from analysis.contaminant_filter import is_target_protein_group
 from analysis.figure_original_vs_quantmsdiann import (
     download_if_missing,
     SUMMARY_LOG_PROTEIN_LINE_RE,
@@ -45,6 +46,8 @@ from analysis.figure_original_vs_quantmsdiann import (
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = REPO_ROOT / "data" / "quantmsdiann_benchmarks"
 FIGURES_DIR = REPO_ROOT / "analysis" / "figures" / "quantmsdiann_benchmarks"
+SUPP_DIR = FIGURES_DIR / "supplementary"
+FIG_DATA_DIR = FIGURES_DIR / "data"
 
 PRIDE_BASE = (
     "https://ftp.pride.ebi.ac.uk/pub/databases/pride/resources/proteomes/"
@@ -124,6 +127,27 @@ def count_matrix_data_rows(matrix_path: Path) -> int:
     # The matrix always has at least a header row; subtract it. Treat an
     # empty file as 0 data rows rather than -1.
     return max(0, n - 1)
+
+
+def count_matrix_data_rows_split(matrix_path: Path) -> tuple[int, int]:
+    """Return `(unfiltered_rows, target_only_rows)` from a DIA-NN
+    pr_matrix.tsv / pg_matrix.tsv. Target-only drops rows whose
+    `Protein.Group` carries a contaminant / entrapment / decoy prefix
+    (see `analysis.contaminant_filter.is_target_protein_group`).
+
+    Used by the benchmark counts: the headline number consumed by
+    figures is the target-only count; the unfiltered count is kept in
+    the audit TSV for reviewer comparison."""
+    unfiltered = count_matrix_data_rows(matrix_path)
+    try:
+        df = pd.read_csv(
+            matrix_path, sep="\t", usecols=["Protein.Group"], dtype=str,
+        )
+    except (FileNotFoundError, OSError, ValueError):
+        return (unfiltered, unfiltered)
+    pgs = df["Protein.Group"].dropna()
+    target = int(pgs.map(is_target_protein_group).sum())
+    return (unfiltered, target)
 
 
 LIBRARY_KIND_EMPIRICAL = "empirical"
@@ -275,7 +299,31 @@ def count_pr_matrix_min_replicates(
     sample columns (Condition_A_REP1..3 + Condition_B_REP1..3), so a
     `min_replicates == 3` count matches Robbe's "≥3 replicate observations"
     bucket for the head-to-head supp figure.
+
+    Returns the **target-only** count (rows whose Protein.Group passes
+    `analysis.contaminant_filter.is_target_protein_group`). Callers that
+    need the unfiltered baseline as well should use
+    `count_pr_matrix_min_replicates_split`.
     """
+    _unf, target = count_pr_matrix_min_replicates_split(
+        matrix_path, min_replicates
+    )
+    return target
+
+
+def count_pr_matrix_min_replicates_split(
+    matrix_path: Path,
+    min_replicates: int,
+) -> tuple[int, int]:
+    """Return `(unfiltered, target_only)` precursor counts at the
+    ≥`min_replicates` threshold. Target-only drops rows whose
+    Protein.Group carries a contaminant / entrapment / decoy prefix
+    (`Cont_`, `CONTAM_`, `ENTRAP_`, `DECOY_`, `decoy_`) per the
+    2026-05-21 conservative-filter spec.
+
+    Used by the benchmark headline-count writers so the audit TSV can
+    record both numbers and reviewers can verify the ~1 % contamination
+    drop predicted by the spec."""
     metadata = {
         "Protein.Group", "Protein.Ids", "Protein.Names", "Genes",
         "First.Protein.Description", "Proteotypic", "Stripped.Sequence",
@@ -284,9 +332,17 @@ def count_pr_matrix_min_replicates(
     df = pd.read_csv(matrix_path, sep="\t", dtype=str)
     sample_cols = [c for c in df.columns if c not in metadata]
     if not sample_cols:
-        return 0
+        return (0, 0)
     non_na = df[sample_cols].notna().sum(axis=1)
-    return int((non_na >= min_replicates).sum())
+    passes = non_na >= min_replicates
+    unfiltered = int(passes.sum())
+    if "Protein.Group" not in df.columns:
+        return (unfiltered, unfiltered)
+    target_mask = passes & df["Protein.Group"].map(
+        lambda v: is_target_protein_group(v) if isinstance(v, str) else False
+    )
+    target = int(target_mask.sum())
+    return (unfiltered, target)
 
 
 def normalise_software_name(name: str) -> str:
@@ -415,9 +471,7 @@ _VERSION_LABELS = {
 
 def render_main_overview(
     quantmsdiann_rows: list[tuple[str, str, int, int]],
-    pdf_path: Path,
-    png_path: Path,
-    svg_path: Path | None = None,
+    svg_path: Path,
 ) -> None:
     """4x2 grid: rows = datasets, columns = (precursors, protein groups).
     Each panel is a bar chart of DIA-NN versions. Paper-ready: no title,
@@ -468,19 +522,14 @@ def render_main_overview(
             ha="right", va="center", fontsize=10, fontweight="bold",
         )
     fig.tight_layout(rect=(0.16, 0, 1, 1))
-    pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(pdf_path)
-    fig.savefig(png_path, dpi=300)
-    if svg_path is not None:
-        fig.savefig(svg_path)
+    svg_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(svg_path)
     plt.close(fig)
 
 
 def render_main_precursors(
     quantmsdiann_rows: list[tuple[str, str, int, int]],
-    pdf_path: Path,
-    png_path: Path,
-    svg_path: Path | None = None,
+    svg_path: Path,
 ) -> None:
     """Precursor-only headline: 4 datasets x 5 DIA-NN versions in a single
     grouped-bar panel. The cross-dataset / cross-version comparison is the
@@ -534,19 +583,14 @@ def render_main_precursors(
         fontsize=8, title_fontsize=9,
     )
     fig.tight_layout(rect=(0, 0.12, 1, 1))
-    pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(pdf_path)
-    fig.savefig(png_path, dpi=300)
-    if svg_path is not None:
-        fig.savefig(svg_path)
+    svg_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(svg_path)
     plt.close(fig)
 
 
 def render_vs_proteobench(
     long_df: pd.DataFrame,
-    pdf_path: Path,
-    png_path: Path,
-    svg_path: Path | None = None,
+    svg_path: Path,
     *,
     library_kinds: tuple[str, ...] = (LIBRARY_KIND_EMPIRICAL,),
 ) -> None:
@@ -715,11 +759,8 @@ def render_vs_proteobench(
         ncol=2, frameon=False, fontsize=8,
     )
     fig.tight_layout(rect=(0, 0, 1, 0.97))
-    pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(pdf_path)
-    fig.savefig(png_path, dpi=300)
-    if svg_path is not None:
-        fig.savefig(svg_path)
+    svg_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(svg_path)
     plt.close(fig)
 
 
@@ -743,9 +784,38 @@ def _dataset_display_label(name: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def write_counts_tsv(long_df: pd.DataFrame, tsv_path: Path) -> None:
+def write_counts_tsv(
+    long_df: pd.DataFrame,
+    tsv_path: Path,
+    *,
+    quantmsdiann_unfiltered_rows: (
+        list[tuple[str, str, int, int]] | None
+    ) = None,
+) -> None:
+    """Write the per-dataset counts table for the benchmark figure.
+
+    Columns: dataset, source, tool, version, precursors, proteins,
+    filter_policy. `filter_policy` is `"target_only"` on the headline
+    rows (rows consumed by the figures) and `"unfiltered"` on the
+    companion rows derived from the raw pr_matrix.tsv / pg_matrix.tsv
+    line counts. Both rows are written for every (dataset, version)
+    pair so a reviewer can audit the conservative
+    contaminant/entrapment/decoy filter delta (~1 % per
+    ProteoBench DIA module).
+
+    `quantmsdiann_unfiltered_rows` (optional) carries the
+    (dataset, version, precursors, proteins) tuples computed BEFORE the
+    filter — when present, those rows are appended with
+    `filter_policy = "unfiltered"` and `source = "quantmsdiann"`.
+    ProteoBench rows always carry `filter_policy = "target_only"`
+    because community submissions are filtered upstream by ProteoBench's
+    own `contaminant_flag = Cont_` parser.
+    """
     tsv_path.parent.mkdir(parents=True, exist_ok=True)
-    cols = ["dataset", "source", "tool", "version", "precursors", "proteins"]
+    cols = [
+        "dataset", "source", "tool", "version",
+        "precursors", "proteins", "filter_policy",
+    ]
     # Stable ordering: quantmsdiann rows first (by dataset, version), then
     # ProteoBench rows (by dataset, descending precursors so the strongest
     # submissions are at the top of each block).
@@ -753,7 +823,22 @@ def write_counts_tsv(long_df: pd.DataFrame, tsv_path: Path) -> None:
           .sort_values(["dataset", "version"]))
     pb = (long_df[long_df["source"] == "proteobench"]
           .sort_values(["dataset", "precursors"], ascending=[True, False]))
-    out = pd.concat([qm, pb], ignore_index=True)
+    out = pd.concat([qm, pb], ignore_index=True).copy()
+    out["filter_policy"] = "target_only"
+    if quantmsdiann_unfiltered_rows:
+        unf_rows = []
+        for dataset, version, precursors, proteins in quantmsdiann_unfiltered_rows:
+            unf_rows.append({
+                "dataset": dataset,
+                "source": "quantmsdiann",
+                "tool": "DIA-NN",
+                "version": version,
+                "precursors": precursors,
+                "proteins": proteins,
+                "library_kind": LIBRARY_KIND_EMPIRICAL,
+                "filter_policy": "unfiltered",
+            })
+        out = pd.concat([out, pd.DataFrame(unf_rows)], ignore_index=True)
     # Pandas upgrades int+None columns to float; use pandas' nullable Int64
     # for proteins so ProteoBench rows print as the empty string and
     # quantmsdiann rows print as plain integers (no trailing .0).
@@ -1158,9 +1243,7 @@ def render_diann_parity(
     pb_rows_by_threshold: dict[int, dict[str, list[dict]]],
     qm_signatures: dict[tuple[str, str], dict],
     pb_signatures_by_dataset: dict[str, list[tuple[dict, int, dict]]],
-    pdf_path: Path,
-    png_path: Path,
-    svg_path: Path | None = None,
+    svg_path: Path,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Step 1 figure: per dataset, plot quantmsdiann's `nr_prec` at ≥1 and
     ≥3 replicates alongside the matched ProteoBench DIA-NN submissions'
@@ -1175,8 +1258,16 @@ def render_diann_parity(
           [dataset, version, threshold, source, label,
            precursors, match_category]
       - epsilon_df has columns
-          [dataset, threshold, n_matched, qm_median, matched_median,
-           epsilon_frac, match_level]
+          [dataset, threshold, qm_version, n_matched, qm_median,
+           matched_median, epsilon_frac, match_level]
+        The `qm_version` column is `"all"` for the aggregate row
+        (median across the 5 quantmsdiann versions) and a specific
+        DIA-NN version string (e.g. `"v2_5_0"`) for the per-version
+        rows. Per-version cohorts re-evaluate
+        `param_match_category(qm_sig_for_that_version, pb_sig)` rather
+        than reusing the best-across-versions bucket — this is what
+        lets §2.1 say "v2.5.0 vs v2.5.0 matched cohort" rather than
+        averaging.
     """
     datasets = sorted(
         quantmsdiann_rows_by_threshold[1] and {
@@ -1252,8 +1343,12 @@ def render_diann_parity(
             if cohort and qm_prec_vals:
                 qm_med = float(pd.Series(qm_prec_vals).median())
                 pb_med = float(pd.Series([m[1] for m in cohort]).median())
+                # Signed epsilon: positive = quantmsdiann leads the
+                # matched cohort, negative = trails. The sign is the
+                # load-bearing finding for §2.1: across the 4 datasets
+                # quantmsdiann consistently leads (+7.6 % to +18 %).
                 epsilon_frac = (
-                    abs(qm_med - pb_med) / pb_med if pb_med else float("nan")
+                    (qm_med - pb_med) / pb_med if pb_med else float("nan")
                 )
             else:
                 qm_med = float(pd.Series(qm_prec_vals).median()) if qm_prec_vals else float("nan")
@@ -1262,12 +1357,77 @@ def render_diann_parity(
             eps_rows.append({
                 "dataset": dataset,
                 "threshold": threshold,
+                "qm_version": "all",
                 "n_matched": len(cohort),
                 "qm_median": qm_med,
                 "matched_median": pb_med,
                 "epsilon_frac": epsilon_frac,
                 "match_level": match_level,
             })
+
+            # Per-version matched cohorts. Same logic as the aggregate
+            # row above but evaluated against ONE quantmsdiann version's
+            # signature at a time, so a v2.5.0 row only sees PB
+            # submissions whose param signature matches v2.5.0
+            # specifically.
+            qm_rows_for_dataset = [
+                (v, p) for d, v, p, _ in
+                quantmsdiann_rows_by_threshold[threshold]
+                if d == dataset
+            ]
+            for qm_version, qm_val in qm_rows_for_dataset:
+                qm_sig_v = qm_signatures.get((dataset, qm_version))
+                if qm_sig_v is None:
+                    eps_rows.append({
+                        "dataset": dataset,
+                        "threshold": threshold,
+                        "qm_version": qm_version,
+                        "n_matched": 0,
+                        "qm_median": float(qm_val),
+                        "matched_median": float("nan"),
+                        "epsilon_frac": float("nan"),
+                        "match_level": "none",
+                    })
+                    continue
+                per_ver_matched: list[tuple[int, str]] = []
+                for pb_sig, _pb_prec, raw_entry in (
+                    pb_signatures_by_dataset.get(dataset, [])
+                ):
+                    pb_thr_value = extract_nr_prec_at_replicate_threshold(
+                        raw_entry, threshold,
+                    )
+                    if pb_thr_value is None:
+                        continue
+                    cat = param_match_category(qm_sig_v, pb_sig)
+                    if cat in {"exact", "near"}:
+                        per_ver_matched.append((pb_thr_value, cat))
+                exact_v = [m for m in per_ver_matched if m[1] == "exact"]
+                cohort_v = exact_v if exact_v else per_ver_matched
+                match_level_v = (
+                    "exact" if exact_v
+                    else ("near" if per_ver_matched else "none")
+                )
+                if cohort_v:
+                    pb_med_v = float(
+                        pd.Series([m[0] for m in cohort_v]).median()
+                    )
+                    epsilon_v = (
+                        (float(qm_val) - pb_med_v) / pb_med_v
+                        if pb_med_v else float("nan")
+                    )
+                else:
+                    pb_med_v = float("nan")
+                    epsilon_v = float("nan")
+                eps_rows.append({
+                    "dataset": dataset,
+                    "threshold": threshold,
+                    "qm_version": qm_version,
+                    "n_matched": len(cohort_v),
+                    "qm_median": float(qm_val),
+                    "matched_median": pb_med_v,
+                    "epsilon_frac": epsilon_v,
+                    "match_level": match_level_v,
+                })
 
     parity_long_df = pd.DataFrame(rows)
     epsilon_df = pd.DataFrame(eps_rows)
@@ -1325,17 +1485,21 @@ def render_diann_parity(
             for y, v in zip(ys, values):
                 ax.text(v + xmax * 0.005, y, f"{v:,}", va="center",
                         ha="left", fontsize=6, color="#404040")
-            # Epsilon annotation in the top-right.
+            # Epsilon annotation in the top-right. The TSV now also
+            # carries per-version rows (`qm_version != "all"`); the
+            # in-figure annotation uses the aggregate row only so the
+            # caption stays one line.
             eps_sub = epsilon_df[
                 (epsilon_df["dataset"] == dataset)
                 & (epsilon_df["threshold"] == threshold)
+                & (epsilon_df["qm_version"] == "all")
             ]
             if len(eps_sub):
                 eps_row = eps_sub.iloc[0]
                 if pd.notna(eps_row["epsilon_frac"]):
                     ax.text(
                         0.98, 0.05,
-                        f"ε = {eps_row['epsilon_frac']*100:.1f}%   "
+                        f"ε = {eps_row['epsilon_frac']*100:+.1f}%   "
                         f"n={int(eps_row['n_matched'])} ({eps_row['match_level']})",
                         transform=ax.transAxes, ha="right", va="bottom",
                         fontsize=7, color="#444444",
@@ -1348,23 +1512,30 @@ def render_diann_parity(
                         transform=ax.transAxes, ha="right", va="bottom",
                         fontsize=7, color="#888888", fontstyle="italic",
                     )
-    # Single figure-level legend.
+    # Single figure-level legend. Build it from the categories that
+    # actually appear in the rendered bars so we never advertise a colour
+    # that has no corresponding bar (e.g. `exact = 0` across every
+    # dataset for the four ProteoBench DIA modules).
     from matplotlib.patches import Patch
+    present_categories = set(parity_long_df["match_category"].unique())
     handles = [
         Patch(facecolor="#d62728", label="quantmsdiann (DIA-NN, empirical lib)"),
-        Patch(facecolor="#26a69a", label="ProteoBench DIA-NN, exact param match"),
-        Patch(facecolor="#90caf9", label="ProteoBench DIA-NN, near param match"),
     ]
+    if "exact" in present_categories:
+        handles.append(
+            Patch(facecolor="#26a69a", label="ProteoBench DIA-NN, exact param match"),
+        )
+    if "near" in present_categories:
+        handles.append(
+            Patch(facecolor="#90caf9", label="ProteoBench DIA-NN, near param match"),
+        )
     fig.legend(
         handles=handles, loc="upper center", bbox_to_anchor=(0.5, 1.0),
-        ncol=3, frameon=False, fontsize=8,
+        ncol=len(handles), frameon=False, fontsize=8,
     )
     fig.tight_layout(rect=(0, 0, 1, 0.96))
-    pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(pdf_path)
-    fig.savefig(png_path, dpi=300)
-    if svg_path is not None:
-        fig.savefig(svg_path)
+    svg_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(svg_path)
     plt.close(fig)
     return parity_long_df, epsilon_df
 
@@ -1377,15 +1548,17 @@ def render_diann_parity(
 def render_vs_proteobench_matched(
     long_df: pd.DataFrame,
     match_categories: dict[tuple[str, str, str, int], str],
-    pdf_path: Path,
-    png_path: Path,
-    svg_path: Path | None = None,
+    svg_path: Path,
 ) -> None:
     """Same horizontal-bar layout as `render_vs_proteobench`, but bars are
-    colour-coded by match category. `match_categories` maps
-    `(dataset, tool, version, precursors)` to one of {'exact','near','far'};
-    bars that aren't in the map fall back to 'far' (treated as the neutral
-    cohort)."""
+    colour-coded by **library strategy** (`predictors_library`) — the
+    actual driver of headline `nr_prec` differences. The
+    parameter-match category (`exact|near|far`) is kept as auditable
+    text on each bar, but no longer drives the colour.
+
+    `match_categories` maps `(dataset, tool, version, precursors)` to
+    one of {'exact','near','far'}; entries missing from the map fall
+    back to 'far' (treated as the neutral cohort)."""
     datasets = sorted(long_df["dataset"].unique(), key=_dataset_sort_key)
     pb_counts = {
         ds: int(((long_df["dataset"] == ds)
@@ -1399,11 +1572,15 @@ def render_vs_proteobench_matched(
         gridspec_kw={"height_ratios": heights},
         squeeze=False,
     )
-    cat_palette = {
-        "exact": "#26a69a",
-        "near": "#90caf9",
-        "far": "#bdbdbd",
+    # Same library-strategy palette as the unmatched supp
+    # (`render_vs_proteobench`) so the two figures read consistently.
+    lib_palette = {
+        LIBRARY_KIND_EMPIRICAL: "#80cbc4",
+        LIBRARY_KIND_PREDICTED: "#1976d2",
+        LIBRARY_KIND_USER_DEFINED: "#9575cd",
+        LIBRARY_KIND_OTHER_TOOL: "#bdbdbd",
     }
+    present_lib_kinds: set[str] = set()
     for i, dataset in enumerate(datasets):
         ax = axes[i, 0]
         sub = long_df[long_df["dataset"] == dataset].copy()
@@ -1417,12 +1594,23 @@ def render_vs_proteobench_matched(
             )
             for t, v, p in zip(pb["tool"], pb["version"], pb["precursors"])
         ]
-        bar_colours = [cat_palette[c] for c in cats]
+        kinds = (
+            list(pb["library_kind"]) if "library_kind" in pb.columns
+            else [LIBRARY_KIND_OTHER_TOOL for _ in range(len(pb))]
+        )
+        present_lib_kinds.update(kinds)
+        bar_colours = [
+            lib_palette.get(k, lib_palette[LIBRARY_KIND_OTHER_TOOL])
+            for k in kinds
+        ]
         ax.barh(range(len(pb)), pb["precursors"], color=bar_colours, height=0.7)
         xmax_pb = float(pb["precursors"].max()) if len(pb) else 0.0
-        for k, (precs, lab, cat) in enumerate(zip(pb["precursors"], labels, cats)):
+        for k_idx, (precs, lab, cat, kind) in enumerate(
+            zip(pb["precursors"], labels, cats, kinds)
+        ):
             ax.text(
-                precs + xmax_pb * 0.005, k, f"{lab}  [{cat}]",
+                precs + xmax_pb * 0.005, k_idx,
+                f"{lab}  [{kind} | {cat}]",
                 va="center", ha="left", fontsize=6, color="#404040",
             )
         ax.set_yticks([])
@@ -1462,24 +1650,37 @@ def render_vs_proteobench_matched(
         ax.spines["right"].set_visible(False)
         ax.spines["left"].set_visible(False)
         ax.tick_params(axis="x", labelsize=8)
+    # Legend: data-driven over library strategies actually present
+    # in the rendered bars, in a fixed display order. The bar text
+    # also carries the [exact|near|far] match category, so the legend
+    # only needs to spell out the colour key (library kind).
     from matplotlib.patches import Patch
+    LIB_ORDER = [
+        LIBRARY_KIND_EMPIRICAL,
+        LIBRARY_KIND_PREDICTED,
+        LIBRARY_KIND_USER_DEFINED,
+        LIBRARY_KIND_OTHER_TOOL,
+    ]
+    LIB_LABELS = {
+        LIBRARY_KIND_EMPIRICAL: "ProteoBench — empirical library",
+        LIBRARY_KIND_PREDICTED: "ProteoBench — DIANN-predicted library",
+        LIBRARY_KIND_USER_DEFINED: "ProteoBench — user-defined speclib",
+        LIBRARY_KIND_OTHER_TOOL: "ProteoBench — other tool",
+    }
     handles = [
         Patch(facecolor="#d62728", edgecolor="#7f1d1d", linewidth=0.8,
               label="quantmsdiann (DIA-NN, empirical library)"),
-        Patch(facecolor=cat_palette["exact"], label="ProteoBench — exact param match"),
-        Patch(facecolor=cat_palette["near"], label="ProteoBench — near param match"),
-        Patch(facecolor=cat_palette["far"], label="ProteoBench — far / different stack"),
     ]
+    for k in LIB_ORDER:
+        if k in present_lib_kinds:
+            handles.append(Patch(facecolor=lib_palette[k], label=LIB_LABELS[k]))
     fig.legend(
         handles=handles, loc="upper center", bbox_to_anchor=(0.5, 1.0),
         ncol=2, frameon=False, fontsize=8,
     )
     fig.tight_layout(rect=(0, 0, 1, 0.97))
-    pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(pdf_path)
-    fig.savefig(png_path, dpi=300)
-    if svg_path is not None:
-        fig.savefig(svg_path)
+    svg_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(svg_path)
     plt.close(fig)
 
 
@@ -1533,13 +1734,46 @@ def median_nr_prec_per_version(
     return pd.DataFrame(rows)
 
 
-def write_median_table(df: pd.DataFrame, tsv_path: Path) -> None:
+def write_median_table(
+    df: pd.DataFrame,
+    tsv_path: Path,
+    *,
+    quantmsdiann_rows_by_threshold_unfiltered: (
+        dict[int, list[tuple[str, str, int, int]]] | None
+    ) = None,
+) -> None:
     """Auditable TSV of median precursor counts per DIA-NN version per module
     at the ≥1 and ≥3 replicate thresholds. One row per
-    (dataset, threshold, source, version)."""
+    (dataset, threshold, source, version).
+
+    Headline rows carry `filter_policy = "target_only"` (rows whose
+    Protein.Group passes the conservative contaminant filter). When
+    `quantmsdiann_rows_by_threshold_unfiltered` is provided, this writer
+    appends companion `filter_policy = "unfiltered"` rows so a reviewer
+    can compare. ProteoBench rows are always `target_only` because
+    community submissions are filtered upstream by ProteoBench's own
+    `contaminant_flag = Cont_` parser."""
     tsv_path.parent.mkdir(parents=True, exist_ok=True)
-    out = df.sort_values(
-        ["dataset", "min_replicates", "source", "version"]
+    out = df.copy()
+    if "filter_policy" not in out.columns:
+        out["filter_policy"] = "target_only"
+    if quantmsdiann_rows_by_threshold_unfiltered:
+        extra_rows = []
+        for thr, rows_unf in quantmsdiann_rows_by_threshold_unfiltered.items():
+            for dataset, version, nr_prec, _ in rows_unf:
+                extra_rows.append({
+                    "dataset": dataset,
+                    "min_replicates": thr,
+                    "source": "quantmsdiann",
+                    "version": _VERSION_LABELS.get(version, version),
+                    "n_submissions": 1,
+                    "median_nr_prec": int(nr_prec),
+                    "filter_policy": "unfiltered",
+                })
+        if extra_rows:
+            out = pd.concat([out, pd.DataFrame(extra_rows)], ignore_index=True)
+    out = out.sort_values(
+        ["dataset", "min_replicates", "source", "version", "filter_policy"]
     )
     out.to_csv(tsv_path, sep="\t", index=False)
 
@@ -1547,14 +1781,20 @@ def write_median_table(df: pd.DataFrame, tsv_path: Path) -> None:
 def main() -> int:  # pragma: no cover
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+    SUPP_DIR.mkdir(parents=True, exist_ok=True)
+    FIG_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     # quantmsdiann rows for the headline main panels (≥1-replicate row count,
-    # i.e. the raw pr_matrix.tsv row count). Each row is
+    # i.e. the pr_matrix.tsv rows whose Protein.Group passes the conservative
+    # contaminant filter). Each row is
     # (dataset, version, precursors_min1, proteins).
     quantmsdiann_rows: list[tuple[str, str, int, int]] = []
-    # Parallel ≥3-replicate quantmsdiann counts, computed by re-scanning the
-    # cached pr_matrix.tsv. (proteins unchanged.)
+    # Parallel ≥3-replicate quantmsdiann counts (target-only).
     quantmsdiann_rows_min3: list[tuple[str, str, int, int]] = []
+    # Companion unfiltered rows for the audit TSV (line counts before the
+    # contaminant / entrapment / decoy filter). Per 2026-05-21 spec.
+    quantmsdiann_rows_unfiltered: list[tuple[str, str, int, int]] = []
+    quantmsdiann_rows_min3_unfiltered: list[tuple[str, str, int, int]] = []
     for dataset in DATASET_TO_MODULE:
         for version in DIANN_VERSIONS:
             base = f"{PRIDE_BASE}/{dataset}/{version}/quant_tables"
@@ -1572,16 +1812,26 @@ def main() -> int:  # pragma: no cover
                 print(f"WARN: failed to fetch matrices for {dataset}/{version}: "
                       f"{exc}", file=sys.stderr)
                 continue
-            precursors = count_matrix_data_rows(pr_path)
-            precursors_min3 = count_pr_matrix_min_replicates(pr_path, 3)
-            proteins = count_matrix_data_rows(pg_path)
+            precursors_unf, precursors = count_matrix_data_rows_split(pr_path)
+            (precursors_min3_unf, precursors_min3) = (
+                count_pr_matrix_min_replicates_split(pr_path, 3)
+            )
+            proteins_unf, proteins = count_matrix_data_rows_split(pg_path)
             quantmsdiann_rows.append((dataset, version, precursors, proteins))
             quantmsdiann_rows_min3.append(
                 (dataset, version, precursors_min3, proteins)
             )
-            print(f"{dataset} {version}: precursors_min1={precursors:,}  "
-                  f"precursors_min3={precursors_min3:,}  "
-                  f"proteins={proteins:,}")
+            quantmsdiann_rows_unfiltered.append(
+                (dataset, version, precursors_unf, proteins_unf)
+            )
+            quantmsdiann_rows_min3_unfiltered.append(
+                (dataset, version, precursors_min3_unf, proteins_unf)
+            )
+            print(f"{dataset} {version}: precursors_min1={precursors:,} "
+                  f"(unfiltered={precursors_unf:,})  "
+                  f"precursors_min3={precursors_min3:,} "
+                  f"(unfiltered={precursors_min3_unf:,})  "
+                  f"proteins={proteins:,} (unfiltered={proteins_unf:,})")
 
     proteobench_rows: dict[str, list[tuple[str, str, int, str]]] = {}
     proteobench_rows_min3: dict[str, list[tuple[str, str, int, str]]] = {}
@@ -1610,40 +1860,38 @@ def main() -> int:  # pragma: no cover
     print("Rendering precursor-only main panel...")
     render_main_precursors(
         quantmsdiann_rows,
-        FIGURES_DIR / "main_benchmarks_precursors.pdf",
-        FIGURES_DIR / "main_benchmarks_precursors.png",
         FIGURES_DIR / "main_benchmarks_precursors.svg",
     )
 
     print("Rendering full main benchmarks overview (precursors + proteins)...")
     render_main_overview(
         quantmsdiann_rows,
-        FIGURES_DIR / "main_benchmarks_overview.pdf",
-        FIGURES_DIR / "main_benchmarks_overview.png",
         FIGURES_DIR / "main_benchmarks_overview.svg",
     )
 
     print("Rendering ProteoBench-overlay supp figure (≥1 replicate)...")
     render_vs_proteobench(
         long_df,
-        FIGURES_DIR / "supp_vs_proteobench_min1.pdf",
-        FIGURES_DIR / "supp_vs_proteobench_min1.png",
-        FIGURES_DIR / "supp_vs_proteobench_min1.svg",
+        SUPP_DIR / "supp_vs_proteobench_min1.svg",
     )
 
     print("Rendering ProteoBench-overlay supp figure (≥3 replicates, "
           "Slack-corrected default)...")
     render_vs_proteobench(
         long_df_min3,
-        FIGURES_DIR / "supp_vs_proteobench_min3.pdf",
-        FIGURES_DIR / "supp_vs_proteobench_min3.png",
         FIGURES_DIR / "supp_vs_proteobench_min3.svg",
     )
 
     print("Writing auditable counts TSV (≥1)...")
-    write_counts_tsv(long_df, FIGURES_DIR / "counts.tsv")
+    write_counts_tsv(
+        long_df, FIG_DATA_DIR / "counts.tsv",
+        quantmsdiann_unfiltered_rows=quantmsdiann_rows_unfiltered,
+    )
     print("Writing auditable counts TSV (≥3)...")
-    write_counts_tsv(long_df_min3, FIGURES_DIR / "counts_min3.tsv")
+    write_counts_tsv(
+        long_df_min3, FIG_DATA_DIR / "counts_min3.tsv",
+        quantmsdiann_unfiltered_rows=quantmsdiann_rows_min3_unfiltered,
+    )
 
     print("Writing per-DIA-NN-version median precursor table (≥1 and ≥3)...")
     median_df = median_nr_prec_per_version(
@@ -1657,7 +1905,11 @@ def main() -> int:  # pragma: no cover
         },
     )
     write_median_table(
-        median_df, FIGURES_DIR / "median_nr_prec_by_version.tsv",
+        median_df, FIG_DATA_DIR / "median_nr_prec_by_version.tsv",
+        quantmsdiann_rows_by_threshold_unfiltered={
+            1: quantmsdiann_rows_unfiltered,
+            3: quantmsdiann_rows_min3_unfiltered,
+        },
     )
 
     # ---------------------------------------------------------------------
@@ -1733,16 +1985,45 @@ def main() -> int:  # pragma: no cover
         {1: proteobench_rows, 3: proteobench_rows_min3},
         qm_signatures,
         pb_signatures_by_dataset,
-        FIGURES_DIR / "main_diann_quantmsdiann_parity.pdf",
-        FIGURES_DIR / "main_diann_quantmsdiann_parity.png",
         FIGURES_DIR / "main_diann_quantmsdiann_parity.svg",
     )
+    # Headline parity values consume the target-only quantmsdiann counts.
+    # Tag both dataframes so the audit TSV records the policy.
+    if "filter_policy" not in parity_df.columns:
+        parity_df["filter_policy"] = "target_only"
+    if "filter_policy" not in epsilon_df.columns:
+        epsilon_df["filter_policy"] = "target_only"
+    # Append companion unfiltered quantmsdiann rows to parity_df so a
+    # reviewer can see the precursor count BEFORE the conservative
+    # contaminant filter.
+    unf_rows = []
+    for thr, rows_unf in (
+        (1, quantmsdiann_rows_unfiltered),
+        (3, quantmsdiann_rows_min3_unfiltered),
+    ):
+        for ds, version, prec, _proteins in rows_unf:
+            unf_rows.append({
+                "dataset": ds,
+                "threshold": thr,
+                "source": "quantmsdiann",
+                "version": version,
+                "label": (
+                    f"quantmsdiann {_VERSION_LABELS.get(version, version)}"
+                ),
+                "precursors": prec,
+                "match_category": "self",
+                "filter_policy": "unfiltered",
+            })
+    if unf_rows:
+        parity_df = pd.concat(
+            [parity_df, pd.DataFrame(unf_rows)], ignore_index=True,
+        )
     epsilon_df.to_csv(
-        FIGURES_DIR / "diann_quantmsdiann_parity_epsilon.tsv",
+        FIG_DATA_DIR / "diann_quantmsdiann_parity_epsilon.tsv",
         sep="\t", index=False,
     )
     parity_df.to_csv(
-        FIGURES_DIR / "diann_quantmsdiann_parity_long.tsv",
+        FIG_DATA_DIR / "diann_quantmsdiann_parity_long.tsv",
         sep="\t", index=False,
     )
 
@@ -1785,16 +2066,12 @@ def main() -> int:  # pragma: no cover
     render_vs_proteobench_matched(
         long_df_min3,
         match_categories,
-        FIGURES_DIR / "supp_vs_proteobench_matched_min3.pdf",
-        FIGURES_DIR / "supp_vs_proteobench_matched_min3.png",
         FIGURES_DIR / "supp_vs_proteobench_matched_min3.svg",
     )
     render_vs_proteobench_matched(
         long_df,
         match_categories,
-        FIGURES_DIR / "supp_vs_proteobench_matched_min1.pdf",
-        FIGURES_DIR / "supp_vs_proteobench_matched_min1.png",
-        FIGURES_DIR / "supp_vs_proteobench_matched_min1.svg",
+        SUPP_DIR / "supp_vs_proteobench_matched_min1.svg",
     )
 
     # Per-dataset match-count summary; printed + saved.
@@ -1810,7 +2087,7 @@ def main() -> int:  # pragma: no cover
             "total": c["exact"] + c["near"] + c["far"],
         })
     pd.DataFrame(summary_rows).to_csv(
-        FIGURES_DIR / "match_category_counts.tsv", sep="\t", index=False,
+        FIG_DATA_DIR / "match_category_counts.tsv", sep="\t", index=False,
     )
     return 0
 

@@ -1,0 +1,48 @@
+\ProvidesPackage{mcpfigures}[2026/05/26 MCP figure widths for quantmsdiann paper]
+
+\RequirePackage{graphicx}
+\RequirePackage{xcolor}
+\RequirePackage{calc}
+\RequirePackage{expl3}
+
+\newlength{\mcponecolwidth}
+\newlength{\mcponehalfcolwidth}
+\newlength{\mcpdoublecolwidth}
+\newlength{\mcpmaxfigheight}
+
+\setlength{\mcponecolwidth}{3.5in}
+\setlength{\mcponehalfcolwidth}{5.0in}
+\setlength{\mcpdoublecolwidth}{7.2in}
+\setlength{\mcpmaxfigheight}{6.0in}
+
+\graphicspath{{figures/pdf/}{figures/}}
+
+\ExplSyntaxOn
+\NewDocumentCommand{\mcpincludegraphics}{O{}m}{%
+  \file_if_exist:nTF { figures/pdf/#2.pdf }
+    { \includegraphics[#1]{figures/pdf/#2.pdf} }
+    { \file_if_exist:nTF { figures/pdf/#2 }
+        { \includegraphics[#1]{figures/pdf/#2} }
+        { \fcolorbox{gray!60}{gray!10}{%
+            \parbox[c][2in][c]{0.92\linewidth}{%
+              \centering\small\sffamily
+              Figure file pending:\\
+              \texttt{figures/pdf/\tl_to_str:n{#2}.pdf}\\[0.5em]
+              Run \texttt{make figures} in \texttt{paper/}%
+            }%
+          }%
+        }%
+    }%
+}
+\ExplSyntaxOff
+
+%% #1 = placement; #2 = graphic stem (may contain underscores);
+%% #3 = width; #4 = short caption; #5 = long caption; #6 = label
+\newcommand{\mcpfigure}[6][htbp]{%
+  \begin{figure}[#1]%
+    \centering%
+    \mcpincludegraphics[width=#3,height=\mcpmaxfigheight,keepaspectratio]{#2}%
+    \caption[#4]{#5}%
+    \label{#6}%
+  \end{figure}%
+}

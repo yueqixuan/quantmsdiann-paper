@@ -1,0 +1,19 @@
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+build/
+
+# Compiled manuscript PDFs — regenerable via `make pdf` / `make supplementary`.
+main.pdf
+supplementary.pdf
+graphical_abstract.pdf
+
+# Figure PDFs generated from the analysis SVGs by `make figures`
+# (sources are the SVGs under ../analysis/figures/). The hand-authored
+# workflow source SVG under figures/source/ is tracked.
+figures/pdf/

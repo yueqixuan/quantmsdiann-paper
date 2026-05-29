@@ -1,0 +1,35 @@
+%% Graphical abstract and research highlights — separate MCP upload.
+%% Build: cd paper && make graphical-abstract
+%% (also built by `make pdf` / `make all`)
+
+\documentclass[preprint,12pt]{elsarticle}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{microtype}
+\usepackage{url}
+\usepackage{mcpfigures}
+\input{macros}
+
+\journal{Molecular \& Cellular Proteomics}
+
+\begin{document}
+
+\begin{frontmatter}
+
+\title{quantmsdiann: a scalable SDRF-driven DIA-NN workflow for reanalysis of single-cell, spatial, and bulk proteomics datasets}
+
+\begin{graphicalabstract}
+% \mcpincludegraphics[width=\mcponehalfcolwidth]{graphical_abstract}
+\placeholder{Graphical abstract pending.}
+\end{graphicalabstract}
+
+\begin{highlights}
+\item SDRF-driven Nextflow workflow for reproducible \texttt{DIA-NN} analysis at archive scale
+\item Demonstrated on single-cell, spatial, and bulk cell-line public DIA datasets
+\item Harmonised QPX export for FAIR re-deposition and downstream single-cell analysis
+\end{highlights}
+
+\end{frontmatter}
+
+\end{document}

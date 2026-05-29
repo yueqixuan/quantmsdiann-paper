@@ -1,0 +1,335 @@
+%% quantmsdiann — results presentation
+%% Build: cd presentation && latexmk -pdf slides.tex   (or make)
+%% Figures are pulled from ../paper/figures/pdf/ (build the paper first:
+%%   cd ../paper && make figures).
+
+\documentclass[aspectratio=169,11pt]{beamer}
+
+\usetheme{Madrid}
+\usecolortheme{whale}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{caption}{\raggedright\insertcaption\par}
+\setbeamercovered{transparent}
+
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{xcolor}
+
+\graphicspath{{../paper/figures/pdf/}}
+
+\definecolor{qmblue}{HTML}{1565C0}
+\definecolor{qmgreen}{HTML}{2E7D32}
+\definecolor{qmgrey}{HTML}{555555}
+
+\newcommand{\quantmsdiann}{\textcolor{qmblue}{\texttt{quantmsdiann}}}
+\newcommand{\diann}{\texttt{DIA-NN}}
+\newcommand{\sdrf}{\texttt{SDRF}}
+
+\title[quantmsdiann]{\texttt{quantmsdiann}}
+\subtitle{A scalable SDRF-driven \diann{} workflow for reanalysis of public DIA proteomics data}
+\author[Perez-Riverol]{Yasset Perez-Riverol}
+\institute[EMBL-EBI]{EMBL-EBI}
+\date{}
+
+\begin{document}
+
+\begin{frame}[plain]
+  \titlepage
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\begin{frame}{The problem}
+  \begin{columns}[T]
+    \begin{column}{0.58\textwidth}
+      \begin{itemize}
+        \item Public archives (PRIDE, MassIVE) hold \textbf{thousands of DIA datasets}.
+        \item Each was processed with a \textbf{different software configuration} $\rightarrow$ analytically siloed.
+        \item \diann{} is the dominant DIA engine, but most deployments are
+              \textbf{artisanal}: bespoke scripts, hand-curated sheets,
+              hard-coded versions.
+        \item New \diann{} versions quantify more precursors and proteins
+              every release $\rightarrow$ reanalysis is \textbf{not a one-time event}.
+      \end{itemize}
+      \vspace{0.6em}
+      \begin{block}{Goal}
+        One reproducible, metadata-driven workflow that scales \diann{} to
+        archive-sized cohorts.
+      \end{block}
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \centering
+      \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{manuscript/workflow_panel}
+      \\[-0.2em]
+      {\scriptsize\color{qmgrey}The \quantmsdiann{} workflow}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\section{SDRF extensions}
+
+\begin{frame}{SDRF as the single source of truth}
+  \quantmsdiann{} takes \textbf{one \sdrf{} file} as primary input and derives
+  every \diann{} parameter from it --- removing the most common source of
+  analysis-script divergence between labs.
+  \vspace{0.5em}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{Sample annotation (ontology-validated)}
+      \begin{itemize}\small
+        \item \texttt{characteristics[cell line]}
+        \item \texttt{characteristics[cellosaurus accession]}
+        \item \texttt{characteristics[organism part]}, \texttt{disease}
+        \item \texttt{factor value[\ldots]}
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \textbf{Acquisition $\rightarrow$ \diann{} config}
+      \begin{itemize}\small
+        \item \texttt{comment[instrument]}
+        \item \texttt{comment[proteomics data acquisition method]}
+        \item \texttt{comment[precursor/fragment mass tolerance]}
+        \item \texttt{comment[modification parameters]}
+        \item \texttt{comment[cleavage agent details]}
+        \item \texttt{comment[file uri]} / \texttt{[associated file uri]}
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{SDRF extensions added for DIA}
+  New / DIA-specific columns let one SDRF drive the whole run:
+  \vspace{0.4em}
+  \begin{block}{Example row (PXD004701, Sun 2023)}
+    \begin{semiverbatim}\scriptsize
+characteristics[cellosaurus accession]  = CVCL_3040
+comment[instrument]                     = NT=TripleTOF 5600;AC=MS:1000932
+comment[proteomics data acquisition method] = Data-independent acquisition
+comment[modification parameters]        = NT=Carbamidomethyl;MT=fixed;TA=C
+comment[modification parameters]        = NT=Oxidation;MT=variable;TA=M
+comment[cleavage agent details]         = NT=Trypsin/P;AC=MS:1001313
+comment[precursor mass tolerance]       = 20 ppm
+comment[fragment mass tolerance]        = 20 ppm
+comment[file uri]                       = .../PXD004701/guot_..._BR1.wiff
+    \end{semiverbatim}
+  \end{block}
+  \begin{itemize}\small
+    \item \textbf{Cellosaurus accession} $\rightarrow$ unambiguous cell-line identity, queryable downstream.
+    \item \textbf{Per-run tolerances \& mods} $\rightarrow$ propagated to per-file \diann{} invocations.
+    \item \textbf{File URIs} $\rightarrow$ raw files fetched directly from PRIDE/MassIVE (\texttt{pridepy}).
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{Encoding plexDIA in SDRF}
+  We extended the \sdrf{} representation so that \textbf{plexDIA / mTRAQ
+  multiplexing} is described entirely in metadata --- no side-car channel
+  files.
+  \vspace{0.3em}
+  \begin{block}{One row per channel, sharing the same raw file}
+    \begin{semiverbatim}\scriptsize
+source name      comment[data file]  comment[label]  factor value[condition]
+Sample_A_rep1    wJD803.raw          \textcolor{qmblue}{MTRAQ0}          Sample_A
+Sample_B_rep1    wJD803.raw          \textcolor{qmblue}{MTRAQ4}          Sample_B
+Sample_C_rep1    wJD803.raw          \textcolor{qmblue}{MTRAQ8}          Sample_C
+    \end{semiverbatim}
+  \end{block}
+  \begin{itemize}\small
+    \item \textbf{Channel labels} (\texttt{MTRAQ0/4/8}) live in
+          \texttt{comment[label]}; the shared \texttt{comment[data file]}
+          makes the \textbf{channel\,$\rightarrow$\,sample} mapping explicit.
+    \item The label reagents are resolved to ontology terms and turned into
+          \diann{}'s plexDIA channel configuration automatically.
+    \item Same mechanism covers SILAC-style non-isobaric labels --- the
+          acquisition method stays \texttt{data-independent acquisition}.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Work in progress: single-cell \& plexDIA reanalyses}
+  SDRFs annotated and queued for reanalysis with \quantmsdiann{} ---
+  single-cell and plexDIA cohorts from MassIVE:
+  \vspace{0.4em}
+  \begin{columns}[T]
+    \begin{column}{0.52\textwidth}
+      \centering\small
+      \begin{tabular}{l r l}
+        \toprule
+        \textbf{MassIVE} & \textbf{Runs} & \textbf{Notes} \\
+        \midrule
+        MSV000088302 & 18   & \textcolor{qmblue}{next}; + label-free sibling (36) \\
+        MSV000093494 & 47   & + label-free sibling \\
+        MSV000089093 & 48   & \\
+        MSV000089159 & 48   & \\
+        MSV000089353 & 49   & \\
+        MSV000096034 & 380  & \\
+        MSV000098940 & 1{,}719 & large \\
+        MSV000094829 & 2{,}301 & large \\
+        \bottomrule
+      \end{tabular}
+    \end{column}
+    \begin{column}{0.46\textwidth}
+      \small
+      \begin{itemize}
+        \item Span single-channel single-cell through mTRAQ plexDIA, on the
+              same \sdrf{} schema.
+        \item Several have \textbf{label-free siblings} --- a direct
+              label-free vs.\ plexDIA comparison on matched material.
+        \item Two large cohorts ($>$1.7k and $>$2.3k runs) stress the
+              archive-scale throughput path.
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{From SDRF to outputs}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{Runtime selectable}
+      \begin{itemize}\small
+        \item Container-pinned \diann{} 1.8.1, 2.1.0, 2.2.0, 2.3.2, 2.5.0
+              (\texttt{--diann\_version}).
+        \item Same SDRF $\rightarrow$ many \diann{} versions in one invocation.
+      \end{itemize}
+      \vspace{0.4em}
+      \textbf{Vendor formats}
+      \begin{itemize}\small
+        \item Thermo \texttt{.raw}, Bruker \texttt{.d} --- native to current \diann{}.
+        \item Sciex \texttt{.wiff/.wiff2} --- via \texttt{wiffconverter}.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \textbf{Harmonised outputs}
+      \begin{itemize}\small
+        \item Standard \diann{} report tables.
+        \item MSstats input.
+        \item \textcolor{qmblue}{\textsc{qpx}} (Quantitative Proteomics
+              eXchange) Parquet archive --- queryable with DuckDB, MuData
+              export for scverse.
+        \item \texttt{pmultiqc} QC report.
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\section{Throughput}
+
+\begin{frame}{Scales to archive-sized cohorts}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \centering
+      \includegraphics[width=\linewidth,height=0.62\textheight,keepaspectratio]{performance/queue_size_sweep}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \centering
+      \includegraphics[width=\linewidth,height=0.62\textheight,keepaspectratio]{performance/parallelism_vs_wallclock}
+    \end{column}
+  \end{columns}
+  \vspace{0.3em}
+  \begin{itemize}\small
+    \item PXD071075 single-cell ($\sim$2{,}300 runs): \textbf{37.7 h $\rightarrow$ 2.4 h} from 10 to 300 nodes.
+    \item Monotonic with cluster width; practical knee near 200 nodes.
+    \item Final-run wall-clock tracks cohort size and instrument without per-dataset changes.
+  \end{itemize}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\section{Benchmarks}
+
+\begin{frame}{ProteoBench: identifications grow with \diann{} version}
+  \centering
+  \includegraphics[width=\textwidth,height=0.66\textheight,keepaspectratio]{quantmsdiann_benchmarks/main_benchmarks_precursors}
+  \begin{itemize}\small
+    \item 4 modules: Astral (M7), single-cell (M9), diaPASEF (M5), ZenoTOF (M10).
+    \item Monotonic gain 1.8.1 $\rightarrow$ 2.5.0 on every module (e.g.\ M5: 92k $\rightarrow$ 117k precursors).
+    \item All five versions produced from \textbf{one SDRF} --- no version-coupling artefacts.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{ProteoBench: \quantmsdiann{} in the community context}
+  \begin{columns}[T]
+    \begin{column}{0.62\textwidth}
+      \centering
+      \includegraphics[width=\linewidth,height=0.78\textheight,keepaspectratio]{quantmsdiann_benchmarks/main_id_vs_epsilon}
+    \end{column}
+    \begin{column}{0.38\textwidth}
+      \small
+      Precursors quantified vs.\ median quantification error $|\epsilon|$
+      for \textbf{every public ProteoBench submission}.
+      \vspace{0.6em}
+      \begin{itemize}
+        \item \quantmsdiann{} trajectory (red) sits with the \textbf{leading
+              submissions} in the high-ID region on every module.
+        \item Parity with the standalone \diann{} GUI within $\pm$2\%.
+        \item Accuracy vs.\ IDs trade-off is module-dependent --- newest
+              version is not always lowest $|\epsilon|$.
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\section{Results}
+
+\begin{frame}{Reanalysis recovers comparable or deeper coverage}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \centering
+      {\scriptsize\textbf{PXD003539 --- Guo 2019, NCI-60}}\\
+      \includegraphics[width=\linewidth,height=0.52\textheight,keepaspectratio]{PXD003539/main_comparison}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \centering
+      {\scriptsize\textbf{PXD030304 --- ProCan, 949 lines}}\\
+      \includegraphics[width=\linewidth,height=0.52\textheight,keepaspectratio]{PXD030304/main_comparison}
+    \end{column}
+  \end{columns}
+  \vspace{0.2em}
+  \begin{itemize}\small
+    \item Guo 2019 (OpenSWATH): \textbf{95{,}633 vs 40{,}592 peptides} ($+135$\%; engine change + orchestration).
+    \item ProCan (\diann{} 1.7.x): \textbf{9{,}370 vs 8{,}498 protein groups}; +22\% at $\geq$2 peptides.
+    \item Sun 2023 (current engine): near-parity --- gains are largest for older deposits.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Pan-cohort of five public DIA reanalyses}
+  \begin{columns}[T]
+    \begin{column}{0.6\textwidth}
+      \centering
+      \includegraphics[width=\linewidth,height=0.78\textheight,keepaspectratio]{combined/atlas_overlap}
+    \end{column}
+    \begin{column}{0.4\textwidth}
+      \small
+      Five cohorts under \textbf{one SDRF-driven invocation}:
+      NCI-60, ProCan, Sun, Mehnert, Tognetti.
+      \vspace{0.5em}
+      \begin{itemize}
+        \item \textbf{5{,}144-protein core} detected across all five cohorts.
+        \item Counts come from one pipeline --- no per-study harmonisation.
+        \item Matrix queryable directly from the \textsc{qpx} archive
+              (Cellosaurus / NCIt / Disease Ontology).
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\begin{frame}{Summary}
+  \begin{itemize}
+    \item \quantmsdiann{}: an \textbf{independent, SDRF-driven} Nextflow/nf-core
+          workflow dedicated to \diann{}.
+    \item \textbf{SDRF extensions} carry per-run acquisition parameters and
+          ontology-validated sample identity into every \diann{} invocation
+          and into the outputs.
+    \item \textbf{Benchmarks}: matches the standalone \diann{} GUI on
+          ProteoBench across 5 versions $\times$ 4 modalities.
+    \item \textbf{Results}: recovers comparable-or-deeper coverage on public
+          cell-line deposits; scales a 2{,}300-run cohort to 2.4 h.
+  \end{itemize}
+  \vspace{0.8em}
+  \centering
+  \footnotesize \url{https://github.com/bigbio/quantmsdiann}
+\end{frame}
+
+\end{document}

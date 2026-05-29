@@ -374,3 +374,94 @@ def test_load_trace_handles_header_only_trace(tmp_path: Path) -> None:
     assert df.empty
     assert peak_concurrent_tasks(df) == (0, 0.0)
     assert trace_wallclock_seconds(df) == 0.0
+
+
+# ---------------------------------------------------------------------------
+# F2c resource-column parsers and aggregator
+# ---------------------------------------------------------------------------
+
+def test_parse_size_to_bytes_covers_all_units() -> None:
+    """Nextflow stores `peak_rss` as `<float> <unit>` where unit is one of
+    B / KB / MB / GB / TB. The parser must round-trip each unit and return
+    NaN for empty / `-` cells (Nextflow uses `-` for tasks that exit before
+    a measurement is taken)."""
+    import math
+    from analysis.figure_performance_trace import parse_size_to_bytes
+    assert parse_size_to_bytes("165 MB") == 165 * 1024 ** 2
+    assert parse_size_to_bytes("4.7 GB") == 4.7 * 1024 ** 3
+    assert parse_size_to_bytes("3.2 KB") == 3.2 * 1024
+    assert parse_size_to_bytes("1024 B") == 1024.0
+    assert math.isnan(parse_size_to_bytes(""))
+    assert math.isnan(parse_size_to_bytes("-"))
+    assert math.isnan(parse_size_to_bytes("nope"))
+
+
+def test_parse_pct_cpu_handles_trailing_percent_and_excess() -> None:
+    """`%cpu` is `<float>%`. Multi-thread tasks can exceed 100 % — the
+    parser must not cap them or it would distort the per-step median for
+    DIA-NN steps that run on multiple threads per task."""
+    import math
+    from analysis.figure_performance_trace import parse_pct_cpu
+    assert parse_pct_cpu("94.8%") == 94.8
+    assert parse_pct_cpu("1147.0%") == 1147.0
+    assert parse_pct_cpu("0%") == 0.0
+    assert math.isnan(parse_pct_cpu("-"))
+    assert math.isnan(parse_pct_cpu(""))
+
+
+def test_load_trace_resources_extracts_step_keyed_rows(tmp_path: Path) -> None:
+    """Two-row fixture: a SAMPLESHEET_CHECK row and a FINAL_QUANTIFICATION
+    row. Resources loader must extract both, attach the step name, and
+    parse the human-readable size + percent strings into bytes / floats."""
+    from analysis.figure_performance_trace import load_trace_resources
+    p = tmp_path / "trace.txt"
+    p.write_text(
+        "task_id\thash\tnative_id\tname\tstatus\texit\tsubmit\tduration\t"
+        "realtime\t%cpu\tpeak_rss\tpeak_vmem\trchar\twchar\n"
+        "1\ta1/b\t1\tPIPE:INPUT_CHECK:SAMPLESHEET_CHECK (foo.tsv)\t"
+        "COMPLETED\t0\t2026-05-15 22:17:15.431\t1m 9s\t2s\t94.8%\t"
+        "165 MB\t576.2 MB\t41.4 MB\t3.2 KB\n"
+        "2\ta1/c\t2\tPIPE:DIANN:FINAL_QUANTIFICATION\tCOMPLETED\t0\t"
+        "2026-05-15 22:18:00.000\t2h\t1h 55m\t1147%\t34.5 GB\t40 GB\t"
+        "12 GB\t2 GB\n"
+    )
+    df = load_trace_resources(p)
+    assert list(df["step"]) == ["SAMPLESHEET_CHECK", "FINAL_QUANTIFICATION"]
+    assert df.iloc[0]["peak_rss_bytes"] == 165 * 1024 ** 2
+    assert df.iloc[1]["peak_rss_bytes"] == 34.5 * 1024 ** 3
+    assert df.iloc[0]["pct_cpu"] == 94.8
+    assert df.iloc[1]["pct_cpu"] == 1147.0
+
+
+def test_aggregate_step_resources_groups_and_filters_failed() -> None:
+    """The aggregator must (1) group rows by step across multiple traces,
+    (2) drop FAILED rows under `completed_only=True`, (3) keep COMPLETED
+    rows from every trace, (4) carry NaN cells through without polluting
+    the metric lists (a row missing RSS but present CPU contributes only
+    CPU)."""
+    import math
+    import pandas as pd
+    from analysis.figure_performance_trace import aggregate_step_resources
+    trace1 = pd.DataFrame({
+        "step": ["FINAL_QUANTIFICATION", "FINAL_QUANTIFICATION"],
+        "status": ["COMPLETED", "FAILED"],
+        "peak_rss_bytes": [34.5 * 1024 ** 3, 5.0 * 1024 ** 3],
+        "pct_cpu": [1147.0, 50.0],
+        "duration_s": [7200.0, 30.0],
+    })
+    trace2 = pd.DataFrame({
+        "step": ["FINAL_QUANTIFICATION", "SAMPLESHEET_CHECK"],
+        "status": ["COMPLETED", "COMPLETED"],
+        "peak_rss_bytes": [40.0 * 1024 ** 3, math.nan],
+        "pct_cpu": [1200.0, 90.0],
+        "duration_s": [7500.0, 60.0],
+    })
+    out = aggregate_step_resources([trace1, trace2])
+    assert sorted(out.keys()) == ["FINAL_QUANTIFICATION", "SAMPLESHEET_CHECK"]
+    assert out["FINAL_QUANTIFICATION"]["peak_rss_bytes"] == [
+        34.5 * 1024 ** 3, 40.0 * 1024 ** 3,
+    ]
+    assert out["FINAL_QUANTIFICATION"]["pct_cpu"] == [1147.0, 1200.0]
+    # SAMPLESHEET_CHECK has CPU only; the NaN RSS must not appear.
+    assert out["SAMPLESHEET_CHECK"]["peak_rss_bytes"] == []
+    assert out["SAMPLESHEET_CHECK"]["pct_cpu"] == [90.0]

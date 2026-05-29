@@ -1,0 +1,74 @@
+\subsection{End-to-end throughput on archive-scale DIA cohorts}
+\label{sec:throughput}
+
+The headline operational result of \quantmsdiann{} is that a single SDRF-driven invocation processes archive-scale DIA cohorts within hours of wall-clock time on commodity HPC, with wall-clock time decreasing monotonically with cluster width over the tested range up to a practical knee near 200 nodes.
+On the PXD071075 single-cell DIA benchmark (\textasciitilde 2{,}300 raw files, Wang \textit{et al.}~\cite{wang2025}), increasing the Nextflow \texttt{executor.queueSize} from 10 to 300 cluster nodes reduced end-to-end wall-clock time from 37.7~h to 2.4~h (Fig.~\ref{fig:architecture}b).
+Scaling was monotonic across the sweep, with a practical knee near 200 nodes (2.6~h) beyond which the cohort-level consolidation step dominates and additional parallel workers yield diminishing returns.
+Beyond the 200-node knee, gains in wall-clock time come at decreasing CPU-hour efficiency: scaling from 10 to 300 nodes reduces wall-clock by 15.5$\times$ for a 30$\times$ increase in cluster width, so users should choose cluster width based on the desired turn-around time rather than the maximum-throughput operating point.
+Across ProteoBench benchmark datasets and our public cell-line cohorts, final-run wall-clock time tracked cohort size and instrument family without per-dataset workflow changes (Fig.~\ref{fig:architecture}c): the largest cohort in the panel, PXD030304 (5{,}798 TripleTOF~6600 runs), completed in 4.8~h on the same configuration that finishes the 6-run ProteoBench cohorts in under one hour.
+Peak memory usage during the consolidation step remained below \placeholder{GB}~GB for cohorts up to \placeholder{Nmax raw files} raw files, allowing \quantmsdiann{} to be deployed on commodity 64--128~GB HPC nodes rather than requiring high-memory specialist hardware.
+Per-step wall-clock and resource envelopes are reported in Additional file~1: Figs.~S1 and~S2.
+
+\subsection{\quantmsdiann{} pipeline architecture}
+\label{sec:architecture}
+
+\quantmsdiann{} is implemented in Nextflow DSL2~\cite{ewels2020nfcore} and follows nf-core community standards, distributing each computational step as a versioned Docker or Singularity/Apptainer container.
+The pipeline accepts a single SDRF file as primary input, which encodes per-sample metadata (cell line or tissue origin, factor values, instrument, post-translational modifications) and per-run file references.
+From this input, \quantmsdiann{} derives the analysis parameters required by \texttt{DIA-NN} automatically, eliminating the most common source of analysis-script divergence between research groups.
+The workflow comprises four mandatory and three optional modules organised around the \texttt{DIA-NN} analysis core (Fig.~\ref{fig:architecture}a), alternating between per-file parallel stages (red; in-silico library generation when requested, preliminary calibration, individual search) and collective stages (green; empirical library assembly, final quantification, MSstats conversion, \texttt{pmultiqc}~\cite{larrea2025pmultiqc} quality-control reporting) operating on the full cohort.
+
+\subsubsection{Parallelisation strategy}
+Raw-file conversion and per-run quantification are dispatched as independent Nextflow tasks, enabling the throughput scaling reported in Section~\ref{sec:throughput}.
+Dataset-wide \texttt{DIA-NN} steps that require the full cohort (match-between-runs, normalisation, protein inference) run in a single consolidation task with tuned memory ceilings, avoiding out-of-memory failures common to single-machine \texttt{DIA-NN} runs on 1{,}000+ file inputs.
+Outputs include the standard \texttt{DIA-NN} report tables (\texttt{report.tsv}, \texttt{report.pr\_matrix.tsv}, \texttt{report.pg\_matrix.tsv}) alongside MSstats-formatted input and a \texttt{pmultiqc}~\cite{larrea2025pmultiqc} quality-control report.
+A harmonised \qpx{} archive bundles the SDRF, identifications (PSM, peptide, protein-group, feature), MS metadata, ontology terms, and pipeline provenance into a Parquet-based artefact, which can be queried directly with DuckDB and, for the quantification layers, exported to MuData (\texttt{.h5mu}) for scverse-compatible~\cite{virshup2023scverse} downstream analysis.
+
+\subsubsection{\texttt{DIA-NN} version flexibility}
+Container-pinned profiles for \texttt{DIA-NN}~1.8.1, 2.1.0, 2.2.0, 2.3.2 and 2.5.0 are shipped with the pipeline, with the \texttt{DIA-NN} binary selected at runtime through the \texttt{--diann\_version} parameter; users can add further versions by supplying a custom container.
+Identical SDRF inputs can therefore be processed against multiple \texttt{DIA-NN} versions in one invocation, with separate output directories per version.
+This explicit version handling enables cross-version reproducibility audits without re-engineering the workflow and supports use cases such as reanalysis of historical datasets with the \texttt{DIA-NN} version originally used by the depositing laboratory, alongside re-quantification with the current release.
+
+\subsubsection{Library handling}
+For single-cell and spatial DIA experiments, matched empirical spectral libraries from bulk samples are often unavailable.
+\quantmsdiann{} supports two complementary library modes:
+(i)~\texttt{DIA-NN} library-free analysis from a user-supplied FASTA proteome (default), in which \texttt{DIA-NN} generates a predicted in-silico library and a cohort-wide empirical library is then assembled across all runs in the SDRF; and
+(ii)~user-supplied spectral library passed via \texttt{--speclib}, for users wishing to reuse a previously generated empirical or hybrid library.
+In-silico library generation, per-run calibration, and empirical-library assembly are each parallelised across the relevant runs.
+
+\subsection{ProteoBench benchmark across \texttt{DIA-NN} versions and instruments}
+\label{sec:proteobench}
+
+To demonstrate that \quantmsdiann{} preserves \texttt{DIA-NN}'s analytical performance under SDRF-driven orchestration, we processed every public ProteoBench DIA module through the workflow and compared the resulting identification counts against the public submissions snapshot from ProteoBench (\placeholder{snapshot date YYYY-MM-DD}), including the corresponding standalone \texttt{DIA-NN} GUI submissions on the ProteoBench leaderboard~\cite{devreese2025proteobench}.
+The benchmark panel covers four instrument families and acquisition modes: Orbitrap Astral 2~Th DIA (\emph{Module~7}), single-cell DIA on Orbitrap (\emph{Module~9}, PXD049412), timsTOF diaPASEF (\emph{Module~5}, PXD062685), and SCIEX ZenoTOF~7600 (\emph{Module~10}, PXD070049).
+For each module we ran the workflow against five \texttt{DIA-NN} releases (1.8.1, 2.1.0, 2.2.0, 2.3.2, and 2.5.0) in a single invocation, with all five versions parametrised from the same SDRF (Fig.~\ref{fig:proteobench}).
+
+Identification counts grew monotonically with \texttt{DIA-NN} version on every module: precursors rose by 14\% on Module~7 (105{,}793~$\to$~120{,}973 from 1.8.1 to 2.5.0), 14\% on Module~9 (38{,}218~$\to$~43{,}761), 27\% on Module~5 (91{,}075~$\to$~115{,}735), and 17\% on Module~10 (85{,}847~$\to$~100{,}524); protein-group counts at 1\% FDR rose in lockstep (7\% / 8\% / 14\% / 7\% respectively).
+These per-version gains match the version-progress effect reported by the \texttt{DIA-NN} authors~\cite{demichev2020} and by the broader ProteoBench community~\cite{devreese2025proteobench}, confirming that the SDRF wrapper introduces no version-coupling artefacts.
+Head-to-head with the official \texttt{DIA-NN} GUI ProteoBench submissions (Additional file~1: Fig.~S3) places \quantmsdiann{} within $\pm$2\% of the standalone tool on every module / version combination, and the identification-versus-accuracy scatter (Fig.~\ref{fig:proteobench}b; Additional file~1: Fig.~S4) shows that \quantmsdiann{} sits with the leading community submissions in the high-ID, low-$\epsilon$ region.
+Importantly, although identification counts rise monotonically with \texttt{DIA-NN} version (Fig.~\ref{fig:proteobench}a), median quantification error~$|\epsilon|$ does not always improve with the newest release: on a per-module basis the optimal identification--accuracy trade-off may sit at an intermediate \texttt{DIA-NN} version rather than the most recent one (Fig.~\ref{fig:proteobench}b).
+Users wishing to maximise IDs at fixed FDR should select the most recent supported \texttt{DIA-NN} release; users prioritising lowest median quantification error should consult Fig.~\ref{fig:proteobench}b on a per-module basis.
+
+\subsection{Independent cell-line reanalyses recover comparable or deeper coverage than the original quantifications}
+\label{sec:reanalyses}
+
+To evaluate \quantmsdiann{} on production-scale public deposits, we reanalysed three independent bulk-DIA cell-line cohorts that had been processed and published with different DIA engines (Fig.~\ref{fig:cell-line-reanalysis}).
+For each cohort the same raw files were retrieved from PRIDE Archive~\cite{deutsch2026proteomexchange}, parsed through an SDRF generated from the original sample annotations, and run through \quantmsdiann{} with current \texttt{DIA-NN} releases.
+
+On the Guo \textit{et al.}, 2019 NCI-60 panel (PXD003539; originally analysed with OpenSWATH using the Guo 2019 assay library), \quantmsdiann{} recovered 95{,}633 peptides at 1\% FDR against 40{,}592 in the original submission ($+135$\%), with comparable protein-group counts (6{,}747 versus 6{,}556; Fig.~\ref{fig:cell-line-reanalysis}a).
+Because the original Guo 2019 analysis used OpenSWATH with a fixed assay library while \quantmsdiann{} runs \texttt{DIA-NN} in library-free mode, this gain reflects both the SDRF-driven orchestration and the change of analysis engine; a like-for-like \texttt{DIA-NN}-on-original-library control is part of ongoing work.
+On the Sun \textit{et al.}, 2023 breast-cancer panel of 76 cell lines (PXD004701; originally analysed with PCT-SWATH), \quantmsdiann{} recovered 6{,}146 protein groups under the original consistency filter (proteotypic peptides, $\leq$90\% missing) against 6{,}091 in the published analysis ($+0.9$\%), with raw-matrix counts within 10\% on the unfiltered metrics (Fig.~\ref{fig:cell-line-reanalysis}b).
+On the ProCan-DepMapSanger 949-cell-line pan-cancer panel (PXD030304; originally analysed with \texttt{DIA-NN}~1.7.x), \quantmsdiann{} recovered 8{,}921 protein groups at 1\% FDR against 8{,}498 originally ($+5$\%) and 7{,}990 protein groups requiring $\geq 2$ unique peptides versus 6{,}692 ($+19$\%; Fig.~\ref{fig:cell-line-reanalysis}c).
+Both the original 8,498 protein-group headline (Global.Q.Value $\leq 0.01$, no per-protein peptide threshold) and the stringent 6,692 count (same Global.Q.Value filter plus a $\geq 2$ supporting-peptide requirement) are reported in the ProCan-DepMapSanger paper itself; the \quantmsdiann{} numbers (8,921 and 7,990) are computed under the matching filters and the same conservative contaminant/decoy filter, so each side of the comparison is like-for-like.
+Across the three cohorts, the gain was largest on the deposits that had been processed with older or non-\texttt{DIA-NN} engines (Guo 2019 OpenSWATH, ProCan 1.7.x); the cohort that had already been analysed with a current DIA engine (Sun 2023) yielded near-parity, as expected.
+Per-condition completeness, peptide-per-protein distributions, gene-versus-accession overlap and per-cell-line missingness for each cohort are provided as Additional file~1: Figs.~S5--S10.
+
+\subsection{Pan-cohort of five public DIA cell-line reanalyses}
+\label{sec:pancohort}
+
+To illustrate the value of running the same SDRF-driven workflow across many independent deposits, we combined the three reanalysed cohorts above with two additional cell-line DIA panels (PXD041421, Mehnert 2023; PXD017199, Tognetti 2021, 67 breast cancer cell lines) into a single \quantmsdiann{} invocation and assembled a pan-cohort view of cell-line and protein-accession overlap (Fig.~\ref{fig:pancohort}).
+The combined panel comprises 12{,}229 unique UniProt accessions across the five cohorts, of which 5{,}144 (42.1\%) are detected in all five, defining a pan-cohort core proteome (Fig.~\ref{fig:pancohort}a, upper UpSet plot); a further 1{,}334 (10.9\%) are shared by exactly four of the five cohorts.
+Per-cohort headline counts (lower-left bars in Fig.~\ref{fig:pancohort}a) confirm that \quantmsdiann{} matches or exceeds the original published count on each cohort.
+
+Tissue-level coverage across the combined panel spans 27 Cellosaurus-derived tissue categories (plus the catch-all ``Other tissue'' and ``Healthy (Non-cancer)'' bins; Fig.~\ref{fig:pancohort}b): lung, breast, haematopoietic-and-lymphoid, skin, and central nervous system together account for 59\% of all cell-line entries in the atlas.
+Because every count comes from running a single SDRF-parameterised \quantmsdiann{} invocation rather than reconciling per-study quantifications, the resulting protein matrix is directly queryable from the published \qpx{} archive and can be filtered, joined, or re-grouped by Cellosaurus, NCIt, or Disease Ontology terms without manual harmonisation.
+The consolidated SDRF and per-cohort \quantmsdiann{} configurations underpinning this pan-cohort run will be deposited on Zenodo (\placeholder{Zenodo DOI}) before publication, so that the full input--configuration--output triple can be re-executed by third parties.

@@ -8,6 +8,10 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+from analysis.contaminant_filter import (
+    is_target_protein_group,
+    strip_known_prefix,
+)
 from analysis.figure_original_vs_quantmsdiann import (
     unique_peptides_per_protein_diann,
     unique_peptides_per_protein_openswath,
@@ -18,10 +22,14 @@ DATA_DIR = REPO_ROOT / "data" / "PXD003539"
 FIGURES_DIR = REPO_ROOT / "analysis" / "figures" / "PXD003539"
 
 _ACCESSION_RE = re.compile(r"^[A-NR-Z][0-9][A-Z0-9]{3}[0-9](?:[A-Z0-9]{1,5})?$")
-_PREFIX_RE = re.compile(r"^(?:CONTAM_|ENTRAP_|DECOY_)+")
 
 
 def _clean_token(tok: str) -> str | None:
+    """Normalise an accession token. The caller has already verified
+    via `is_target_protein_group` that the surrounding Protein.Group
+    has no contaminant/entrapment/decoy prefix, so `strip_known_prefix`
+    here is defensive — covers any future asymmetry between the row-level
+    filter and per-token normalisation."""
     tok = tok.strip()
     if not tok:
         return None
@@ -32,7 +40,7 @@ def _clean_token(tok: str) -> str | None:
             tok = parts[1]
         else:
             return None
-    tok = _PREFIX_RE.sub("", tok)
+    tok = strip_known_prefix(tok)
     if "-" in tok:
         tok = tok.split("-", 1)[0]
     if not tok:
@@ -41,7 +49,19 @@ def _clean_token(tok: str) -> str | None:
 
 
 def extract_accessions_diann(protein_group: str | None) -> set[str]:
+    """Return the set of target UniProt accessions in `protein_group`.
+
+    Conservative policy: returns the empty set if **any**
+    semicolon-separated accession token carries a contaminant /
+    entrapment / decoy prefix. Mixed groups like
+    `CONTAM_P02768;P02768` are dropped entirely — the conservative
+    interpretation per the 2026-05-21 contaminant-filter spec.
+
+    Pure-target rows pass through unchanged. Empty / None inputs
+    return the empty set."""
     if not protein_group:
+        return set()
+    if not is_target_protein_group(protein_group):
         return set()
     out: set[str] = set()
     for piece in protein_group.split(";"):
@@ -52,12 +72,28 @@ def extract_accessions_diann(protein_group: str | None) -> set[str]:
 
 
 def extract_accessions_openswath(protein_str: str | None) -> set[str]:
+    """OpenSWATH protein-string extractor. Same conservative filter
+    as `extract_accessions_diann`: drop the row if any token after
+    the leading count carries a prefix. The leading count field
+    (`1`, `2`, `DECOY_1`, ...) is *not* itself an accession and is
+    always skipped — but if it carries a `DECOY_` prefix we treat the
+    whole row as a decoy and drop it.
+    """
     if not protein_str:
         return set()
     parts = protein_str.split("/")
-    # First field is the count (e.g. "1", "2", "DECOY_1") — skip it.
+    # First field is the count; a `DECOY_<n>` count means decoy row.
+    if parts and parts[0].startswith(("DECOY_", "decoy_")):
+        return set()
+    # Apply the conservative filter to the joined accession tokens
+    # using `is_target_protein_group`, treating the rest as a
+    # semicolon-joined string. The OpenSWATH format uses `/` so we
+    # rebuild a `;`-joined view for the predicate.
+    accession_tokens = [p for p in parts[1:] if p.strip()]
+    if not is_target_protein_group(";".join(accession_tokens)):
+        return set()
     out: set[str] = set()
-    for piece in parts[1:]:
+    for piece in accession_tokens:
         cleaned = _clean_token(piece)
         if cleaned:
             out.add(cleaned)
@@ -89,9 +125,7 @@ def accessions_with_min_peptides_openswath(
 def render_venn_diagram(
     guo_acc: set[str],
     diann_acc: set[str],
-    pdf_path: Path,
-    png_path: Path,
-    svg_path: Path | None = None,
+    svg_path: Path,
     *,
     left_label: str = "Guo 2019 (OpenSWATH)",
     right_label: str = "quantmsdiann (DIA-NN)",
@@ -155,11 +189,8 @@ def render_venn_diagram(
         ax.text(2.0, 1.5, full_right, ha="center", va="bottom", fontsize=11)
 
     fig.tight_layout()
-    pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(pdf_path)
-    fig.savefig(png_path, dpi=300)
-    if svg_path is not None:
-        fig.savefig(svg_path)
+    svg_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(svg_path)
     plt.close(fig)
 
 
@@ -188,11 +219,9 @@ def main() -> int:
     print(f"Guo only:         {len(guo_only):,}")
     print(f"DIA-NN only:      {len(diann_only):,}")
 
-    pdf_path = FIGURES_DIR / "supp_venn_protein_accessions.pdf"
-    png_path = FIGURES_DIR / "supp_venn_protein_accessions.png"
     svg_path = FIGURES_DIR / "supp_venn_protein_accessions.svg"
-    render_venn_diagram(guo_acc, diann_acc, pdf_path, png_path, svg_path)
-    print(f"Figure saved to {pdf_path}, {png_path}, {svg_path}")
+    render_venn_diagram(guo_acc, diann_acc, svg_path)
+    print(f"Figure saved to {svg_path}")
     return 0
 
 

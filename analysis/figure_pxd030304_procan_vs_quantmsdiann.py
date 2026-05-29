@@ -26,6 +26,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from analysis.contaminant_filter import count_target_protein_groups
 from analysis.figure_original_vs_quantmsdiann import (
     download_if_missing,
     unique_peptides_per_protein_diann,
@@ -83,7 +84,9 @@ PG_METADATA_COLS = [
 class Counts:
     procan_proteins: int                       # 8,498 (paper)
     procan_proteins_stringent: int             # 6,692 (paper)
-    quantmsdiann_proteins: int                 # from diannsummary.log
+    quantmsdiann_proteins: int                 # post-filter pg_matrix headline
+    quantmsdiann_proteins_unfiltered: int      # diannsummary.log (audit only)
+    quantmsdiann_proteins_pg_matrix_unfiltered: int  # raw pg_matrix row count
     quantmsdiann_proteins_stringent: int       # >=2 unique peptides, computed
     quantmsdiann_precursors: int               # from diannsummary.log
 
@@ -444,9 +447,7 @@ def per_run_completeness_quantmsdiann(pg_matrix_path: Path) -> dict[str, float]:
 
 def render_main_figure(
     counts: Counts,
-    pdf_path: Path,
-    png_path: Path,
-    svg_path: Path | None = None,
+    svg_path: Path,
 ) -> None:
     """Grouped bar chart: 2 conditions x 2 metrics (proteins, ≥2-peptide
     proteins). Paper-ready: no title, no footer."""
@@ -479,20 +480,15 @@ def render_main_figure(
     ax.legend(loc="upper right", frameon=False)
 
     fig.tight_layout()
-    pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(pdf_path)
-    fig.savefig(png_path, dpi=300)
-    if svg_path is not None:
-        fig.savefig(svg_path)
+    svg_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(svg_path)
     plt.close(fig)
 
 
 def render_proteins_per_tissue(
     procan_per_tissue: dict[str, set[str]],
     diann_per_tissue: dict[str, set[str]],
-    pdf_path: Path,
-    png_path: Path,
-    svg_path: Path | None = None,
+    svg_path: Path,
 ) -> None:
     """Grouped bar chart: 28 tissues x 2 conditions (ProCan vs quantmsdiann).
     Tissues sorted by descending ProCan cell-line count is not directly
@@ -532,20 +528,15 @@ def render_proteins_per_tissue(
               ncol=2, frameon=False)
 
     fig.tight_layout(rect=(0, 0.18, 1, 1))
-    pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(pdf_path)
-    fig.savefig(png_path, dpi=300)
-    if svg_path is not None:
-        fig.savefig(svg_path)
+    svg_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(svg_path)
     plt.close(fig)
 
 
 def render_per_run_completeness(
     procan_per_run: dict[str, float],
     diann_per_run: dict[str, float],
-    pdf_path: Path,
-    png_path: Path,
-    svg_path: Path | None = None,
+    svg_path: Path,
 ) -> None:
     """Line plot: per-run fraction of detected proteins, both pipelines.
     Runs aligned by sorting each pipeline's set independently — they don't
@@ -570,11 +561,8 @@ def render_per_run_completeness(
     ax.legend(loc="lower right", frameon=False)
 
     fig.tight_layout()
-    pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(pdf_path)
-    fig.savefig(png_path, dpi=300)
-    if svg_path is not None:
-        fig.savefig(svg_path)
+    svg_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(svg_path)
     plt.close(fig)
 
 
@@ -595,9 +583,19 @@ def write_counts_tsv(
         ("Protein groups (>=2 peptides)", "ProCan-DepMapSanger 2022 (stringent)",
          counts.procan_proteins_stringent,
          "6,692 proteins with >=2 supporting peptides (paper, Results)"),
-        ("Protein groups", "quantmsdiann (DIA-NN, 1% FDR)",
+        ("Protein groups", "quantmsdiann (DIA-NN, 1% FDR, target-only)",
          counts.quantmsdiann_proteins,
-         "from diannsummary.log (Protein groups with global q-value <= 0.01)"),
+         "post-filter: pg_matrix.tsv rows whose Protein.Group has no "
+         "CONTAM_/Cont_/ENTRAP_/DECOY_/decoy_ token (conservative filter, "
+         "2026-05-21 spec)"),
+        ("Protein groups", "quantmsdiann (DIA-NN, 1% FDR, unfiltered pg_matrix)",
+         counts.quantmsdiann_proteins_pg_matrix_unfiltered,
+         "raw row count of diann_report.pg_matrix.tsv, pre-filter; includes "
+         "CONTAM_/ENTRAP_/DECOY_ rows"),
+        ("Protein groups", "quantmsdiann (DIA-NN, 1% FDR, diannsummary.log)",
+         counts.quantmsdiann_proteins_unfiltered,
+         "audit baseline: diannsummary.log 'Protein groups with global "
+         "q-value <= 0.01' line (unfiltered)"),
         ("Protein groups (>=2 peptides)", "quantmsdiann (DIA-NN, 1% FDR)",
          counts.quantmsdiann_proteins_stringent,
          ">=2 unique Stripped.Sequence per Protein.Group (proteotypic) in pr_matrix.tsv"),
@@ -674,8 +672,13 @@ def main() -> int:  # pragma: no cover
 
     # Headline counts
     print("Parsing DIA-NN summary log...")
-    pg, prec = parse_diann_summary_log(log_path)
-    print(f"  protein groups: {pg:,}  precursors: {prec:,}")
+    pg_log, prec = parse_diann_summary_log(log_path)
+    print(f"  protein groups (log, unfiltered): {pg_log:,}  precursors: {prec:,}")
+
+    print("Counting pg_matrix.tsv protein-group rows (unfiltered + target-only)...")
+    pg_unf, pg_target = count_target_protein_groups(pg_path)
+    print(f"  pg_matrix rows: unfiltered={pg_unf:,}  target_only={pg_target:,} "
+          f"(delta {pg_unf - pg_target:,})")
 
     print("Computing quantmsdiann >=2-peptide protein-group count...")
     pep_per_pg = unique_peptides_per_protein_diann(pr_path)
@@ -685,7 +688,10 @@ def main() -> int:  # pragma: no cover
     counts = Counts(
         procan_proteins=PROCAN_PROTEINS,
         procan_proteins_stringent=PROCAN_PROTEINS_STRINGENT,
-        quantmsdiann_proteins=pg,
+        # Headline = post-filter pg_matrix count (per 2026-05-21 spec §1.6).
+        quantmsdiann_proteins=pg_target,
+        quantmsdiann_proteins_unfiltered=pg_log,
+        quantmsdiann_proteins_pg_matrix_unfiltered=pg_unf,
         quantmsdiann_proteins_stringent=diann_stringent,
         quantmsdiann_precursors=prec,
     )
@@ -693,8 +699,6 @@ def main() -> int:  # pragma: no cover
     print("Rendering main figure...")
     render_main_figure(
         counts,
-        FIGURES_DIR / "main_comparison.pdf",
-        FIGURES_DIR / "main_comparison.png",
         FIGURES_DIR / "main_comparison.svg",
     )
 
@@ -723,8 +727,6 @@ def main() -> int:  # pragma: no cover
     print("Rendering per-tissue supp figure...")
     render_proteins_per_tissue(
         procan_per_tissue, diann_per_tissue,
-        FIGURES_DIR / "supp_proteins_per_tissue.pdf",
-        FIGURES_DIR / "supp_proteins_per_tissue.png",
         FIGURES_DIR / "supp_proteins_per_tissue.svg",
     )
 
@@ -741,14 +743,14 @@ def main() -> int:  # pragma: no cover
     print("Rendering per-run completeness supp figure...")
     render_per_run_completeness(
         procan_per_run, diann_per_run,
-        FIGURES_DIR / "supp_missing_values_per_run.pdf",
-        FIGURES_DIR / "supp_missing_values_per_run.png",
         FIGURES_DIR / "supp_missing_values_per_run.svg",
     )
 
     print("Writing auditable counts TSV (with per-tissue rows)...")
+    data_dir = FIGURES_DIR / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
     write_counts_tsv(
-        counts, FIGURES_DIR / "counts.tsv",
+        counts, data_dir / "counts.tsv",
         procan_per_tissue=procan_per_tissue,
         diann_per_tissue=diann_per_tissue,
     )
@@ -766,9 +768,11 @@ def main() -> int:  # pragma: no cover
         d = len(diann_per_tissue.get(t, set()))
         print(f"  {t:32s} {p:>6,} | {d:>6,}")
 
-    # Cross-check
-    if pg != 9370:
-        print(f"WARN: quantmsdiann protein groups {pg} != expected 9,370",
+    # Cross-check (the diannsummary.log unfiltered number is what the
+    # historical baseline pinned; the post-filter target count is lower).
+    if pg_log != 9370:
+        print(f"WARN: quantmsdiann protein groups (log) {pg_log} != "
+              f"expected 9,370",
               file=sys.stderr)
     if prec != 153644:
         print(f"WARN: quantmsdiann precursors {prec} != expected 153,644",

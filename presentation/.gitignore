@@ -1,0 +1,17 @@
+# LaTeX/Beamer build artifacts — regenerable via `make`.
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.nav
+*.snm
+*.toc
+*.vrb
+*.out
+*.synctex.gz
+build/
+
+# Compiled slides — regenerable.
+slides.pdf

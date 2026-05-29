@@ -28,11 +28,19 @@ def test_extract_accessions_diann_isoform_suffix_stripped() -> None:
     assert extract_accessions_diann("P12345-2;Q67890-1") == {"P12345", "Q67890"}
 
 
-def test_extract_accessions_diann_keeps_contam_and_entrap() -> None:
-    # Strip CONTAM_/ENTRAP_ prefix so the underlying UniProt accession matches
-    # across pipelines; downstream callers can filter if they want.
-    assert extract_accessions_diann("CONTAM_P02768-1;P02768") == {"P02768"}
-    assert extract_accessions_diann("ENTRAP_Q8NFD5;Q8NFD5") == {"Q8NFD5"}
+def test_extract_accessions_diann_drops_contam_and_entrap_under_conservative() -> None:
+    """Conservative policy (2026-05-21 spec): drop the row if ANY
+    token has a contaminant / entrapment / decoy prefix. Mixed
+    `CONTAM_P02768;P02768` rows are dropped along with pure-prefix
+    rows. Previous (LIBERAL) behaviour stripped the prefix and kept
+    the underlying accession; that's the bug we are fixing because
+    pure-contaminant rows like `CONTAM_HORSE_ALB` used to leak into
+    the target catalog."""
+    assert extract_accessions_diann("CONTAM_P02768-1;P02768") == set()
+    assert extract_accessions_diann("ENTRAP_Q8NFD5;Q8NFD5") == set()
+    assert extract_accessions_diann("CONTAM_HORSE_ALB") == set()
+    # Pure-target unchanged.
+    assert extract_accessions_diann("P02768;Q9NQ29") == {"P02768", "Q9NQ29"}
 
 
 def test_extract_accessions_diann_empty_or_none() -> None:
@@ -55,10 +63,20 @@ def test_extract_accessions_openswath_empty_or_none() -> None:
     assert extract_accessions_openswath(None) == set()  # type: ignore[arg-type]
 
 
-def test_extract_accessions_openswath_decoy_yields_accession() -> None:
-    # The decoy filter happens upstream; the parser just extracts accessions.
+def test_extract_accessions_openswath_decoy_dropped_under_conservative() -> None:
+    """Conservative contaminant filter (2026-05-21 spec): the
+    OpenSWATH-side extractor drops decoy rows entirely, mirroring
+    the DIA-NN extractor. A row whose leading count is `DECOY_<n>`
+    is excluded. Previously the parser yielded the accession and
+    deferred filtering to callers; the new policy filters at the
+    source so no downstream caller can accidentally count a decoy
+    in the target catalog."""
     assert extract_accessions_openswath(
         "DECOY_1/sp|P50990|TCPQ_HUMAN"
+    ) == set()
+    # A clean target row still extracts as before.
+    assert extract_accessions_openswath(
+        "1/sp|P50990|TCPQ_HUMAN"
     ) == {"P50990"}
 
 
@@ -82,9 +100,11 @@ def test_accessions_with_min_peptides_diann_filters_and_expands(
     out = accessions_with_min_peptides_diann(p, min_peptides=2)
     # P1 has {AAAR, BBBR} -> kept; expands to {P1}
     # P2;P2alt has {DDDR, EEER} -> kept; expands to {P2, P2alt}
-    # P3 has {FFFR} -> dropped
-    # CONTAM_P4-1;P4 has {GGGR, HHHR} -> kept; expands to {P4}
-    assert out == {"P1", "P2", "P2alt", "P4"}
+    # P3 has {FFFR} -> dropped (only 1 unique peptide)
+    # CONTAM_P4-1;P4 has {GGGR, HHHR} -> 2 peptides, but DROPPED under
+    # conservative contaminant filter (2026-05-21 spec): any row with
+    # a CONTAM_/ENTRAP_/DECOY_ token is excluded entirely.
+    assert out == {"P1", "P2", "P2alt"}
 
 
 def test_accessions_with_min_peptides_openswath_filters_and_expands(

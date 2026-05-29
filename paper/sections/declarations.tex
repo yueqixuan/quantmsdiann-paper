@@ -1,0 +1,34 @@
+\section*{Declarations}
+
+\subsection*{Ethics approval and consent to participate}
+Not applicable.
+All datasets reanalysed in this study were obtained from public proteomics repositories with ethics approval and informed consent from the original depositing studies.
+
+\subsection*{Consent for publication}
+Not applicable.
+
+\subsection*{Data availability}
+All datasets reanalysed in this study are publicly available through ProteoMeXchange.
+Cell-line bulk DIA reanalyses: PRIDE PXD003539 (Guo 2019, NCI-60), PXD004701 (Sun 2023), PXD030304 (ProCan-DepMapSanger), PXD017199 (Tognetti 2021), PXD041421 (Mehnert 2023).
+Scalability experiment: PRIDE PXD071075 (Wang 2025).
+ProteoBench benchmarks: PXD049412 (single-cell, Module 9), PXD062685 (diaPASEF, Module 5), PXD070049 (ZenoTOF, Module 10), and Module 7 (Astral) datasets.
+The full list of PRIDE accessions used in the pan-cohort of DIA cell-line reanalyses is provided in Additional file~1: Table~S1.
+Per-process runtime and resource envelopes (Figs.~S1, S2) and detailed ProteoBench supplementary panels (Figs.~S3, S4) are provided as Additional file~1.
+
+\subsection*{Code availability}
+\quantmsdiann{} is available at \url{https://github.com/bigbio/quantmsdiann} under the MIT license; documentation is hosted at \url{https://quantmsdiann.quantms.org/}.
+The pipeline is implemented in Nextflow DSL2 ($\geq$25.10.4) and packages each step as a versioned Docker, Singularity, or Apptainer container image.
+Pipeline version v2.1.0 (release codename ``Sao Pablo'', 2026-05-08) was used for the analyses reported in this paper.
+Analysis scripts that generated the figures in this manuscript are available at \url{https://github.com/bigbio/quantmsdiann-paper} (this repository).
+
+\subsection*{Competing interests}
+\placeholder{VD is the original author of DIA-NN. Other authors declare no competing interests.}
+
+\subsection*{Funding}
+\placeholder{Grant numbers and funding sources for each author.}
+
+\subsection*{Authors' contributions}
+\placeholder{QXY, YS and CD developed the pipeline. AL and HW implemented the SDRF parsing and QPX export. JN and FC contributed the spatial-proteomics datasets and analysis. VD provided DIA-NN expertise and guidance on cross-version reproducibility. MB and YPR conceived and supervised the project. QXY and YPR wrote the manuscript with input from all authors. All authors read and approved the final manuscript.}
+
+\subsection*{Acknowledgements}
+\placeholder{We thank the Brunner, Derks, Leduc, Mund, Wang, and Coscia teams for depositing their data publicly. We thank the nf-core community and the OpenMS and DIA-NN developer teams for their ongoing work.}

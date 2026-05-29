@@ -1,0 +1,99 @@
+%% quantmsdiann manuscript — Molecular & Cellular Proteomics (MCP)
+%% Article type: Software
+%%
+%% Build: cd paper && make pdf
+%% Figures: MCP column widths via mcpfigures.sty; SVG sources in ../analysis/figures/
+%%
+%% TODO before submission — author-fillable placeholders:
+%%   methods.tex:  UP000005640 UniProt release (e.g. 2024_05)
+%%   methods.tex:  Cell-line panel deposit count (N3) and instrument-model count (I)
+%%   methods.tex:  Zenodo DOI for consolidated panel SDRF
+%%   methods.tex:  AWS r6i instance specs (confirm family / generation)
+%%   results.tex:  Peak memory cap (GB) on consolidation step + max raw-file count tested
+%%   results.tex:  CPU-hours ratio between 10-node and 300-node runs (from trace.txt)
+%%   results.tex / figures.tex: YYYY-MM-DD date of the ProteoBench community-submissions snapshot
+%%   figures.tex (Fig. 4 caption): Zenodo DOI for consolidated pan-cohort SDRF + configurations
+%%   declarations.tex: Competing-interest, Funding, Author contributions, Acknowledgements (currently draft placeholders)
+%%
+%% Pipeline version: v2.1.0 (release codename "Sao Pablo", 2026-05-08) — filled in methods.tex and declarations.tex
+
+\documentclass[preprint,12pt]{elsarticle}
+%% For journal submission, switch to double-column layout, e.g.:
+%% \documentclass[final,3p,times,twocolumn]{elsarticle}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{microtype}
+\usepackage{grffile}
+\usepackage{amsmath}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{mcpfigures}
+\input{macros}
+
+\journal{Molecular \& Cellular Proteomics}
+
+\begin{document}
+
+\begin{frontmatter}
+
+\title{quantmsdiann: a scalable SDRF-driven DIA-NN workflow for reanalysis of single-cell, spatial, and bulk proteomics datasets}
+
+\author[aff1]{Qi-Xuan Yue}
+\author[aff1]{Yufei Shen}
+\author[aff3]{Asier Larrea}
+\author[aff2]{Chengxin Dai}
+\author[aff4]{Henry Webel}
+\author[aff6]{Jose Nimo}
+\author[aff6]{Fabian Coscia}
+\author[aff1]{Mingze Bai}
+\author[aff5]{Vadim Demichev}
+\author[aff3]{Yasset Perez-Riverol\corref{cor1}}
+
+\ead[cor1]{yasset@ebi.ac.uk}
+\cortext[cor1]{Corresponding author.}
+
+\affiliation[aff1]{organization={Chongqing Key Laboratory of Big Data for Bio Intelligence, Chongqing University of Posts and Telecommunications}, city={Chongqing}, country={China}}
+\affiliation[aff2]{organization={State Key Laboratory of Proteomics, Beijing Proteome Research Center, National Center for Protein Sciences (Beijing), Beijing Institute of Life Omics}, city={Beijing}, country={China}}
+\affiliation[aff3]{organization={European Molecular Biology Laboratory, European Bioinformatics Institute (EMBL-EBI), Wellcome Genome Campus}, city={Hinxton, Cambridge}, country={UK}}
+\affiliation[aff4]{organization={Novo Nordisk Foundation Center for Protein Research, Faculty of Health and Medical Sciences, University of Copenhagen}, city={Copenhagen}, country={Denmark}}
+\affiliation[aff5]{organization={Quantitative Proteomics laboratory, Charit\'{e} -- Universit\"{a}tsmedizin Berlin}, city={Berlin}, country={Germany}}
+\affiliation[aff6]{organization={Spatial Proteomics Group, Max-Delbr\"{u}ck-Center for Molecular Medicine in the Helmholtz Association (MDC)}, city={Berlin}, country={Germany}}
+
+\begin{abstract}
+Public proteomics archives now host thousands of data-independent acquisition (DIA) datasets, but they remain analytically siloed because each was processed with a different software configuration. We present \quantmsdiann{}, an open-source Nextflow nf-core workflow that parallelize \texttt{DIA-NN} tool in cloud and HPC infrastructures guided by the experimental design written in SDRF format. The workflow ships container-pinned profiles for any \texttt{DIA-NN} version using Docker and Singularity packaging systems without the need of installations; dependency resolver etc. quantmsdiann support natively all vendor-formats and when conversion is needed (e.g. Sciex) the workflow handles it seamlessly the conversion to mzML. Results are exports harmonised quantification tables into MSstats input, a the newly Quantiative Proteomics eXchange format (\qpx{}), and a \texttt{pmultiqc} quality-control report. The \quantmsdiann{} parallelisation design allows a 2{,}300-run single-cell dataset to be reanalysed in 2.4~hours on an HPC cluster of 300 nodes.
+
+We benchmark \quantmsdiann{} on the full ProteoBench DIA panel (five \texttt{DIA-NN} versions $\times$ four instrument modalities), reanalyse three independent bulk cell-line cohorts (PXD003539, PXD004701, PXD030304), and assemble a pan-cohort of five public DIA cell-line reanalyses under a single SDRF-driven invocation; SDRF-driven reprocessing with current \texttt{DIA-NN} versions matches or exceeds the originally deposited results. Single-cell and spatial proteomics demonstrations are part of ongoing work.
+\quantmsdiann{} is available at \url{https://github.com/bigbio/quantmsdiann}.
+\end{abstract}
+
+\begin{keyword}
+DIA-NN \sep single-cell proteomics \sep spatial proteomics \sep plexDIA \sep data-independent acquisition \sep Nextflow \sep nf-core \sep SDRF \sep reproducibility \sep QPX \sep pmultiqc
+\end{keyword}
+
+\end{frontmatter}
+
+\section{Introduction}
+\label{sec:introduction}
+\input{sections/introduction}
+
+\section{Experimental Procedures}
+\label{sec:methods}
+\input{sections/methods}
+
+\section{Results}
+\label{sec:results}
+\input{sections/results}
+
+\input{sections/figures}
+
+\section{Discussion}
+\label{sec:discussion}
+\input{sections/discussion}
+
+\input{sections/declarations}
+
+\bibliographystyle{elsarticle-num}
+\bibliography{references}
+
+\end{document}
