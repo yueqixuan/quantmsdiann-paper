@@ -46,6 +46,8 @@
 \author[aff4]{Henry Webel}
 \author[aff6]{Jose Nimo}
 \author[aff6]{Fabian Coscia}
+\author[aff7]{Orhun Kok}
+\author[aff7,aff8]{Nikolai Slavov}
 \author[aff1]{Mingze Bai}
 \author[aff5]{Vadim Demichev}
 \author[aff3]{Yasset Perez-Riverol\corref{cor1}}
@@ -59,6 +61,8 @@
 \affiliation[aff4]{organization={Novo Nordisk Foundation Center for Protein Research, Faculty of Health and Medical Sciences, University of Copenhagen}, city={Copenhagen}, country={Denmark}}
 \affiliation[aff5]{organization={Quantitative Proteomics laboratory, Charit\'{e} -- Universit\"{a}tsmedizin Berlin}, city={Berlin}, country={Germany}}
 \affiliation[aff6]{organization={Spatial Proteomics Group, Max-Delbr\"{u}ck-Center for Molecular Medicine in the Helmholtz Association (MDC)}, city={Berlin}, country={Germany}}
+\affiliation[aff7]{organization={Department of Bioengineering, Department of Biology, Department of Chemistry and Chemical Biology, Single Cell Proteomics Center, and Barnett Institute for Chemical and Biological Analysis, Northeastern University}, city={Boston, Massachusetts}, country={USA}}
+\affiliation[aff8]{organization={Parallel Squared Technology Institute}, city={Watertown, Massachusetts}, country={USA}}
 
 \begin{abstract}
 Public proteomics archives now host thousands of data-independent acquisition (DIA) datasets, but they remain analytically siloed because each was processed with a different software configuration. We present \quantmsdiann{}, an open-source Nextflow nf-core workflow that parallelize \texttt{DIA-NN} tool in cloud and HPC infrastructures guided by the experimental design written in SDRF format. The workflow ships container-pinned profiles for any \texttt{DIA-NN} version using Docker and Singularity packaging systems without the need of installations; dependency resolver etc. quantmsdiann support natively all vendor-formats and when conversion is needed (e.g. Sciex) the workflow handles it seamlessly the conversion to mzML. Results are exports harmonised quantification tables into MSstats input, a the newly Quantiative Proteomics eXchange format (\qpx{}), and a \texttt{pmultiqc} quality-control report. The \quantmsdiann{} parallelisation design allows a 2{,}300-run single-cell dataset to be reanalysed in 2.4~hours on an HPC cluster of 300 nodes.
