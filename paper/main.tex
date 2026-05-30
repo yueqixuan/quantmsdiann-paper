@@ -47,6 +47,7 @@
 \author[aff6]{Fabian Coscia}
 \author[aff7]{Orhun Kok}
 \author[aff7,aff8]{Nikolai Slavov}
+\author[aff9,aff10]{Timo Sachsenberg} % ORCID 0000-0002-2833-6070
 \author[aff1]{Mingze Bai}
 \author[aff5]{Vadim Demichev}
 \author[aff3]{Yasset Perez-Riverol\corref{cor1}}
@@ -62,6 +63,8 @@
 \affiliation[aff6]{organization={Spatial Proteomics Group, Max-Delbr\"{u}ck-Center for Molecular Medicine in the Helmholtz Association (MDC)}, city={Berlin}, country={Germany}}
 \affiliation[aff7]{organization={Department of Bioengineering, Department of Biology, Department of Chemistry and Chemical Biology, Single Cell Proteomics Center, and Barnett Institute for Chemical and Biological Analysis, Northeastern University}, city={Boston, Massachusetts}, country={USA}}
 \affiliation[aff8]{organization={Parallel Squared Technology Institute}, city={Watertown, Massachusetts}, country={USA}}
+\affiliation[aff9]{organization={Department of Computer Science, Applied Bioinformatics, University of T\"{u}bingen}, city={T\"{u}bingen}, country={Germany}}
+\affiliation[aff10]{organization={Institute for Bioinformatics and Medical Informatics, University of T\"{u}bingen}, city={T\"{u}bingen}, country={Germany}}
 
 \begin{abstract}
 Public proteomics archives now host thousands of data-independent acquisition (DIA) datasets, but they remain analytically siloed because each was processed with a different software configuration. We present \quantmsdiann{}, an open-source Nextflow/nf-core workflow that parallelises \texttt{DIA-NN} across cloud and HPC infrastructures, guided by the experimental design declared in SDRF format. The workflow ships container-pinned profiles for each supported \texttt{DIA-NN} version (extensible to any release via a custom container) through Docker and Singularity, with no manual installation or dependency resolution, and natively handles all vendor formats, converting to mzML when needed (e.g.\ SCIEX). It exports harmonised quantification tables as MSstats input, the new Quantitative Proteomics eXchange format (\qpx{}), and a \texttt{pmultiqc} quality-control report. The parallelisation design reanalyses a 2{,}300-run single-cell dataset in 2.4~hours on an HPC cluster of 300 nodes.
