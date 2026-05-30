@@ -342,6 +342,7 @@ INSTRUMENT_COLOURS = {
     "Orbitrap Astral": "#1e88e5",  # blue
     "Orbitrap Eclipse": "#3949ab", # indigo (PXD071075 single-cell sweep)
     "ZenoTOF 7600":  "#00897b",    # teal
+    "Q Exactive":    "#d81b60",    # pink (MSV000093870 single-cell plexDIA)
     "unknown":       "#9e9e9e",    # grey
 }
 

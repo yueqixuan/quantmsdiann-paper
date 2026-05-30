@@ -624,7 +624,65 @@ def collect_parallelism_rows(*, fetch: bool = True) -> pd.DataFrame:
             "trace_complete": n_tasks >= MIN_ROWS_COMPLETE,
             "source_file": str(report_txt_local.relative_to(REPO_ROOT)),
         })
+    plexdia = collect_plexdia_parallelism_row(fetch=fetch)
+    if plexdia is not None:
+        rows.append(plexdia)
     return pd.DataFrame(rows)
+
+
+# plexDIA single-cell cohort (MSV000093870). It has a different FTP layout
+# from the cell-line and benchmark analyses (no per-version subdir), so it
+# gets a dedicated parallelism row: wall-clock from its pipeline_report.txt
+# "duration:" line, and n_runs (MS data files) from the committed plexDIA
+# counts.tsv ("runs all").
+PLEXDIA_REPORT_URL = (
+    "https://ftp.pride.ebi.ac.uk/pub/databases/pride/resources/proteomes/"
+    "quantmsdiann-benchmarks/plexDIA/MSV000093870-plexDIA/pipeline_info/"
+    "pipeline_report.txt"
+)
+PLEXDIA_COUNTS_TSV = (
+    REPO_ROOT / "analysis" / "figures" / "plexDIA" / "MSV000093870" / "counts.tsv"
+)
+
+
+def collect_plexdia_parallelism_row(*, fetch: bool = True) -> dict | None:
+    """Build the parallelism-scatter row for the single-cell oocyte plexDIA
+    cohort (MSV000093870), or None if the inputs are unavailable."""
+    report_local = (
+        DATA_DIR / "plexDIA" / "MSV000093870" / "pipeline_report.txt"
+    )
+    if fetch:
+        try:
+            download_if_missing(PLEXDIA_REPORT_URL, report_local)
+        except OSError:
+            return None
+    try:
+        wallclock = parse_pipeline_report_duration(report_local)
+    except (ValueError, FileNotFoundError, OSError):
+        return None
+    n_runs = 0
+    try:
+        with open(PLEXDIA_COUNTS_TSV, encoding="utf-8") as fh:
+            for line in fh:
+                parts = line.rstrip("\n").split("\t")
+                if len(parts) >= 3 and parts[0] == "runs" and parts[1] == "all":
+                    n_runs = int(parts[2])
+                    break
+    except (FileNotFoundError, ValueError):
+        return None
+    if n_runs == 0:
+        return None
+    return {
+        "dataset": "MSV000093870",
+        "version": "v2_5_0",
+        "instrument": "Q Exactive",
+        "n_runs": n_runs,
+        "n_tasks_observed": 0,
+        "n_invocations": 1,
+        "wallclock_seconds": wallclock,
+        "trace_complete": False,
+        "source_file": str(report_local.relative_to(REPO_ROOT)),
+    }
 
 
 def _iter_pxd071075_sweep_trace_paths() -> Iterable[Path]:
@@ -851,7 +909,11 @@ def render_parallelism_scatter(
         .iterrows()
     ):
         ds = row["dataset"]
-        if not ds.startswith("PXD") or row["n_runs"] < 100:
+        # Label the distinct single-cohort points (PXD with >=100 files, plus
+        # the plexDIA cohort); the 6-run ProteoBench cluster stays unlabelled
+        # to avoid 20 overlapping tags.
+        if not ((ds.startswith("PXD") and row["n_runs"] >= 100)
+                or ds == "MSV000093870"):
             continue
         if ds in seen_datasets:
             continue
