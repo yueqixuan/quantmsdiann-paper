@@ -28,6 +28,13 @@
 \usepackage{mcpfigures}
 \input{macros}
 
+%% Keep long URLs, container names, paths and command tokens inside the
+%% margins: allow URLs to break anywhere, and give the line breaker extra
+%% slack so no \texttt{} token overruns the text block.
+\usepackage{xurl}
+\Urlmuskip=0mu plus 1mu
+\emergencystretch=3em
+
 \journal{Molecular \& Cellular Proteomics}
 
 \begin{document}

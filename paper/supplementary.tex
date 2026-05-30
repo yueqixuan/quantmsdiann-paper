@@ -13,6 +13,11 @@
 \usepackage{mcpfigures}
 \input{macros}
 
+%% Keep long URLs / container names / paths inside the margins.
+\usepackage{xurl}
+\Urlmuskip=0mu plus 1mu
+\emergencystretch=3em
+
 %% Number supplementary figures S1, S2, ... independently of the main text.
 \renewcommand{\thefigure}{S\arabic{figure}}
 \setcounter{figure}{0}
@@ -46,6 +51,7 @@ deposit, which can predate the associated publication year cited in the main
 text (e.g.\ PXD003539 was deposited in 2016 and published as Guo \textit{et al.}~2019;
 PXD004701 deposited 2016, published as Sun \textit{et al.}~2023).}
 \label{tab:datasets-supp}
+{\setlength{\tabcolsep}{4pt}
 \begin{tabular}{llll}
 \hline
 \textbf{Accession} & \textbf{Instrument} & \textbf{Type} & \textbf{Public date} \\
@@ -66,7 +72,7 @@ PXD017199 & TripleTOF 6600 & Cell line (Tognetti 2021) & 2021 \\
 \multicolumn{4}{l}{\textit{Scalability experiment}} \\
 PXD071075 & Orbitrap Eclipse & Single-cell & 2025 \\
 \hline
-\end{tabular}
+\end{tabular}}
 \end{table}
 
 \section{Identification filtering and protein counting}
