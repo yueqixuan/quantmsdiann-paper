@@ -216,7 +216,7 @@ def render_comparison(
     ax.set_ylim(0, max(orig_total, qm_total) * 1.15)
     ax.text(0.5, 0.97, "(b)", transform=ax.transAxes, fontweight="bold", va="top")
 
-    # (c) accession overlap
+    # (c) protein-group overlap (leading-protein level, like-for-like)
     ax = axes[2]
     cats = ["Shared", "Galatidou\nonly", "quantmsdiann\nonly"]
     vals = [shared, orig_only, qm_only]
@@ -227,7 +227,7 @@ def render_comparison(
                 va="bottom", fontsize=10)
     ax.set_xticks(range(3))
     ax.set_xticklabels(cats)
-    ax.set_ylabel("UniProt accessions")
+    ax.set_ylabel("Protein groups")
     ax.set_ylim(0, max(vals) * 1.15)
     ax.text(0.5, 0.97, "(c)", transform=ax.transAxes, fontweight="bold", va="top")
 
@@ -279,14 +279,22 @@ def main() -> int:  # pragma: no cover
     qm_cells = per_cell_counts(confident)
     qm_total = confident["Protein.Group"].nunique()
     qm_acc = quantms_accessions(confident)
+    # Leading protein (group representative) per quantmsdiann protein group, so
+    # the overlap is computed against the original's leading.protein set at the
+    # SAME granularity (group/leading-protein level) rather than mixing the
+    # original's leading proteins with quantmsdiann's fully-expanded accessions.
+    qm_lead = {_strip_isoform(str(g).split(";")[0])
+               for g in confident["Protein.Group"].dropna().unique()}
+    qm_lead.discard("")
 
     matrix_path = _cached_original()
     orig_per_cell, orig_acc = original_per_cell(matrix_path)
     orig_total = len(orig_acc)
 
-    shared = len(orig_acc & qm_acc)
-    orig_only = len(orig_acc - qm_acc)
-    qm_only = len(qm_acc - orig_acc)
+    # Like-for-like overlap at the protein-group / leading-protein level.
+    shared = len(orig_acc & qm_lead)
+    orig_only = len(orig_acc - qm_lead)
+    qm_only = len(qm_lead - orig_acc)
 
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     render_comparison(
@@ -311,9 +319,9 @@ def main() -> int:  # pragma: no cover
         fh.write(f"cells\t{len(orig_per_cell)}\t{len(qm_cells)}\n")
         fh.write(f"median_proteins_per_cell\t{int(orig_per_cell.median())}\t{int(qm_cells['proteins'].median())}\n")
         fh.write(f"protein_groups_total\t{len(orig_acc)}\t{qm_total}\n")
-        fh.write(f"unique_accessions\t{len(orig_acc)}\t{len(qm_acc)}\n")
-        fh.write(f"accessions_shared\t{shared}\t{shared}\n")
-        fh.write(f"accessions_unique\t{orig_only}\t{qm_only}\n")
+        fh.write(f"protein_groups_shared\t{shared}\t{shared}\n")
+        fh.write(f"protein_groups_unique\t{orig_only}\t{qm_only}\n")
+        fh.write(f"quantmsdiann_expanded_accessions\t-\t{len(qm_acc)}\n")
         fh.write(f"qc_matched_cells\t{len(matched)}\t{len(matched)}\n")
         fh.write(f"qc_matched_median_proteins_per_cell\t{int(matched['orig_proteins'].median())}\t{int(matched['qm_proteins'].median())}\n")
         fh.write(f"qc_matched_pearson_r\t{r:.3f}\t{r:.3f}\n")
@@ -322,7 +330,7 @@ def main() -> int:  # pragma: no cover
     print(f"cells:            {len(orig_per_cell)} vs {len(qm_cells)}")
     print(f"median prot/cell: {int(orig_per_cell.median())} vs {int(qm_cells['proteins'].median())}")
     print(f"protein groups:   {len(orig_acc)} vs {qm_total}")
-    print(f"accessions:       shared {shared}, Galatidou-only {orig_only}, quantmsdiann-only {qm_only} "
+    print(f"protein groups:   shared {shared}, Galatidou-only {orig_only}, quantmsdiann-only {qm_only} "
           f"({100*shared/len(orig_acc):.0f}% of original recovered)")
     print(f"--- QC-matched cohort ({len(matched)} oocytes) ---")
     print(f"median prot/cell: {int(matched['orig_proteins'].median())} (orig) vs "

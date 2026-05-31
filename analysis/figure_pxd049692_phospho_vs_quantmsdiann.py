@@ -61,24 +61,27 @@ def _qm_run_names() -> set[str]:
     return {r[fcol].replace(".d", "") for r in rows[1:] if len(r) > fcol}
 
 
-def quantmsdiann_phosphopeptides() -> int:
+def quantmsdiann_phosphopeptides() -> tuple[int, int]:
+    """(stripped phosphopeptide backbones, distinct phosphopeptidoforms)."""
     pr = _download(f"{_QB}/quant_tables/diann_report.pr_matrix.tsv",
                    CACHE_DIR / "qm_pr_matrix.tsv")
     df = pd.read_csv(pr, sep="\t", dtype=str)
     df = df[df["Protein.Group"].map(is_target_protein_group)]
     ph = df[df["Modified.Sequence"].fillna("").str.contains("UniMod:21")]
-    return int(ph["Stripped.Sequence"].nunique())
+    return int(ph["Stripped.Sequence"].nunique()), int(ph["Modified.Sequence"].nunique())
 
 
-def original_phosphopeptides(qm_runs: set[str]) -> int:
-    """Distinct phospho stripped peptides in the deposited Spectronaut
-    directDIA report, on the shared runs, at 1% precursor q-value."""
+def original_phosphopeptides(qm_runs: set[str]) -> tuple[int, int]:
+    """(stripped phosphopeptide backbones, distinct phosphopeptidoforms) in
+    the deposited Spectronaut directDIA report, on the shared runs, at 1%
+    precursor q-value."""
     report = _download(_ORIG_PH, CACHE_DIR / "orig_PH_Report.tsv")
     f = csv.reader(open(report, encoding="utf-8", errors="replace"), delimiter="\t")
     ix = {c: i for i, c in enumerate(next(f))}
     iFN, iMod, iStrip, iQ = (ix["R.FileName"], ix["EG.ModifiedSequence"],
                              ix["PEP.StrippedSequence"], ix["EG.Qvalue"])
-    peps: set[str] = set()
+    strp: set[str] = set()
+    forms: set[str] = set()
     for r in f:
         if len(r) <= iQ or r[iFN] not in qm_runs:
             continue
@@ -88,8 +91,9 @@ def original_phosphopeptides(qm_runs: set[str]) -> int:
         except ValueError:
             continue
         if "Phospho" in r[iMod]:
-            peps.add(r[iStrip])
-    return len(peps)
+            strp.add(r[iStrip])
+            forms.add(r[iMod])
+    return len(strp), len(forms)
 
 
 def render_main_comparison(orig: int, qm: int, svg_path: Path) -> None:
@@ -103,7 +107,7 @@ def render_main_comparison(orig: int, qm: int, svg_path: Path) -> None:
     ax.set_xticks([0, 1])
     ax.set_xticklabels(["Original\n(Spectronaut directDIA)",
                         "quantmsdiann\n(DIA-NN)"])
-    ax.set_ylabel("Phosphopeptides (1\\% FDR)".replace("\\%", "%"))
+    ax.set_ylabel("Phosphopeptides (stripped sequence, 1% FDR)")
     ax.set_ylim(0, max(orig, qm) * 1.16)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -119,13 +123,20 @@ def render_main_comparison(orig: int, qm: int, svg_path: Path) -> None:
 def main() -> int:  # pragma: no cover
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     qm_runs = _qm_run_names()
-    qm = quantmsdiann_phosphopeptides()
-    orig = original_phosphopeptides(qm_runs)
-    render_main_comparison(orig, qm, FIGURES_DIR / "main_comparison.svg")
+    qm_strip, qm_forms = quantmsdiann_phosphopeptides()
+    orig_strip, orig_forms = original_phosphopeptides(qm_runs)
+    # The panel compares stripped-sequence phosphopeptide backbones (parity).
+    # Phosphopeptidoform (modified-sequence) counts are recorded too: at that
+    # site-resolved level the two analyses diverge (Spectronaut reports more
+    # positional isomers), so the manuscript frames this as backbone-level,
+    # not site-level, parity.
+    render_main_comparison(orig_strip, qm_strip, FIGURES_DIR / "main_comparison.svg")
     (FIGURES_DIR / "counts.tsv").write_text(
         "metric\toriginal_spectronaut\tquantmsdiann_diann250\n"
-        f"phosphopeptides\t{orig}\t{qm}\n")
-    print(f"phosphopeptides: original={orig}  quantmsdiann={qm}")
+        f"phosphopeptides_stripped\t{orig_strip}\t{qm_strip}\n"
+        f"phosphopeptidoforms_modified\t{orig_forms}\t{qm_forms}\n")
+    print(f"stripped phosphopeptides: original={orig_strip}  quantmsdiann={qm_strip}")
+    print(f"phosphopeptidoforms:      original={orig_forms}  quantmsdiann={qm_forms}")
     print(f"wrote {FIGURES_DIR}/main_comparison.svg")
     return 0
 

@@ -2,9 +2,9 @@ metric	Galatidou_2024	quantmsdiann
 cells	97	107
 median_proteins_per_cell	1784	1736
 protein_groups_total	2122	2904
-unique_accessions	2122	3552
-accessions_shared	2013	2013
-accessions_unique	109	1539
+protein_groups_shared	1999	1999
+protein_groups_unique	123	905
+quantmsdiann_expanded_accessions	-	3552
 qc_matched_cells	97	97
 qc_matched_median_proteins_per_cell	1784	1748
 qc_matched_pearson_r	0.982	0.982

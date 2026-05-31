@@ -8,14 +8,13 @@ plain human FASTA; quantmsdiann re-ran the same raw files with DIA-NN 2.5.0
 against an entrapment+contaminant-augmented FASTA, which enforces an
 empirically-validated FDR. We therefore compare:
 
-  * main_comparison.svg     -- precursors at 1% FDR (the metric least sensitive
-                               to the FASTA choice): the two analyses are at
-                               parity (~99.5%).
-  * supp_protein_groups.svg -- protein groups at 1% FDR, annotated with the
-                               entrapment-measured empirical FDR of the
-                               quantmsdiann run, which explains why the
-                               entrapment-controlled count is lower than the
-                               plain-FASTA original.
+  * main_comparison.svg -- precursors and protein groups at 1% FDR. Precursors
+                           (least sensitive to the FASTA choice) are at parity
+                           (~99.5%); the quantmsdiann protein-group count is
+                           lower because its search used an entrapment-augmented
+                           FASTA. counts.tsv also records the entrapment hit
+                           rate (fraction of accepted ids mapping to entrapment
+                           sequences) as a measure of error control.
 
 Run:  PYTHONPATH=. python -m analysis.figure_pxd064049_spatial_vs_quantmsdiann
 """
@@ -77,9 +76,13 @@ def _orig_matrix(kind: str) -> Path:
     return dest
 
 
-def _empirical_fdr(matrix_path: Path) -> tuple[int, int, float]:
-    """(entrapment_passing, target_passing, empirical_FDR_pct) from a matrix
-    that was searched against an entrapment-augmented FASTA."""
+def _entrapment_hit_rate(matrix_path: Path) -> tuple[int, int, float]:
+    """(entrapment_passing, target_passing, entrapment_hit_rate_pct): the
+    fraction of accepted identifications whose Protein.Group maps to an
+    entrapment sequence. This is a direct measure of how many accepted
+    groups are entrapment hits; it equals the empirical FDR only when the
+    entrapment database is target-sized (1:1 paired entrapment), so we
+    report it as an entrapment hit rate rather than a calibrated FDR."""
     pgs = pd.read_csv(matrix_path, sep="\t", usecols=["Protein.Group"],
                       dtype=str)["Protein.Group"].dropna()
     entrap = int(pgs.str.contains("ENTRAP_").sum())
@@ -148,22 +151,23 @@ def main() -> int:  # pragma: no cover
     qm_pg_t = count_target_protein_groups(_qm_matrix("pg"))[1]
     or_pr_t = count_target_precursors(_orig_matrix("pr"))[1]
     or_pg_t = count_target_protein_groups(_orig_matrix("pg"))[1]
-    _, _, pr_fdr = _empirical_fdr(_qm_matrix("pr"))
-    _, _, pg_fdr = _empirical_fdr(_qm_matrix("pg"))
+    pr_entrap, _, pr_hit = _entrapment_hit_rate(_qm_matrix("pr"))
+    pg_entrap, _, pg_hit = _entrapment_hit_rate(_qm_matrix("pg"))
 
     render_main_comparison(or_pr_t, qm_pr_t, or_pg_t, qm_pg_t,
                            FIGURES_DIR / "main_comparison.svg")
 
     counts = FIGURES_DIR / "counts.tsv"
     counts.write_text(
-        "metric\toriginal_diann181\tquantmsdiann_diann250\tqm_empirical_fdr_pct\n"
-        f"precursors\t{or_pr_t}\t{qm_pr_t}\t{pr_fdr:.3f}\n"
-        f"protein_groups\t{or_pg_t}\t{qm_pg_t}\t{pg_fdr:.3f}\n"
+        "metric\toriginal_diann181\tquantmsdiann_diann250\t"
+        "qm_entrapment_hits\tqm_entrapment_hit_pct\n"
+        f"precursors\t{or_pr_t}\t{qm_pr_t}\t{pr_entrap}\t{pr_hit:.3f}\n"
+        f"protein_groups\t{or_pg_t}\t{qm_pg_t}\t{pg_entrap}\t{pg_hit:.3f}\n"
     )
     print(f"precursors: original={or_pr_t}  quantmsdiann={qm_pr_t}  "
-          f"(empirical FDR {pr_fdr:.2f}%)")
+          f"(entrapment hit rate {pr_hit:.2f}%, {pr_entrap} hits)")
     print(f"protein groups: original={or_pg_t}  quantmsdiann={qm_pg_t}  "
-          f"(empirical FDR {pg_fdr:.2f}%)")
+          f"(entrapment hit rate {pg_hit:.2f}%, {pg_entrap} hits)")
     print(f"wrote {FIGURES_DIR}/main_comparison.svg + supp_protein_groups.svg")
     return 0
 

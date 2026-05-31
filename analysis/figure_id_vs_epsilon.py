@@ -176,7 +176,8 @@ def render_id_vs_epsilon(
         # Modules with no predicted-library submission (single-cell, ZenoTOF)
         # therefore show the quantmsdiann trajectory alone.
         community = community[
-            community["library_kind"] == LIBRARY_KIND_PREDICTED
+            (community["library_kind"] == LIBRARY_KIND_PREDICTED)
+            & (community["software_name"] == "DIA-NN")
         ].reset_index(drop=True)
         qm = extract_quantmsdiann_id_vs_eps(dataset, threshold)
         # Community cloud
@@ -549,10 +550,18 @@ def render_accuracy_panels(
     for j, dataset in enumerate(comp):
         ax = fig.add_subplot(gs[2, j])
         panel_c_top = max(panel_c_top, ax.get_position().y1)
-        community = extract_community_id_vs_eps(dataset, threshold)
-        community = community[
-            community["library_kind"] == LIBRARY_KIND_PREDICTED
-        ]["median_abs_epsilon_global"].astype(float).values
+        community_df = extract_community_id_vs_eps(dataset, threshold)
+        community_df = community_df[
+            (community_df["library_kind"] == LIBRARY_KIND_PREDICTED)
+            & (community_df["software_name"] == "DIA-NN")
+        ]
+        for _, _crow in community_df.iterrows():
+            long_rows.append({
+                "panel": "c", "dataset": dataset, "threshold": threshold,
+                "source": "community", "software_name": _crow["software_name"],
+                "median_abs_epsilon": float(_crow["median_abs_epsilon_global"]),
+            })
+        community = community_df["median_abs_epsilon_global"].astype(float).values
         qm = extract_quantmsdiann_id_vs_eps(dataset, threshold)
         qm_eps = qm["median_abs_epsilon_global"].astype(float).values
         if len(community):
