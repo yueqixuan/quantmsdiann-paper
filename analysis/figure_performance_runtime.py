@@ -344,6 +344,7 @@ INSTRUMENT_COLOURS = {
     "ZenoTOF 7600":  "#00897b",    # teal
     "Q Exactive":    "#d81b60",    # pink (MSV000093870 single-cell plexDIA)
     "timsTOF Pro":   "#6d4c41",    # brown (PXD034128 phospho diaPASEF)
+    "timsTOF HT":    "#558b2f",    # green (PXD049692 NK phospho diaPASEF)
     "Orbitrap Exploris 480": "#00838f", # cyan (PXD034623 phospho DIA)
     "unknown":       "#9e9e9e",    # grey
 }

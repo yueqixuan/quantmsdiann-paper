@@ -33,8 +33,11 @@
     cohort.
     (\textbf{c})~Wall-clock time to finish each reanalysis, one bar per
     dataset, ordered by cohort size (number of MS data files) and coloured
-    by instrument family; time-to-finish stays within a few hours from a
-    handful to thousands of files because per-file work is parallelised.
+    by instrument family. For proteome-scale cohorts, time-to-finish stays
+    within a few hours regardless of file count because per-file work is
+    parallelised; the longest run is a phosphoproteomics cohort (PXD049692),
+    where generating the deep variable-modification spectral library
+    dominates the wall-clock.
   }
   \label{fig:architecture}
 \end{figure}
@@ -73,33 +76,39 @@
   \centering
   \begin{minipage}{\textwidth}
     \centering
-    \begin{minipage}[t]{0.48\linewidth}
+    \begin{minipage}[t]{0.32\linewidth}
       \centering
       {\scriptsize\textbf{(a)~PXD003539 (NCI-60, 2019)}}\par\vspace{0.2em}
       \mcpincludegraphics[width=\linewidth,keepaspectratio]{PXD003539/main_comparison}
     \end{minipage}\hfill
-    \begin{minipage}[t]{0.48\linewidth}
+    \begin{minipage}[t]{0.32\linewidth}
       \centering
       {\scriptsize\textbf{(b)~MSV000093870 (plexDIA, 2024)}}\par\vspace{0.2em}
       \mcpincludegraphics[width=\linewidth,keepaspectratio]{plexDIA/MSV000093870/main_galatidou_total_pg}
-    \end{minipage}
-
-    \vspace{1.0em}
-    \begin{minipage}[t]{0.48\linewidth}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.32\linewidth}
       \centering
       {\scriptsize\textbf{(c)~PXD030304 (ProCan, 2022)}}\par\vspace{0.2em}
       \mcpincludegraphics[width=\linewidth,keepaspectratio]{PXD030304/main_comparison}
-    \end{minipage}\hfill
-    \begin{minipage}[t]{0.48\linewidth}
+    \end{minipage}
+
+    \vspace{1.0em}
+    \begin{minipage}[t]{0.32\linewidth}
       \centering
       {\scriptsize\textbf{(d)~PXD064049 (MYCN DVP spatial, 2025)}}\par\vspace{0.2em}
       \mcpincludegraphics[width=\linewidth,keepaspectratio]{PXD064049/main_comparison}
-    \end{minipage}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.32\linewidth}
+      \centering
+      {\scriptsize\textbf{(e)~PXD049692 (NK phospho, 2024)}}\par\vspace{0.2em}
+      \mcpincludegraphics[width=\linewidth,keepaspectratio]{PXD049692/main_comparison}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.32\linewidth}~\end{minipage}
   \end{minipage}
-  \caption[Cell-line and spatial reanalyses]{%
+  \caption[Cell-line, spatial, and phospho reanalyses]{%
     \textbf{Independent reanalysis of public DIA datasets, spanning bulk cell
-    lines, single cells, and spatial proteomics, recovers comparable or
-    greater identification depth than the original deposits.}
+    lines, single cells, spatial proteomics, and phosphoproteomics, recovers
+    comparable or greater identification depth than the original deposits.}
     Each panel compares the original published counts (grey) with the
     \quantmsdiann{} reanalysis at 1\% FDR (blue) from the same raw data.
     (\textbf{a})~NCI-60 bulk cell lines (PXD003539, Guo 2019; original
@@ -110,6 +119,9 @@
     (spatial, laser-microdissected regions; PXD064049, diaPASEF), with
     precursors and protein groups compared against the original
     DIA-NN~1.8.1 analysis.
+    (\textbf{e})~NK-cell Fe-NTA phosphoproteomics (PXD049692, diaPASEF):
+    phosphopeptides compared against the original Spectronaut directDIA
+    analysis on the same runs.
     Per-cohort detail for panels~(a)--(c) in Additional file~1: Figs.~S5--S13.
   }
   \label{fig:cell-line-reanalysis}

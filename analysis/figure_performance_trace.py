@@ -644,6 +644,7 @@ EXTRA_ANALYSES: tuple[tuple[str, str, str, int], ...] = (
     ("PXD034128", "PXD034128.1", "timsTOF Pro", 7),
     ("PXD034623", "PXD034623", "Orbitrap Exploris 480", 63),
     ("PXD064049", "PXD064049-MYCN-DVP-diaPASEF", "timsTOF SCP", 12),
+    ("PXD049692", "PXD049692", "timsTOF HT", 10),
 )
 EXTRA_ANALYSIS_LABELS = frozenset(label for label, *_ in EXTRA_ANALYSES)
 
