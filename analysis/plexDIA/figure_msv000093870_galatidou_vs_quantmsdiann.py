@@ -249,10 +249,13 @@ def render_total_pg(orig_total: int, qm_total: int, svg_path: Path) -> None:
     cell-line-reanalysis figure (Fig 3): original (grey) vs quantmsdiann
     (blue), matching the per-cohort `main_comparison` bar style. Conveys
     the single-cell reanalysis benefit (more protein groups from the same
-    raw data) in one column-width panel."""
-    fig, ax = plt.subplots(figsize=(4.2, 4.8))
-    bars = ax.bar([0, 1], [orig_total, qm_total], width=0.6,
+    raw data) in one column-width panel. Uses the same (7, 5) canvas as the
+    per-cohort `main_comparison` panels so all three Fig. 3 sub-panels share
+    an aspect ratio and render at equal height."""
+    fig, ax = plt.subplots(figsize=(7, 5))
+    bars = ax.bar([0, 1], [orig_total, qm_total], width=0.55,
                   color=[ORIG_COLOUR, QM_COLOUR], edgecolor="#37474f")
+    ax.set_xlim(-0.7, 1.7)
     for b, v in zip(bars, (orig_total, qm_total)):
         ax.text(b.get_x() + b.get_width() / 2, v, f"{v:,}", ha="center",
                 va="bottom", fontsize=11)

@@ -21,27 +21,20 @@
   \end{minipage}
   \caption[Pipeline and scaling]{%
     \textbf{\quantmsdiann{} pipeline architecture and runtime scaling.}
-    (\textbf{a})~Subway diagram of the \quantmsdiann{} workflow. Mandatory
-    modules are shown as filled circles, optional/skippable modules as open
-    circles; per-file parallel stages are marked in red, collective cohort
-    stages in green. The pipeline consumes an SDRF and a FASTA reference,
-    optionally converts vendor raw files to mzML, generates an in-silico or
-    empirical spectral library, runs per-file \texttt{DIA-NN} analyses in
-    parallel, consolidates results in a single cohort-level final
-    quantification, and emits standard \texttt{DIA-NN} tables, an MSstats
-    input, a \qpx{} Parquet archive, and a \texttt{pmultiqc} quality-control
-    report.
-    (\textbf{b})~Workflow wall-clock time versus Nextflow
-    \texttt{executor.queueSize} (log-scaled cluster nodes; ticks at 10, 50,
-    100, 200, 300) on the PXD071075 single-cell cohort
-    (\textasciitilde 2{,}300 runs); wall-clock drops from 37.7~h at 10 nodes to 2.4~h at 300 nodes,
-    with the practical knee near 200 nodes.
-    (\textbf{c})~Final-run wall-clock versus number of MS data files across
-    every dataset processed in this study---ProteoBench benchmarks, the
-    bulk and single-cell cell-line cohorts, the single-cell oocyte plexDIA
-    cohort (MSV000093870), and two phosphoproteomics cohorts (PXD034128,
-    timsTOF Pro; PXD034623, Orbitrap Exploris 480)---coloured by instrument
-    family; the PXD071075 production run (300 nodes) is annotated.
+    (\textbf{a})~Subway diagram of the \quantmsdiann{} workflow: mandatory
+    modules as filled circles, optional/skippable modules as open circles.
+    Per-file parallel stages (red; file preparation, preliminary
+    calibration, individual search) run as one task per raw file, whereas
+    collective stages (green; in-silico library generation, empirical
+    library assembly, final quantification, MSstats conversion, and
+    \texttt{pmultiqc} reporting) run once over the full cohort.
+    (\textbf{b})~Workflow wall-clock time versus the number of cluster nodes
+    (Nextflow \texttt{executor.queueSize}) on the PXD071075 single-cell
+    cohort.
+    (\textbf{c})~Wall-clock time to finish each reanalysis, one bar per
+    dataset, ordered by cohort size (number of MS data files) and coloured
+    by instrument family; time-to-finish stays within a few hours from a
+    handful to thousands of files because per-file work is parallelised.
   }
   \label{fig:architecture}
 \end{figure}
@@ -61,25 +54,16 @@
     single-cell, Module~9/PXD049412; timsTOF diaPASEF, Module~5/PXD062685;
     SCIEX ZenoTOF, Module~10/PXD070049).
     (\textbf{a})~Precursors at 1\% FDR by \texttt{DIA-NN} version
-    (1.8.1--2.5.0; light to dark blue) from one \quantmsdiann{}
-    invocation; precursor counts grow monotonically with version
-    (e.g.\ Module~5 91{,}075~$\to$~115{,}735).
+    (1.8.1--2.5.0; light to dark blue) from one \quantmsdiann{} invocation.
     (\textbf{b})~Per-species quantification accuracy: measured log$_2$
     fold-change for each HYE species against the ProteoBench-expected
     ratio (dashed), with all five \texttt{DIA-NN} versions overlaid
-    (light to dark). The versions cluster tightly on every species and
-    module --- quantification accuracy is essentially invariant across
-    \texttt{DIA-NN} releases, the version-to-version median $|\epsilon|$
-    shift ($\sim$0.01 log$_2$) being far smaller than the per-precursor
-    spread; the mild attenuation at the extreme \emph{E.~coli} ratio is
-    the expected DIA ratio-compression.
-    (\textbf{c})~For the two modules with predicted-from-FASTA
-    (\texttt{predictors\_library}~$=$~DIANN) \texttt{DIA-NN} community
-    submissions (snapshot 29 May 2026), \quantmsdiann{}'s five versions
-    (red) sit within the community median-$|\epsilon|$ distribution
-    (grey; box = IQR). The single-cell and ZenoTOF modules had no
-    predicted-library community submission. See Additional file~1:
-    Fig.~S3 for parameter-matched per-submission comparisons.
+    (light to dark).
+    (\textbf{c})~For the two modules with predicted-from-FASTA community
+    submissions, \quantmsdiann{}'s five versions (red) against the
+    community median-$|\epsilon|$ distribution (grey; box = IQR).
+    See Additional file~1: Fig.~S3 for parameter-matched per-submission
+    comparisons.
   }
   \label{fig:proteobench}
 \end{figure}
@@ -106,42 +90,15 @@
     \end{minipage}
   \end{minipage}
   \caption[Cell-line reanalyses]{%
-    \textbf{Independent reanalysis of public DIA datasets, spanning bulk
-    cell lines and single cells, recovers as many or more identifications
-    than the originally deposited quantifications.}
-    Each panel compares the originally published peptide and/or
-    protein-group counts (grey) against the \quantmsdiann{} reanalysis at
-    1\% FDR (blue) using the same raw data.
-    (\textbf{a})~Guo \textit{et al.}, 2019 NCI-60 OpenSWATH analysis
-    (PXD003539, original engine = OpenSWATH with the Guo 2019 assay
-    library): \quantmsdiann{} recovers 95{,}633~peptides versus 40{,}592
-    originally (+135\%) and a comparable 6{,}747 protein groups versus
-    6{,}556. Because \quantmsdiann{} runs \texttt{DIA-NN} in library-free
-    mode while the original ran OpenSWATH against a fixed assay library,
-    this gain reflects both SDRF-driven orchestration and the change of
-    analysis engine; a like-for-like \texttt{DIA-NN}-on-original-library
-    control is part of ongoing work.
-    (\textbf{b})~Galatidou \textit{et al.}, 2024 single-cell oocyte
-    plexDIA (MSV000093870; mTRAQ 3-channel, Q~Exactive): from the same raw
-    data \quantmsdiann{} quantifies 2{,}904 protein groups versus 2{,}122
-    in the original analysis ($+37$\%); at the UniProt-accession level it
-    recovers 95\% of the originally reported proteins (2{,}013 of 2{,}122)
-    and detects 1{,}539 further accessions, at comparable per-cell median
-    depth (1{,}736 versus 1{,}784; full per-cell, total and
-    accession-overlap comparison in Additional file~1).
-    (\textbf{c})~ProCan-DepMapSanger 2022 pan-cancer cell-line panel
-    (PXD030304, 949 lines): \quantmsdiann{} recovers 8{,}921 protein groups
-    at 1\% FDR versus 8{,}498 originally (+5\%), and 7{,}990 versus 6{,}692
-    after requiring~$\geq 2$~unique peptides per protein (+19\%). Both the
-    original 8{,}498 headline (Global.Q.Value~$\leq 0.01$) and the
-    stringent 6{,}692 count (Global.Q.Value~$\leq 0.01$ plus
-    $\geq 2$~supporting peptides) are reported in the
-    ProCan-DepMapSanger paper itself; the \quantmsdiann{} counts are
-    computed under the matching filters, so each side of the comparison
-    is like-for-like.
-    Per-condition completeness, peptide-per-protein distributions and gene-
-    versus accession-level overlap are shown in Additional file~1:
-    Figs.~S5--S13.
+    \textbf{Independent reanalysis of public DIA datasets recovers as many
+    or more identifications than the original deposits.}
+    Each panel compares the original published counts (grey) with the
+    \quantmsdiann{} reanalysis at 1\% FDR (blue) from the same raw data.
+    (\textbf{a})~NCI-60 bulk cell lines (PXD003539, Guo 2019; original
+    OpenSWATH analysis).
+    (\textbf{b})~Single-cell oocyte plexDIA (MSV000093870, Galatidou 2024).
+    (\textbf{c})~ProCan-DepMapSanger pan-cancer cell-line panel (PXD030304).
+    Per-cohort detail in Additional file~1: Figs.~S5--S13.
   }
   \label{fig:cell-line-reanalysis}
 \end{figure}

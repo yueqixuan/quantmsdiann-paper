@@ -1,35 +1,53 @@
-\section*{Declarations}
-
-\subsection*{Ethics approval and consent to participate}
-Not applicable.
-All datasets reanalysed in this study were obtained from public proteomics repositories with ethics approval and informed consent from the original depositing studies.
-
-\subsection*{Consent for publication}
-Not applicable.
-
-\subsection*{Data availability}
+\section*{Data Availability}
 All datasets reanalysed in this study are publicly available through ProteoMeXchange.
 Cell-line bulk DIA reanalyses: PRIDE PXD003539 (Guo 2019, NCI-60), PXD004701 (Sun 2023), PXD030304 (ProCan-DepMapSanger), PXD017199 (Tognetti 2021), PXD041421 (Wang 2023).
 Scalability experiment: PRIDE PXD071075.
 ProteoBench benchmarks: PXD049412 (single-cell, Module 9), PXD062685 (diaPASEF, Module 5), PXD070049 (ZenoTOF, Module 10), and Module 7 (Astral) datasets.
 The full list of PRIDE accessions used in the pan-cohort of DIA cell-line reanalyses is provided in Additional file~1: Table~S1.
-Per-process runtime and resource envelopes (Figs.~S1, S2) and detailed ProteoBench supplementary panels (Figs.~S3, S4) are provided as Additional file~1.
-
-\subsection*{Code availability}
 \quantmsdiann{} is available at \url{https://github.com/bigbio/quantmsdiann} under the MIT license; documentation is hosted at \url{https://quantmsdiann.quantms.org/}.
 The pipeline is implemented in Nextflow DSL2 ($\geq$25.10.4) and packages each step as a versioned Docker, Singularity, or Apptainer container image.
 \texttt{DIA-NN}~1.8.1 is distributed publicly via BioContainers; because the \texttt{DIA-NN} license restricts redistribution of later releases, containers for \texttt{DIA-NN}~1.9 and above are built locally from the recipes in \url{https://github.com/bigbio/quantms-containers} (see Experimental Procedures).
 Pipeline version v2.1.0 (release codename ``Sao Pablo'', 2026-05-08) was used for the analyses reported in this paper.
 Analysis scripts that generated the figures in this manuscript are available at \url{https://github.com/bigbio/quantmsdiann-paper} (this repository).
 
-\subsection*{Competing interests}
-\placeholder{VD is the original author of DIA-NN. Other authors declare no competing interests.}
+\section*{Supplemental Data}
+This article contains supplemental data.
+Additional file~1 provides Table~S1 (the full PRIDE accession list), per-process runtime and resource envelopes (Figs.~S1--S2), ProteoBench supplementary panels (Figs.~S3--S4), and per-cohort completeness, peptide-per-protein and gene-versus-accession overlap figures (Figs.~S5--S13).
 
-\subsection*{Funding}
-\placeholder{Grant numbers and funding sources for each author.}
+\section*{Conflict of Interest}
+The authors declare no competing interests.
 
-\subsection*{Authors' contributions}
-\placeholder{QXY, YS and CD developed the pipeline. AL and HW implemented the SDRF parsing and QPX export. JN and FC contributed the spatial-proteomics datasets and analysis. VD provided DIA-NN expertise and guidance on cross-version reproducibility. MB and YPR conceived and supervised the project. QXY and YPR wrote the manuscript with input from all authors. All authors read and approved the final manuscript.}
-
-\subsection*{Acknowledgements}
+\section*{Acknowledgments}
 \placeholder{We thank the Brunner, Derks, Leduc, Mund, Wang, and Coscia teams for depositing their data publicly. We thank the nf-core community and the OpenMS and DIA-NN developer teams for their ongoing work.}
+M.B.\ is supported by the Science and Technology Innovation Key R\&D Program of Chongqing (CSTB2023TIAD-STX0002).
+\placeholder{Funding sources and grant numbers for the remaining authors.}
+
+\section*{Author Contributions}
+QXY, YS and CD developed the pipeline.
+HW helped build the containers and contributed to the workflow implementation and manuscript writing.
+AL annotated the SDRF metadata and helped run the workflow.
+TS, FC, NS and JN assisted with the DIA-NN reanalyses and manuscript writing; TS additionally contributed to the workflow design, and JN tested the tool and identified multiple issues.
+OK provided feedback on the plexDIA datasets.
+VD provided DIA-NN expertise and guidance on cross-version reproducibility.
+MB contributed to manuscript writing and supervised the students; MB and YPR conceived and supervised the project.
+QXY and YPR wrote the original draft, with input from all authors.
+All authors read and approved the final manuscript.
+
+\section*{Abbreviations}
+\begin{description}[leftmargin=5.5em,style=nextline,itemsep=0pt,parsep=0pt]
+\item[CLI] command-line interface
+\item[DDA] data-dependent acquisition
+\item[DIA] data-independent acquisition
+\item[DIA-NN] data-independent acquisition neural networks (DIA search and quantification software)
+\item[diaPASEF] data-independent acquisition with parallel accumulation--serial fragmentation
+\item[FDR] false discovery rate
+\item[HPC] high-performance computing
+\item[HYE] human, yeast, and \textit{E.\ coli} (ProteoBench three-proteome mixture)
+\item[IQR] interquartile range
+\item[LSF] Load Sharing Facility (HPC scheduler)
+\item[MS] mass spectrometry
+\item[MS1/MS2] first-/second-stage mass spectrometry (precursor/fragment scans)
+\item[PASEF] parallel accumulation--serial fragmentation
+\item[QPX] Quantitative Proteomics eXchange
+\item[SDRF] Sample and Data Relationship Format
+\end{description}

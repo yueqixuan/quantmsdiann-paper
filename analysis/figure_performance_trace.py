@@ -851,144 +851,81 @@ def render_parallelism_scatter(
     composite: bool = False,
     show_legend: bool = True,
 ) -> None:
-    """One-panel scatter: x = number of MS data files (log), y = final-run
-    wallclock from pipeline_report.txt (hours), colour = instrument family.
-    All dots filled with the same size — the `-resume` invocation count is
-    kept in `parallelism_data.tsv` for the audit trail but isn't visually
-    encoded because the re-runs reflect SDRF iteration during development,
-    not workflow reliability.
+    """Horizontal bar chart of the wall-clock time each reanalysis took to
+    finish (hours, from pipeline_report.txt), one bar per analysis, ordered
+    by cohort size (number of MS data files) and coloured by instrument
+    family. Time-to-finish stays within a few hours from a handful to
+    thousands of files because per-file work is parallelised across the
+    cluster, so it does not grow with cohort size.
 
     Pass `ax` to draw into an existing axes (composite figures); omit
     `svg_path` in that mode."""
     plot_df = df.copy()
     own_fig = ax is None
+
+    # Collapse to one representative run per analysis: prefer the latest
+    # DIA-NN version (v2_5_0); otherwise the median-wallclock row. This keeps
+    # each dataset to a single bar (the ProteoBench modules carry five
+    # version rows each in the audit TSV).
+    reps = []
+    for _ds, g in plot_df.groupby("dataset"):
+        if "version" in g.columns and (g["version"] == "v2_5_0").any():
+            r = g[g["version"] == "v2_5_0"].iloc[0]
+        else:
+            gs = g.sort_values("wallclock_seconds")
+            r = gs.iloc[len(gs) // 2]
+        reps.append(r)
+    rep = pd.DataFrame(reps).copy()
+    rep["hours"] = rep["wallclock_seconds"] / 3600.0
+    rep = rep.sort_values("n_runs").reset_index(drop=True)
+
+    # Bar label: dataset id + file count (+ node count when known — only the
+    # PXD071075 production sweep row carries an explicit queueSize).
+    def _bar_label(row) -> str:
+        base = f"{row['dataset']}  ({int(row['n_runs']):,} files"
+        q = row.get("queue_size")
+        if q is not None and pd.notna(q):
+            base += f", {int(q)} nodes"
+        return base + ")"
+    rep["label"] = rep.apply(_bar_label, axis=1)
+
     if own_fig:
-        fig, ax = plt.subplots(figsize=(6.6, 4.6))
-
-    hours = plot_df["wallclock_seconds"] / 3600.0
-    dot_size = 55.0 if composite else 150.0
+        fig, ax = plt.subplots(figsize=(7.0, 5.0))
     label_size = 8 if composite else 10
-    tick_size = 7 if composite else 9
-    ann_size = 6 if composite else 7
+    tick_size = 6.5 if composite else 8.5
+    ann_size = 6 if composite else 8
 
-    for instrument in sorted(plot_df["instrument"].unique()):
-        mask = plot_df["instrument"] == instrument
-        ax.scatter(
-            plot_df.loc[mask, "n_runs"],
-            hours[mask],
-            s=dot_size,
-            c=INSTRUMENT_COLOURS.get(instrument, "#9e9e9e"),
-            alpha=0.85,
-            edgecolors="#222222",
-            linewidths=0.6,
-            label=instrument,
-        )
-
-    # PXD071075 sweep points share an n_runs (~2,310) but span q=10..300
-    # in queueSize. Annotate each with its queueSize so the vertical
-    # strip reads correctly. For non-sweep cohorts annotate the dataset
-    # name once per cohort, on the topmost dot only (so PXD003539 +
-    # PXD030304 + PXD004701 each carry one label, not five).
-    is_sweep = (
-        plot_df.get("queue_size").notna()
-        if "queue_size" in plot_df.columns
-        else pd.Series([False] * len(plot_df))
-    )
-    # Per-cohort name annotation — one per non-sweep cohort, attached
-    # to the dot with the largest wallclock.
-    seen_datasets: set[str] = set()
-    for _, row in (
-        plot_df[~is_sweep]
-        .sort_values("wallclock_seconds", ascending=False)
-        .iterrows()
-    ):
-        ds = row["dataset"]
-        # Label the distinct single-cohort points (PXD with >=100 files, plus
-        # the extra single-cohort analyses: plexDIA and the two phospho
-        # datasets); the 6-run ProteoBench cluster stays unlabelled to avoid
-        # 20 overlapping tags.
-        if not ((ds.startswith("PXD") and row["n_runs"] >= 100)
-                or ds in EXTRA_ANALYSIS_LABELS):
-            continue
-        if ds in seen_datasets:
-            continue
-        seen_datasets.add(ds)
-        ax.annotate(
-            ds,
-            xy=(row["n_runs"], row["wallclock_seconds"] / 3600.0),
-            xytext=(-8, 5), textcoords="offset points",
-            fontsize=ann_size, color="#444444", ha="right",
-        )
-    # PXD071075 sweep annotation.
-    # - If exactly one sweep row is shown (the F2a default — q=300
-    #   production run), label the dot "PXD071075 (<q> nodes)" once.
-    # - If multiple sweep rows are shown, fall back to the original
-    #   vertical-strip annotation (per-dot q-label + a single "sweep"
-    #   header) — used by callers that pass the full sweep frame.
-    sweep_rows = plot_df[is_sweep] if is_sweep.any() else plot_df.iloc[0:0]
-    if len(sweep_rows) == 1:
-        row = sweep_rows.iloc[0]
-        ax.annotate(
-            f"{row['dataset']} ({int(row['queue_size'])} nodes)",
-            xy=(row["n_runs"], row["wallclock_seconds"] / 3600.0),
-            xytext=(-8, 5), textcoords="offset points",
-            fontsize=ann_size, color="#1a237e", ha="right",
-        )
-    elif len(sweep_rows) > 1:
-        for _, row in sweep_rows.iterrows():
-            ax.annotate(
-                f"q={int(row['queue_size'])}",
-                xy=(row["n_runs"], row["wallclock_seconds"] / 3600.0),
-                xytext=(6, 0), textcoords="offset points",
-                fontsize=ann_size, color="#1a237e", ha="left", va="center",
-            )
-        top_sweep = sweep_rows.sort_values(
-            "wallclock_seconds", ascending=False,
-        ).iloc[0]
-        ax.annotate(
-            "PXD071075 (queueSize sweep)",
-            xy=(top_sweep["n_runs"], top_sweep["wallclock_seconds"] / 3600.0),
-            xytext=(-8, 6), textcoords="offset points",
-            fontsize=ann_size, color="#1a237e", ha="right",
-        )
-
-
-    ax.set_xlabel("Number of MS data files", fontsize=label_size)
-    ax.set_ylabel(
-        "Final-run wall-clock (hours)",
-        fontsize=label_size,
-    )
+    y = list(range(len(rep)))
+    colours = [INSTRUMENT_COLOURS.get(i, "#9e9e9e") for i in rep["instrument"]]
+    ax.barh(y, rep["hours"], color=colours, edgecolor="#222222",
+            linewidth=0.6, height=0.7)
+    hmax = float(rep["hours"].max()) if len(rep) else 1.0
+    for yi, h in zip(y, rep["hours"]):
+        ax.text(h + hmax * 0.012, yi, f"{h:.1f} h", va="center", ha="left",
+                fontsize=ann_size, color="#333333")
+    ax.set_yticks(y)
+    ax.set_yticklabels(rep["label"], fontsize=tick_size)
+    ax.invert_yaxis()  # smallest cohort at top, largest at the bottom
+    ax.set_xlabel("Wall-clock time to finish (hours)", fontsize=label_size)
+    ax.set_xlim(0, hmax * 1.16)
+    ax.tick_params(axis="x", labelsize=tick_size)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.tick_params(axis="both", labelsize=tick_size)
-    ax.set_xscale("log")
-    xmax = float(plot_df["n_runs"].max()) * 1.6
-    ax.set_xlim(max(1, plot_df["n_runs"].min() * 0.7), xmax)
-    ax.set_ylim(0, max(hours) * 1.18 if len(hours) else 1.0)
-    # Explicit integer tick labels at round powers of 10 spanning the
-    # data range (currently n_runs ∈ {6, 120, 300, 2310, 5798}) — avoids
-    # matplotlib's default 10⁰ / 10¹ power-notation glyphs which read
-    # poorly in vector exports.
-    from matplotlib.ticker import FixedLocator, FixedFormatter
-    xmin_data = float(plot_df["n_runs"].min())
-    candidate_ticks = [10, 100, 1000, 10000]
-    xticks = [t for t in candidate_ticks if xmin_data / 1.6 <= t <= xmax]
-    if xticks:
-        ax.xaxis.set_major_locator(FixedLocator(xticks))
-        ax.xaxis.set_major_formatter(
-            FixedFormatter([f"{t:,}" for t in xticks])
-        )
-        ax.xaxis.set_minor_locator(FixedLocator([]))
 
-    # Single instrument-colour legend below the axes — no dot-size
-    # dimension to encode, so no second legend needed.
+    # Deduplicated instrument-colour legend below the axes.
     if show_legend:
+        from matplotlib.patches import Patch
+        seen: dict[str, str] = {}
+        for inst in rep["instrument"]:
+            seen.setdefault(inst, INSTRUMENT_COLOURS.get(inst, "#9e9e9e"))
+        handles = [Patch(facecolor=c, edgecolor="#222222", label=i)
+                   for i, c in seen.items()]
         legend_fs = 6 if composite else 8
         legend_title_fs = 7 if composite else 9
         ncol = 2 if composite else legend_ncol
         bbox_y = -0.22 if composite else legend_bbox_y
         ax.legend(
-            title="Instrument", loc="upper center",
+            handles=handles, title="Instrument", loc="upper center",
             bbox_to_anchor=(0.5, bbox_y), fontsize=legend_fs,
             title_fontsize=legend_title_fs,
             frameon=False, borderaxespad=0.0, ncol=ncol,

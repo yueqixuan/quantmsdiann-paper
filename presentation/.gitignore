@@ -15,3 +15,9 @@ build/
 
 # Compiled slides — regenerable.
 slides.pdf
+
+# Single-cell FAIR PowerPoint deck + generated assets (not tracked for now).
+single-cell-fair.pptx
+assets/
+# PowerPoint/Office lock files
+~$*

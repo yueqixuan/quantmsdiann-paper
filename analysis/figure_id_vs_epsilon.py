@@ -482,7 +482,7 @@ def render_accuracy_panels(
     )
     fig = plt.figure(figsize=(9.5, 7.4))
     gs = fig.add_gridspec(3, 2, height_ratios=[1.0, 1.0, 0.95],
-                          hspace=0.5, wspace=0.26)
+                          hspace=0.62, wspace=0.26)
     long_rows: list[dict] = []
 
     # ---- Panel (b): per-species fold-change accuracy ----
@@ -545,8 +545,10 @@ def render_accuracy_panels(
 
     # ---- Panel (c): quantmsdiann within the predicted-library community ----
     comp = [d for d in datasets if d in _COMMUNITY_COMPARATOR_DATASETS]
+    panel_c_top = 0.0
     for j, dataset in enumerate(comp):
         ax = fig.add_subplot(gs[2, j])
+        panel_c_top = max(panel_c_top, ax.get_position().y1)
         community = extract_community_id_vs_eps(dataset, threshold)
         community = community[
             community["library_kind"] == LIBRARY_KIND_PREDICTED
@@ -596,10 +598,9 @@ def render_accuracy_panels(
                 "measured_log2": None,
                 "median_abs_epsilon": float(row["median_abs_epsilon_global"]),
             })
-    fig.text(0.005, 0.34,
-             "(c) quantmsdiann within the predicted-library community "
-             "(median |ε|; lower = more accurate)",
-             fontsize=10, fontweight="bold", va="top")
+    fig.text(0.005, panel_c_top + 0.025,
+             "(c) quantmsdiann within the predicted-library community",
+             fontsize=9, fontweight="bold", va="bottom")
 
     svg_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(svg_path, bbox_inches="tight")
