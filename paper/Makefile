@@ -37,6 +37,7 @@ SVGS := \
 	PXD030304/supp_proteins_per_tissue.svg \
 	plexDIA/MSV000093870/main_galatidou_total_pg.svg \
 	plexDIA/MSV000093870/main_galatidou_comparison.svg \
+	PXD064049/main_comparison.svg \
 	combined/atlas_main.svg
 
 PDF_TARGETS := $(addprefix $(FIG_PDF)/,$(SVGS:.svg=.pdf)) \

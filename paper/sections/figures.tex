@@ -73,32 +73,44 @@
   \centering
   \begin{minipage}{\textwidth}
     \centering
-    \begin{minipage}[t]{0.32\linewidth}
+    \begin{minipage}[t]{0.48\linewidth}
       \centering
-      {\scriptsize\textbf{(a)~PXD003539 \textemdash{} 2019, NCI-60}}\par\vspace{0.2em}
+      {\scriptsize\textbf{(a)~PXD003539 (NCI-60, 2019)}}\par\vspace{0.2em}
       \mcpincludegraphics[width=\linewidth,keepaspectratio]{PXD003539/main_comparison}
     \end{minipage}\hfill
-    \begin{minipage}[t]{0.32\linewidth}
+    \begin{minipage}[t]{0.48\linewidth}
       \centering
-      {\scriptsize\textbf{(b)~MSV000093870 \textemdash{} 2024, plexDIA}}\par\vspace{0.2em}
+      {\scriptsize\textbf{(b)~MSV000093870 (plexDIA, 2024)}}\par\vspace{0.2em}
       \mcpincludegraphics[width=\linewidth,keepaspectratio]{plexDIA/MSV000093870/main_galatidou_total_pg}
-    \end{minipage}\hfill
-    \begin{minipage}[t]{0.32\linewidth}
+    \end{minipage}
+
+    \vspace{1.0em}
+    \begin{minipage}[t]{0.48\linewidth}
       \centering
-      {\scriptsize\textbf{(c)~PXD030304 \textemdash{} 2022, ProCan}}\par\vspace{0.2em}
+      {\scriptsize\textbf{(c)~PXD030304 (ProCan, 2022)}}\par\vspace{0.2em}
       \mcpincludegraphics[width=\linewidth,keepaspectratio]{PXD030304/main_comparison}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.48\linewidth}
+      \centering
+      {\scriptsize\textbf{(d)~PXD064049 (MYCN DVP spatial, 2025)}}\par\vspace{0.2em}
+      \mcpincludegraphics[width=\linewidth,keepaspectratio]{PXD064049/main_comparison}
     \end{minipage}
   \end{minipage}
-  \caption[Cell-line reanalyses]{%
-    \textbf{Independent reanalysis of public DIA datasets recovers as many
-    or more identifications than the original deposits.}
+  \caption[Cell-line and spatial reanalyses]{%
+    \textbf{Independent reanalysis of public DIA datasets, spanning bulk cell
+    lines, single cells, and spatial proteomics, recovers comparable or
+    greater identification depth than the original deposits.}
     Each panel compares the original published counts (grey) with the
     \quantmsdiann{} reanalysis at 1\% FDR (blue) from the same raw data.
     (\textbf{a})~NCI-60 bulk cell lines (PXD003539, Guo 2019; original
     OpenSWATH analysis).
     (\textbf{b})~Single-cell oocyte plexDIA (MSV000093870, Galatidou 2024).
     (\textbf{c})~ProCan-DepMapSanger pan-cancer cell-line panel (PXD030304).
-    Per-cohort detail in Additional file~1: Figs.~S5--S13.
+    (\textbf{d})~MYCN-amplified neuroblastoma Deep Visual Proteomics
+    (spatial, laser-microdissected regions; PXD064049, diaPASEF), with
+    precursors and protein groups compared against the original
+    DIA-NN~1.8.1 analysis.
+    Per-cohort detail for panels~(a)--(c) in Additional file~1: Figs.~S5--S13.
   }
   \label{fig:cell-line-reanalysis}
 \end{figure}
@@ -106,7 +118,7 @@
 %% Fig. 4 — Pan-cohort of five DIA reanalyses
 \begin{figure}[htbp]
   \centering
-  \mcpincludegraphics[width=0.62\textwidth,height=\mcpmaxfigheight,keepaspectratio]{combined/atlas_main}
+  \mcpincludegraphics[width=\textwidth,height=\mcpmaxfigheight,keepaspectratio]{combined/atlas_main}
   \caption[Pan-cohort of DIA reanalyses]{%
     \textbf{Pan-cohort of five public DIA cell-line reanalyses by
     \quantmsdiann{}.}

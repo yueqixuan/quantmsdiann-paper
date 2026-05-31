@@ -15,7 +15,7 @@ We expect this to become increasingly important as \texttt{DIA-NN} evolves: a de
 First, \quantmsdiann{} does not currently include batch correction, cell-type assignment, or differential-abundance modules; these are best handled in downstream R or Python packages such as scp~\cite{vanderaa2023}, which can read the \qpx{} or MSstats outputs directly.
 Second, library generation for plexDIA channel deconvolution remains internal to \texttt{DIA-NN}, and \quantmsdiann{} inherits any limitations of that step.
 Third, the \qpx{} format will continue to evolve as community feedback accumulates; backward compatibility is maintained through schema versioning.
-Fourth, beyond the single-cell oocyte plexDIA reanalysis presented here, broader single-cell and laser-microdissected spatial DIA demonstrations (Fig.~\ref{fig:architecture}a, library-handling branch) are not evaluated in depth in this work.
+Fourth, the single-cell and spatial demonstrations here (the oocyte plexDIA and the MYCN-amplified neuroblastoma Deep Visual Proteomics cohorts) are proof-of-principle; broader single-cell and laser-microdissected spatial DIA benchmarking (Fig.~\ref{fig:architecture}a, library-handling branch) remains future work.
 
 Finally, we note that \quantmsdiann{} is complementary to, rather than competing with, existing single-cell DIA workflows.
 The benchmarking work of Wang \textit{et al.}~\cite{wang2025} compared multiple search engines and rescoring strategies; \quantmsdiann{} adopts the broadly competitive \texttt{DIA-NN} engine and focuses on the orthogonal problem of orchestrating that engine reproducibly at scale.

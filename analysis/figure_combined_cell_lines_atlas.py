@@ -1822,13 +1822,16 @@ def render_atlas_main(
     Removing the UpSet panel also removes the upsetplot/numpy-2 render
     dependency, so this figure renders on any supported NumPy."""
     tissue_protein_rows = tissue_protein_rows or []
-    fig = plt.figure(figsize=(12, 15))
+    # Landscape layout so the figure fills the text width and stays legible:
+    # panel (a) spans the top, and the two per-tissue panels (b, c) -- which
+    # share the same tissue rows -- sit side by side below.
+    fig = plt.figure(figsize=(17, 11))
     gs = fig.add_gridspec(
-        3, 1, height_ratios=[0.7, 1.15, 1.15], hspace=0.34,
+        2, 2, height_ratios=[0.5, 1.0], hspace=0.22, wspace=0.16,
     )
-    ax_a = fig.add_subplot(gs[0, 0])
+    ax_a = fig.add_subplot(gs[0, :])
     ax_b = fig.add_subplot(gs[1, 0])
-    ax_c = fig.add_subplot(gs[2, 0])
+    ax_c = fig.add_subplot(gs[1, 1])
 
     _render_panel_a_headlines(ax_a, headlines)
     _annotate_panel_letter(ax_a, "a", subtitle="Headline counts (paper vs quantmsdiann)")

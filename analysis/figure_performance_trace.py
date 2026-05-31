@@ -643,6 +643,7 @@ EXTRA_ANALYSES: tuple[tuple[str, str, str, int], ...] = (
     ("MSV000093870", "plexDIA/MSV000093870-plexDIA", "Q Exactive", 38),
     ("PXD034128", "PXD034128.1", "timsTOF Pro", 7),
     ("PXD034623", "PXD034623", "Orbitrap Exploris 480", 63),
+    ("PXD064049", "PXD064049-MYCN-DVP-diaPASEF", "timsTOF SCP", 12),
 )
 EXTRA_ANALYSIS_LABELS = frozenset(label for label, *_ in EXTRA_ANALYSES)
 
