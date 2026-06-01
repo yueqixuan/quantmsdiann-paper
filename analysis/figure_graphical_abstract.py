@@ -1,163 +1,157 @@
 #!/usr/bin/env python
-"""Graphical abstract for the quantmsdiann manuscript.
+"""Graphical abstract for the quantmsdiann manuscript (boxless, flowing design).
 
-A visual three-act story conveying the paper's three messages:
-  1. Metadata standards -- diverse public DIA datasets (bulk, single-cell,
-     spatial, phospho), each described by one standardised SDRF (the green
-     "spine" binding the dataset cards).
-  2. Scalability        -- one nf-core/DIA-NN engine parallelised across HPC/
-     cloud, with the *real* queue-size scaling curve embedded (37.7 h -> 2.4 h
-     from 10 to 300 nodes on the 2,300-file single-cell cohort).
-  3. Integration        -- every modality flows into one harmonised, queryable
-     QPX/MSstats archive (the database cylinder).
+A circular convergence story conveying the three messages:
+  1. Metadata standards -- diverse public DIA datasets converge through one
+     standardised SDRF "gate".
+  2. Scalability        -- into a single nf-core/DIA-NN engine hub ringed by
+     cluster nodes, with the real queue-size scaling curve (37.7 h -> 2.4 h,
+     10 -> 300 nodes on the 2,300-file cohort) beneath it.
+  3. Integration        -- and out to one harmonised, queryable QPX archive.
 
 Run:  PYTHONPATH=. python -m analysis.figure_graphical_abstract
 Output: analysis/figures/manuscript/graphical_abstract.{svg,pdf,png}
 """
 from __future__ import annotations
 
-from pathlib import Path
+import math
+from pathlib import Path as FsPath
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.patches import FancyBboxPatch, FancyArrowPatch, Ellipse, Rectangle
+from matplotlib.path import Path
+from matplotlib.patches import PathPatch, Circle, Ellipse, FancyArrowPatch
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = FsPath(__file__).resolve().parent.parent
 OUT_DIR = REPO_ROOT / "analysis" / "figures" / "manuscript"
 
 QMBLUE = "#1565C0"
+QMBLUE_L = "#dceaf8"  # light blue fill
 QMGREEN = "#2E7D32"
+QMGREEN_L = "#e3f1e4"
 DARK = "#1A1A1A"
 GREY = "#5A5A5A"
-LIGHTBLUE = "#EAF2FB"
-LIGHTGREEN = "#E9F4EA"
 FONT = "DejaVu Sans"
 
-# queue-size sweep (PXD071075): nodes -> wall-clock hours (real data).
 SWEEP_NODES = [10, 50, 100, 200, 300]
 SWEEP_HOURS = [37.7, 8.1, 4.8, 2.6, 2.4]
 
-# distinct soft colours for the dataset "cards" (diversity of modalities).
-CARD_COLOURS = ["#1e88e5", "#00897b", "#8e24aa", "#e8a000", "#6d4c41"]
-CARD_LABELS = [
-    "Bulk cell lines",
-    "Single cell · plexDIA",
-    "Spatial · DVP",
-    "Phosphoproteomics",
-    "timsTOF · Astral · Orbitrap · ZenoTOF",
+DATASETS = [
+    ("Bulk cell lines", "#1e88e5"),
+    ("Single-cell plexDIA", "#00897b"),
+    ("Spatial DVP", "#8e24aa"),
+    ("Phosphoproteomics", "#e8a000"),
+    ("Astral / timsTOF / Orbitrap", "#6d4c41"),
 ]
 
 
-def _round(ax, x, y, w, h, face, edge, lw=1.2, rounding=1.4, z=1, alpha=1.0):
-    ax.add_patch(FancyBboxPatch(
-        (x, y), w, h, boxstyle=f"round,pad=0,rounding_size={rounding}",
-        linewidth=lw, edgecolor=edge, facecolor=face, zorder=z, alpha=alpha))
+def _stream(ax, p0, p1, color, lw=2.2, alpha=0.55):
+    """A smooth cubic-Bezier flow line from p0 to p1."""
+    dx = p1[0] - p0[0]
+    c1 = (p0[0] + dx * 0.45, p0[1])
+    c2 = (p0[0] + dx * 0.55, p1[1])
+    path = Path([p0, c1, c2, p1],
+                [Path.MOVETO, Path.CURVE4, Path.CURVE4, Path.CURVE4])
+    ax.add_patch(PathPatch(path, fill=False, edgecolor=color, lw=lw,
+                           alpha=alpha, zorder=2, capstyle="round"))
 
 
-def _cylinder(ax, cx, top, bot, w, face, edge):
-    rx, ry = w / 2.0, 1.7
-    # body
-    ax.add_patch(Rectangle((cx - rx, bot), w, top - bot, facecolor=face,
-                           edgecolor="none", zorder=2))
-    ax.plot([cx - rx, cx - rx], [bot, top], color=edge, lw=1.4, zorder=3)
-    ax.plot([cx + rx, cx + rx], [bot, top], color=edge, lw=1.4, zorder=3)
-    # bottom + disk separators + top
-    ax.add_patch(Ellipse((cx, bot), w, 2 * ry, facecolor=face, edgecolor=edge,
-                         lw=1.4, zorder=2))
-    for yy in (bot + (top - bot) * 0.34, bot + (top - bot) * 0.67):
-        ax.add_patch(Ellipse((cx, yy), w, 2 * ry, facecolor="none",
-                             edgecolor=edge, lw=0.7, alpha=0.5, zorder=4))
-    ax.add_patch(Ellipse((cx, top), w, 2 * ry, facecolor="#ffffff",
-                         edgecolor=edge, lw=1.4, zorder=5))
-
-
-def _arrow(ax, x0, x1, y):
-    ax.add_patch(FancyArrowPatch((x0, y), (x1, y), arrowstyle="-|>",
-                                 mutation_scale=26, linewidth=3.0,
-                                 color=QMGREEN, zorder=6))
-
-
-def build() -> Path:
-    fig, ax = plt.subplots(figsize=(11.6, 5.0))
-    ax.set_xlim(0, 116)
-    ax.set_ylim(0, 50)
+def build() -> FsPath:
+    fig, ax = plt.subplots(figsize=(12.0, 5.4))
+    ax.set_xlim(0, 122)
+    ax.set_ylim(0, 54)
     ax.axis("off")
 
     # ---- title ----
-    ax.text(2.5, 46.6, "quantmsdiann", fontsize=20, fontweight="bold",
+    ax.text(3, 50.4, "quantmsdiann", fontsize=21, fontweight="bold",
             color=QMBLUE, family=FONT)
-    ax.text(2.5, 42.7, "one SDRF-driven DIA-NN workflow for archive-scale "
+    ax.text(3, 46.4, "one SDRF-driven DIA-NN workflow for archive-scale "
             "reanalysis of public DIA proteomics", fontsize=10.5, color=GREY,
             family=FONT)
 
-    # ---- ACT 1: diverse datasets bound by one SDRF schema ----
-    ax.text(20, 37.6, "Diverse DIA datasets, one SDRF", ha="center",
-            fontsize=11.5, fontweight="bold", color=QMGREEN, family=FONT)
-    # SDRF spine (the standardised-metadata "binding")
-    _round(ax, 3.0, 9.5, 4.6, 24.5, QMGREEN, QMGREEN, rounding=1.2, z=2)
-    ax.text(5.3, 22, "SDRF", rotation=90, ha="center", va="center",
-            fontsize=12, fontweight="bold", color="#ffffff", family=FONT)
-    # dataset cards fanning off the spine
-    n = len(CARD_LABELS)
-    cw, ch, top_y, step = 26.0, 3.9, 30.0, 5.0
-    for i, (lab, col) in enumerate(zip(CARD_LABELS, CARD_COLOURS)):
-        cy = top_y - i * step
-        ax.plot([7.6, 9.5], [cy + ch / 2, cy + ch / 2], color=col, lw=1.3,
-                zorder=1, alpha=0.8)
-        _round(ax, 9.5, cy, cw, ch, "#ffffff", "#c7c7c7", lw=1.0, rounding=0.7, z=3)
-        ax.add_patch(Rectangle((9.5, cy + 0.25), 1.5, ch - 0.5, facecolor=col,
-                               edgecolor="none", zorder=4))
-        ax.text(12.3, cy + ch / 2, lab, ha="left", va="center", fontsize=9.4,
+    hub = (58.0, 30.0)
+    hub_r = 8.5
+    gate_x = 37.0
+
+    # ---- diverse datasets converging through the SDRF gate ----
+    ys = [40.5, 34.5, 28.5, 22.5, 16.5]
+    for (lab, col), y in zip(DATASETS, ys):
+        ax.add_patch(Circle((6.0, y), 1.15, facecolor=col, edgecolor="white",
+                            lw=1.0, zorder=4))
+        ax.text(8.6, y, lab, ha="left", va="center", fontsize=10.2,
                 color=DARK, family=FONT)
+        _stream(ax, (gate_x, y), (hub[0] - hub_r + 1, hub[1]), col)  # gate -> hub
+        _stream(ax, (28.0, y), (gate_x, y), col, lw=2.0, alpha=0.5)  # label -> gate
+    ax.text(20, 44.6, "Diverse public DIA datasets", ha="center",
+            fontsize=11.5, fontweight="bold", color=DARK, family=FONT)
 
-    _arrow(ax, 37.0, 42.5, 21.5)
+    # SDRF "gate": a soft vertical lens all streams pass through
+    ax.add_patch(Ellipse((gate_x, 30), 6.5, 30, facecolor=QMGREEN_L,
+                        edgecolor=QMGREEN, lw=1.6, zorder=3, alpha=0.92))
+    ax.text(gate_x, 30, "SDRF", ha="center", va="center",
+            rotation=90, fontsize=14, fontweight="bold", color=QMGREEN,
+            family=FONT, zorder=5)
+    ax.text(gate_x, 11.5, "standardised\nmetadata", ha="center", va="center",
+            fontsize=8.8, color=QMGREEN, family=FONT, style="italic")
 
-    # ---- ACT 2: one scalable engine (with the real scaling curve) ----
-    _round(ax, 43.0, 8.5, 32.0, 30.0, LIGHTBLUE, QMBLUE, rounding=1.6, z=1)
-    ax.text(59, 35.2, "One scalable workflow", ha="center", fontsize=11.5,
-            fontweight="bold", color=QMBLUE, family=FONT)
-    ax.text(59, 31.9, "nf-core $\\cdot$ DIA-NN, parallel on HPC / cloud",
-            ha="center", fontsize=9.3, color=GREY, family=FONT)
-    # embedded scaling curve (hand-plotted in data coords)
-    bx0, bx1, by0, by1 = 48.0, 71.0, 13.0, 29.0
+    # ---- the engine hub, ringed by cluster nodes (scalability) ----
+    for k in range(16):
+        a = 2 * math.pi * k / 16
+        ax.add_patch(Circle((hub[0] + (hub_r + 2.4) * math.cos(a),
+                             hub[1] + (hub_r + 2.4) * math.sin(a)), 0.85,
+                            facecolor=QMBLUE, edgecolor="white", lw=0.5,
+                            alpha=0.55, zorder=3))
+    ax.add_patch(Circle(hub, hub_r, facecolor=QMBLUE_L, edgecolor=QMBLUE,
+                        lw=2.2, zorder=5))
+    ax.text(hub[0], hub[1] + 2.3, "quantmsdiann", ha="center", va="center",
+            fontsize=12.5, fontweight="bold", color=QMBLUE, family=FONT, zorder=6)
+    ax.text(hub[0], hub[1] - 1.0, "nf-core", ha="center", va="center",
+            fontsize=9.5, color=DARK, family=FONT, zorder=6)
+    ax.text(hub[0], hub[1] - 3.4, "DIA-NN", ha="center", va="center",
+            fontsize=9.5, color=DARK, family=FONT, zorder=6)
+    ax.text(hub[0], 44.6, "One scalable workflow",
+            ha="center", fontsize=11.5, fontweight="bold", color=QMBLUE,
+            family=FONT)
+
+    # ---- real scaling curve beneath the hub (no frame) ----
+    bx0, bx1, by0, by1 = 47.0, 69.0, 6.5, 16.5
     hmin, hmax = min(SWEEP_HOURS), max(SWEEP_HOURS)
-    def _px(node): return bx0 + (node - SWEEP_NODES[0]) / (SWEEP_NODES[-1] - SWEEP_NODES[0]) * (bx1 - bx0)
-    def _py(h): return by0 + (h - hmin) / (hmax - hmin) * (by1 - by0)
-    ax.plot([bx0, bx0], [by0, by1 + 1], color="#b0bec5", lw=1.0, zorder=2)
-    ax.plot([bx0, bx1], [by0, by0], color="#b0bec5", lw=1.0, zorder=2)
-    xs = [_px(nd) for nd in SWEEP_NODES]
-    ys = [_py(h) for h in SWEEP_HOURS]
-    ax.plot(xs, ys, "-o", color=QMBLUE, lw=2.4, ms=5, mfc=QMBLUE,
-            mec="#ffffff", mew=0.8, zorder=4)
-    ax.text(xs[0] + 0.6, ys[0] + 0.3, "37.7 h", fontsize=9, color=QMBLUE,
+    px = lambda nd: bx0 + (nd - SWEEP_NODES[0]) / (SWEEP_NODES[-1] - SWEEP_NODES[0]) * (bx1 - bx0)
+    py = lambda h: by0 + (h - hmin) / (hmax - hmin) * (by1 - by0)
+    ax.plot([bx0, bx0], [by0, by1 + 0.5], color="#c0ccd6", lw=0.9, zorder=2)
+    ax.plot([bx0, bx1], [by0, by0], color="#c0ccd6", lw=0.9, zorder=2)
+    ax.plot([px(n) for n in SWEEP_NODES], [py(h) for h in SWEEP_HOURS],
+            "-o", color=QMBLUE, lw=2.4, ms=5, mfc=QMBLUE, mec="white",
+            mew=0.8, zorder=4)
+    ax.text(px(10) + 0.6, py(37.7), "37.7 h", fontsize=8.8, color=QMBLUE,
             fontweight="bold", ha="left", va="bottom", family=FONT)
-    ax.text(xs[-1], ys[-1] + 1.3, "2.4 h", fontsize=9, color=QMBLUE,
+    ax.text(px(300), py(2.4) + 1.0, "2.4 h", fontsize=8.8, color=QMBLUE,
             fontweight="bold", ha="right", va="bottom", family=FONT)
-    ax.text(bx0 - 0.5, by0 - 1.3, "10", fontsize=8, color=GREY, ha="center", va="top")
-    ax.text(bx1, by0 - 1.3, "300 nodes", fontsize=8, color=GREY, ha="right", va="top")
-    ax.text((bx0 + bx1) / 2, by1 + 1.6, "wall-clock vs cluster width "
-            "(2,300-file cohort)", ha="center", fontsize=8.2, color=GREY,
+    ax.text(bx0, by0 - 1.2, "10", fontsize=8, color=GREY, ha="center", va="top")
+    ax.text(bx1, by0 - 1.2, "300 nodes", fontsize=8, color=GREY, ha="right", va="top")
+    ax.text((bx0 + bx1) / 2, by1 + 1.4, "wall-clock vs cluster width "
+            "(2,300 files)", ha="center", fontsize=8, color=GREY,
             family=FONT, style="italic")
 
-    _arrow(ax, 75.5, 81.0, 21.5)
+    # ---- one harmonised output node ----
+    _stream(ax, (hub[0] + hub_r - 1, hub[1]), (101.5, hub[1]), QMGREEN,
+            lw=3.4, alpha=0.85)
+    out = (107.0, hub[1])
+    ax.add_patch(Circle(out, 7.0, facecolor=QMGREEN_L, edgecolor=QMGREEN,
+                        lw=2.2, zorder=5))
+    ax.text(out[0], out[1] + 1.6, "QPX", ha="center", va="center",
+            fontsize=15, fontweight="bold", color=QMGREEN, family=FONT, zorder=6)
+    ax.text(out[0], out[1] - 2.0, "harmonised\nmatrix", ha="center", va="center",
+            fontsize=8.6, color=DARK, family=FONT, zorder=6)
+    ax.text(out[0], 44.6, "Integrated output", ha="center",
+            fontsize=11.5, fontweight="bold", color=QMGREEN, family=FONT)
+    ax.text(out[0], out[1] - 9.5, "Parquet $\\cdot$ MSstats $\\cdot$ pmultiqc QC\n"
+            "queryable across all modalities", ha="center", fontsize=8.6,
+            color=GREY, family=FONT, style="italic")
 
-    # ---- ACT 3: one harmonised, integrated output ----
-    ax.text(95.5, 37.6, "Harmonised output", ha="center", fontsize=11.5,
-            fontweight="bold", color=QMGREEN, family=FONT)
-    _cylinder(ax, 95.5, 31.5, 17.5, 19.0, LIGHTGREEN, QMGREEN)
-    ax.text(95.5, 26.5, "QPX", ha="center", va="center", fontsize=15,
-            fontweight="bold", color=QMGREEN, family=FONT)
-    ax.text(95.5, 22.7, "Parquet archive", ha="center", va="center",
-            fontsize=8.6, color=GREY, family=FONT)
-    ax.text(95.5, 19.2, "+ MSstats $\\cdot$ pmultiqc QC", ha="center",
-            va="center", fontsize=8.6, color=DARK, family=FONT)
-    ax.text(95.5, 11.4, "one integrated, queryable matrix\nacross all "
-            "modalities", ha="center", fontsize=8.8, color=GREY,
-            family=FONT, style="italic")
-
-    # ---- bottom pillars ----
-    ax.text(58, 4.0, "Metadata standards      $\\bullet$      Scalability"
+    # ---- pillars ----
+    ax.text(61, 1.8, "Metadata standards      $\\bullet$      Scalability"
             "      $\\bullet$      Integration", ha="center", fontsize=12,
             fontweight="bold", color=DARK, family=FONT)
 
