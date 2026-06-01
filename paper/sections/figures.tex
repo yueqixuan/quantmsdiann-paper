@@ -4,42 +4,34 @@
 %% on the left, runtime scaling panels stacked on the right.
 \begin{figure}[htbp]
   \centering
-  \textbf{(a)}\par\vspace{0.2em}
-  \mcpincludegraphics[width=\textwidth,keepaspectratio]{manuscript/overview_flow}\par
-  \vspace{0.9em}
   \begin{minipage}{\textwidth}
     \centering
     \begin{minipage}[t]{0.62\linewidth}
       \centering
-      \textbf{(b)}\par\vspace{0.2em}
+      \textbf{(a)}\par\vspace{0.2em}
       \mcpincludegraphics[width=\linewidth,keepaspectratio]{manuscript/workflow_panel}
     \end{minipage}\hfill
     \begin{minipage}[t]{0.36\linewidth}
       \centering
-      \textbf{(c)}\par\vspace{0.2em}
+      \textbf{(b)}\par\vspace{0.2em}
       \mcpincludegraphics[width=\linewidth,keepaspectratio]{performance/queue_size_sweep}\par\vspace{1.0em}
-      \textbf{(d)}\par\vspace{0.2em}
+      \textbf{(c)}\par\vspace{0.2em}
       \mcpincludegraphics[width=\linewidth,keepaspectratio]{performance/parallelism_vs_wallclock}
     \end{minipage}
   \end{minipage}
-  \caption[Overview, pipeline, and scaling]{%
-    \textbf{\quantmsdiann{}: SDRF-driven workflow, architecture, and runtime scaling.}
-    (\textbf{a})~Conceptual overview: diverse public DIA datasets (bulk,
-    single-cell plexDIA, spatial, phosphoproteomics), each described by one
-    standardised SDRF, are reanalysed by a single nf-core/\texttt{DIA-NN}
-    workflow parallelised across HPC/cloud and exported to one harmonised,
-    queryable \qpx{} archive.
-    (\textbf{b})~Subway diagram of the \quantmsdiann{} workflow: mandatory
+  \caption[Pipeline and scaling]{%
+    \textbf{\quantmsdiann{} pipeline architecture and runtime scaling.}
+    (\textbf{a})~Subway diagram of the \quantmsdiann{} workflow: mandatory
     modules as filled circles, optional/skippable modules as open circles.
     Per-file parallel stages (red; file preparation, preliminary
     calibration, individual search) run as one task per raw file, whereas
     collective stages (green; in-silico library generation, empirical
     library assembly, final quantification, MSstats conversion, and
     \texttt{pmultiqc} reporting) run once over the full cohort.
-    (\textbf{c})~Workflow wall-clock time versus the number of cluster nodes
+    (\textbf{b})~Workflow wall-clock time versus the number of cluster nodes
     (Nextflow \texttt{executor.queueSize}) on the PXD071075 single-cell
     cohort.
-    (\textbf{d})~Wall-clock time to finish each reanalysis, one bar per
+    (\textbf{c})~Wall-clock time to finish each reanalysis, one bar per
     dataset, ordered by cohort size (number of MS data files) and coloured
     by instrument family. For proteome-scale cohorts, time-to-finish stays
     within a few hours regardless of file count because per-file work is

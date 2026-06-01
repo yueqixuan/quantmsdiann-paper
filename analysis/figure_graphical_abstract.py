@@ -173,7 +173,4 @@ def build(out_name: str = "graphical_abstract", with_title: bool = True) -> FsPa
 
 
 if __name__ == "__main__":
-    # standalone graphical abstract (with paper title) ...
     print("wrote", build("graphical_abstract", with_title=True))
-    # ... and the title-less variant used as main-text Figure 1a.
-    print("wrote", build("overview_flow", with_title=False))
