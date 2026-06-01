@@ -62,18 +62,20 @@ def _stream(ax, p0, p1, color, lw=2.2, alpha=0.55):
                            alpha=alpha, zorder=2, capstyle="round"))
 
 
-def build() -> FsPath:
+def build(out_name: str = "graphical_abstract", with_title: bool = True) -> FsPath:
     fig, ax = plt.subplots(figsize=(12.0, 5.4))
     ax.set_xlim(0, 122)
     ax.set_ylim(0, 54)
     ax.axis("off")
 
-    # ---- title ----
-    ax.text(3, 50.4, "quantmsdiann", fontsize=21, fontweight="bold",
-            color=QMBLUE, family=FONT)
-    ax.text(3, 46.4, "one SDRF-driven DIA-NN workflow for archive-scale "
-            "reanalysis of public DIA proteomics", fontsize=10.5, color=GREY,
-            family=FONT)
+    # ---- title (standalone graphical abstract only; omitted for the in-text
+    #      Figure 1a panel, where the paper title would be redundant) ----
+    if with_title:
+        ax.text(3, 50.4, "quantmsdiann", fontsize=21, fontweight="bold",
+                color=QMBLUE, family=FONT)
+        ax.text(3, 46.4, "one SDRF-driven DIA-NN workflow for archive-scale "
+                "reanalysis of public DIA proteomics", fontsize=10.5,
+                color=GREY, family=FONT)
 
     hub = (58.0, 30.0)
     hub_r = 8.5
@@ -162,7 +164,7 @@ def build() -> FsPath:
             fontweight="bold", color=DARK, family=FONT)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    stem = OUT_DIR / "graphical_abstract"
+    stem = OUT_DIR / out_name
     fig.subplots_adjust(left=0.01, right=0.99, top=0.99, bottom=0.01)
     for ext in (".svg", ".pdf", ".png"):
         fig.savefig(stem.with_suffix(ext), dpi=300, bbox_inches="tight")
@@ -171,4 +173,7 @@ def build() -> FsPath:
 
 
 if __name__ == "__main__":
-    print("wrote", build())
+    # standalone graphical abstract (with paper title) ...
+    print("wrote", build("graphical_abstract", with_title=True))
+    # ... and the title-less variant used as main-text Figure 1a.
+    print("wrote", build("overview_flow", with_title=False))
