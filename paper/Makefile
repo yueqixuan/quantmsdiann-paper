@@ -13,6 +13,7 @@ LATEXMK   := latexmk
 BUILD_DIR := build
 
 SVGS := \
+	manuscript/graphical_abstract.svg \
 	manuscript/fig1_architecture_scaling.svg \
 	performance/parallelism_vs_wallclock.svg \
 	performance/runtime_per_step.svg \
