@@ -20,8 +20,13 @@ from pathlib import Path as FsPath
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.patheffects as pe
 from matplotlib.path import Path
 from matplotlib.patches import PathPatch, Circle, Ellipse, FancyArrowPatch
+
+# Soft drop shadow for the main nodes (depth without boxes).
+SHADOW = [pe.withSimplePatchShadow(offset=(1.8, -1.8), shadow_rgbFace="#7a7a7a",
+                                   alpha=0.30)]
 
 REPO_ROOT = FsPath(__file__).resolve().parent.parent
 OUT_DIR = REPO_ROOT / "analysis" / "figures" / "manuscript"
@@ -78,7 +83,7 @@ def build() -> FsPath:
     ys = [40.5, 34.5, 28.5, 22.5, 16.5]
     for (lab, col), y in zip(DATASETS, ys):
         ax.add_patch(Circle((6.0, y), 1.15, facecolor=col, edgecolor="white",
-                            lw=1.0, zorder=4))
+                            lw=1.0, zorder=4)).set_path_effects(SHADOW)
         ax.text(8.6, y, lab, ha="left", va="center", fontsize=10.2,
                 color=DARK, family=FONT)
         _stream(ax, (gate_x, y), (hub[0] - hub_r + 1, hub[1]), col)  # gate -> hub
@@ -88,7 +93,8 @@ def build() -> FsPath:
 
     # SDRF "gate": a soft vertical lens all streams pass through
     ax.add_patch(Ellipse((gate_x, 30), 6.5, 30, facecolor=QMGREEN_L,
-                        edgecolor=QMGREEN, lw=1.6, zorder=3, alpha=0.92))
+                        edgecolor=QMGREEN, lw=1.6, zorder=3,
+                        alpha=0.92)).set_path_effects(SHADOW)
     ax.text(gate_x, 30, "SDRF", ha="center", va="center",
             rotation=90, fontsize=14, fontweight="bold", color=QMGREEN,
             family=FONT, zorder=5)
@@ -103,7 +109,7 @@ def build() -> FsPath:
                             facecolor=QMBLUE, edgecolor="white", lw=0.5,
                             alpha=0.55, zorder=3))
     ax.add_patch(Circle(hub, hub_r, facecolor=QMBLUE_L, edgecolor=QMBLUE,
-                        lw=2.2, zorder=5))
+                        lw=2.2, zorder=5)).set_path_effects(SHADOW)
     ax.text(hub[0], hub[1] + 2.3, "quantmsdiann", ha="center", va="center",
             fontsize=12.5, fontweight="bold", color=QMBLUE, family=FONT, zorder=6)
     ax.text(hub[0], hub[1] - 1.0, "nf-core", ha="center", va="center",
@@ -139,7 +145,7 @@ def build() -> FsPath:
             lw=3.4, alpha=0.85)
     out = (107.0, hub[1])
     ax.add_patch(Circle(out, 7.0, facecolor=QMGREEN_L, edgecolor=QMGREEN,
-                        lw=2.2, zorder=5))
+                        lw=2.2, zorder=5)).set_path_effects(SHADOW)
     ax.text(out[0], out[1] + 1.6, "QPX", ha="center", va="center",
             fontsize=15, fontweight="bold", color=QMGREEN, family=FONT, zorder=6)
     ax.text(out[0], out[1] - 2.0, "harmonised\nmatrix", ha="center", va="center",
