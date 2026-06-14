@@ -75,60 +75,32 @@
   \label{fig:proteobench}
 \end{figure}
 
-%% Fig. 3 — Independent cell-line reanalyses (depth vs original)
+%% Fig. 3 — Single-cell DIA reanalysis (DIA-NN 1.8.1 vs 2.5.1-enterprise)
 \begin{figure}[htbp]
   \centering
-  \begin{minipage}{\textwidth}
-    \centering
-    \begin{minipage}[t]{0.32\linewidth}
-      \centering
-      {\scriptsize\textbf{(a)~PXD003539 (NCI-60, 2019)}}\par\vspace{0.2em}
-      \mcpincludegraphics[width=\linewidth,keepaspectratio]{PXD003539/main_comparison}
-    \end{minipage}\hfill
-    \begin{minipage}[t]{0.32\linewidth}
-      \centering
-      {\scriptsize\textbf{(b)~MSV000093870 (plexDIA, 2024)}}\par\vspace{0.2em}
-      \mcpincludegraphics[width=\linewidth,keepaspectratio]{plexDIA/MSV000093870/main_galatidou_total_pg}
-    \end{minipage}\hfill
-    \begin{minipage}[t]{0.32\linewidth}
-      \centering
-      {\scriptsize\textbf{(c)~PXD030304 (ProCan, 2022)}}\par\vspace{0.2em}
-      \mcpincludegraphics[width=\linewidth,keepaspectratio]{PXD030304/main_comparison}
-    \end{minipage}
-
-    \vspace{1.0em}
-    \begin{minipage}[t]{0.32\linewidth}
-      \centering
-      {\scriptsize\textbf{(d)~PXD064049 (MYCN DVP spatial, 2025)}}\par\vspace{0.2em}
-      \mcpincludegraphics[width=\linewidth,keepaspectratio]{PXD064049/main_comparison}
-    \end{minipage}\hfill
-    \begin{minipage}[t]{0.32\linewidth}
-      \centering
-      {\scriptsize\textbf{(e)~PXD049692 (NK phospho, 2024)}}\par\vspace{0.2em}
-      \mcpincludegraphics[width=\linewidth,keepaspectratio]{PXD049692/main_comparison}
-    \end{minipage}\hfill
-    \begin{minipage}[t]{0.32\linewidth}~\end{minipage}
-  \end{minipage}
-  \caption[Cell-line, spatial, and phospho reanalyses]{%
-    \textbf{Independent reanalysis of public DIA datasets, spanning bulk cell
-    lines, single cells, spatial proteomics, and phosphoproteomics, recovers
-    comparable or greater identification depth than the original deposits.}
-    Each panel compares the original published counts (grey) with the
-    \quantmsdiann{} reanalysis at 1\% FDR (blue) from the same raw data.
-    (\textbf{a})~NCI-60 bulk cell lines (PXD003539, Guo 2019; original
-    OpenSWATH analysis).
-    (\textbf{b})~Single-cell oocyte plexDIA (MSV000093870, Galatidou 2024).
-    (\textbf{c})~ProCan-DepMapSanger pan-cancer cell-line panel (PXD030304).
-    (\textbf{d})~MYCN-amplified neuroblastoma Deep Visual Proteomics
-    (spatial, laser-microdissected regions; PXD064049, diaPASEF), with
-    precursors and protein groups compared against the original
-    DIA-NN~1.8.1 analysis.
-    (\textbf{e})~NK-cell Fe-NTA phosphoproteomics (PXD049692, diaPASEF):
-    stripped-sequence phosphopeptides (backbones) compared against the
-    original Spectronaut directDIA analysis on the same runs.
-    Per-cohort detail for panels~(a)--(c) in Additional file~1: Figs.~S4--S12.
+  \mcpincludegraphics[width=\textwidth,height=\mcpmaxfigheight,keepaspectratio]{manuscript/fig3_single_cell_combined}
+  \caption[Single-cell DIA reanalysis]{%
+    \textbf{Single-cell DIA reanalysis by \quantmsdiann{}, comparing
+    \texttt{DIA-NN}~1.8.1 with the current 2.5.1-enterprise build on identical
+    raw data.} Two label-free single-cell HeLa cohorts are shown --- Orbitrap
+    Astral single-cell (PXD046357) and One-Tip (PXD044991) --- alongside an
+    orthogonal multiplexed comparison.
+    (\textbf{a})~Total identifications: union precursors and protein groups
+    across all cells, per build.
+    (\textbf{b})~Protein groups per cell (box and jittered points), showing the
+    newer build lifts depth in every cell.
+    (\textbf{c})~Data-completeness curve (HeLa Astral): protein groups
+    quantified in at least $N$ cells --- the match-between-runs signature, where
+    the right endpoint is the complete-profile count.
+    (\textbf{d})~Relative rank-abundance (HeLa Astral), each run normalised to
+    its most-abundant protein, showing extension into lower abundance.
+    (\textbf{e})~Distribution of per-protein coefficient of variation across
+    cells (HeLa Astral), summarising quantitative precision.
+    (\textbf{f})~Multiplexed single-cell plexDIA (MSV000093870, Galatidou 2024;
+    mTRAQ 3-plex): protein groups for the deposited analysis versus the
+    \quantmsdiann{} reanalysis of the same raw data.
   }
-  \label{fig:cell-line-reanalysis}
+  \label{fig:single-cell}
 \end{figure}
 
 %% Fig. 4 — Pan-cohort of five DIA reanalyses
@@ -143,14 +115,13 @@
     cancer lines), PXD041421 (Wang 2023), and PXD017199 (Tognetti
     2021, 67 breast cancer lines), reanalysed under a single
     \quantmsdiann{} invocation.
-    (\textbf{a})~Per-cohort headline protein-group counts: the originally
-    published count (grey) and the \quantmsdiann{} reanalysis (blue);
-    PXD017199 and PXD041421 have no published DIA headline, so only the
-    \quantmsdiann{} bar is shown.
-    (\textbf{b})~Cell lines per pan-cancer tissue, stacked by contributing
-    cohort.
-    (\textbf{c})~Unique UniProt proteins detected per tissue across the
-    combined panel.
+    (\textbf{a})~For the two cohorts with a published DIA protein-group
+    headline (NCI-60 and ProCan), protein groups requiring $\geq 2$ unique
+    peptides: the originally published count (grey) and the \quantmsdiann{}
+    reanalysis (blue), with the same filter applied to both sides.
+    (\textbf{b})~Back-to-back per-tissue summary across the combined panel:
+    cell lines contributing to each tissue, stacked by cohort (left), and the
+    union of unique UniProt proteins detected per tissue (right).
   }
   \label{fig:pancohort}
 \end{figure}

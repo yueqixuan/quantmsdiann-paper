@@ -40,7 +40,9 @@ ACC = {"HeLa Astral SC": "PXD046357", "HeLa One-Tip": "PXD044991"}
 FLAG = "HeLa Astral SC"
 FLAG_T = f"HeLa Astral SC\n({ACC[FLAG]})"
 # plexDIA (Galatidou 2024) protein groups, deposited vs quantms.io reanalysis.
-PLEX_DEP, PLEX_QM = 2122, 2353
+# Canonical report-based target-only counts (channel-confident), from
+# analysis/figures/plexDIA/MSV000093870/comparison_counts.tsv.
+PLEX_DEP, PLEX_QM = 2122, 2904
 
 
 def _completeness(ax):
@@ -109,8 +111,8 @@ def _cv(ax):
 # Total counts (report-based, target-only): precursors and protein groups,
 # 1.8.1 -> 2.5.1 Enterprise, for the two HeLa single-cell datasets.
 TOTALS = {
-    "Astral":  {"precursors": (19365, 23712), "proteins": (3900, 4336)},
-    "One-Tip": {"precursors": (10627, 15321), "proteins": (1586, 2119)},
+    "Astral":  {"precursors": (19674, 24111), "proteins": (3903, 4574)},
+    "One-Tip": {"precursors": (11618, 16534), "proteins": (1597, 2306)},
 }
 
 
