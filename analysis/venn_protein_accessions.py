@@ -7,6 +7,8 @@ from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from analysis import figure_style as fs
+fs.apply_house_style()
 
 from analysis.contaminant_filter import (
     is_target_protein_group,

@@ -287,6 +287,47 @@ def test_trace_wallclock_seconds_spans_first_submit_to_last_finish(
     assert trace_wallclock_seconds(df) == 3840.0
 
 
+def test_insilico_seconds_sums_only_library_step(tmp_path: Path) -> None:
+    """`insilico_seconds` returns the total INSILICO_LIBRARY_GENERATION
+    duration, ignoring every other step, and 0.0 when the step is absent."""
+    from analysis.figure_performance_trace import insilico_seconds, load_trace
+    p = _make_trace(tmp_path, [
+        ("A:INDIVIDUAL_ANALYSIS (a)", "2026-05-15 09:00:00.000", "5m"),
+        ("A:INSILICO_LIBRARY_GENERATION (lib)", "2026-05-15 09:05:00.000", "12m"),
+        ("A:FINAL_QUANTIFICATION (q)", "2026-05-15 09:17:00.000", "8m"),
+    ])
+    df = load_trace(p)
+    assert insilico_seconds(df) == 12 * 60.0
+
+    p2 = _make_trace(tmp_path / "nolib", [
+        ("A:INDIVIDUAL_ANALYSIS (a)", "2026-05-15 09:00:00.000", "5m"),
+    ])
+    assert insilico_seconds(load_trace(p2)) == 0.0
+
+
+def test_busy_span_ignores_idle_gaps(tmp_path: Path) -> None:
+    """`busy_span_seconds` is the union of active intervals, so an idle gap
+    between two `-resume` legs is excluded (unlike the raw span). Two 10-min
+    tasks an hour apart give 20 min busy, not 70 min span."""
+    from analysis.figure_performance_trace import (
+        busy_span_seconds, load_trace, trace_wallclock_seconds,
+    )
+    p = _make_trace(tmp_path, [
+        ("A:STEP (leg1)", "2026-05-15 09:00:00.000", "10m"),
+        ("A:STEP (leg2)", "2026-05-15 10:00:00.000", "10m"),
+    ])
+    df = load_trace(p)
+    assert busy_span_seconds(df) == 20 * 60.0
+    assert trace_wallclock_seconds(df) == 70 * 60.0
+    # Overlapping tasks are merged (not double-counted): two 10-min tasks
+    # starting 5 min apart cover a single 15-min window.
+    p2 = _make_trace(tmp_path / "overlap", [
+        ("A:STEP (x)", "2026-05-15 09:00:00.000", "10m"),
+        ("A:STEP (y)", "2026-05-15 09:05:00.000", "10m"),
+    ])
+    assert busy_span_seconds(load_trace(p2)) == 15 * 60.0
+
+
 def test_aggregate_step_durations_keys_by_step(tmp_path: Path) -> None:
     """`aggregate_step_durations` should collapse tasks across multiple
     traces into a {step -> [duration_s, ...]} map. Empty-step rows must be

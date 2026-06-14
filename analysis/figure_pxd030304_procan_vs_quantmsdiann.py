@@ -24,6 +24,9 @@ from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from analysis import figure_style as fs
+fs.apply_house_style()
+import numpy as np
 import pandas as pd
 
 from analysis.contaminant_filter import count_target_protein_groups
@@ -441,6 +444,54 @@ def per_run_completeness_quantmsdiann(pg_matrix_path: Path) -> dict[str, float]:
 
 
 # ---------------------------------------------------------------------------
+# Per-protein detection frequency (for the data-completeness curve)
+# ---------------------------------------------------------------------------
+# "Missing values" framed the right way round: for each protein, in what
+# fraction of runs is it detected? The per-protein distribution is what the
+# completeness curve consumes — unlike per-run fraction it is NOT confounded
+# by total proteome size, so it compares the two pipelines fairly.
+
+
+def protein_detection_freq_procan(peptide_counts_path: Path) -> list[float]:
+    """Per-protein detection frequency for ProCan = (# runs with peptide
+    count > 0) / (total runs), one value per protein column. Streamed because
+    the matrix is 143 MB; we accumulate a per-protein counter across rows."""
+    counts: list[int] | None = None
+    n_runs = 0
+    with open(peptide_counts_path, encoding="utf-8", newline="") as fh:
+        reader = csv.reader(fh, delimiter="\t")
+        header = next(reader)
+        if not header or header[0] != "Run":
+            raise ValueError(
+                f"peptide counts file first column should be 'Run', got "
+                f"{header[0]!r}"
+            )
+        counts = [0] * (len(header) - 1)
+        for row in reader:
+            if not row:
+                continue
+            n_runs += 1
+            for j, v in enumerate(row[1:]):
+                if v and v.strip() and _is_positive_count(v):
+                    counts[j] += 1
+    if not n_runs or counts is None:
+        return []
+    return [c / n_runs for c in counts]
+
+
+def protein_detection_freq_quantmsdiann(pg_matrix_path: Path) -> list[float]:
+    """Per-protein detection frequency for quantmsdiann = (# non-NA run
+    columns) / (total runs), one value per protein-group row of pg_matrix.tsv."""
+    df = pd.read_csv(pg_matrix_path, sep="\t", dtype=str)
+    sample_cols = [c for c in df.columns if c not in PG_METADATA_COLS]
+    n_runs = len(sample_cols)
+    if n_runs == 0 or len(df) == 0:
+        return []
+    detected = df[sample_cols].notna().sum(axis=1)
+    return (detected / n_runs).tolist()
+
+
+# ---------------------------------------------------------------------------
 # Rendering
 # ---------------------------------------------------------------------------
 
@@ -460,10 +511,10 @@ def render_main_figure(
     bar_width = 0.35
     x = list(range(len(metrics)))
     bars_p = ax.bar([xi - bar_width / 2 for xi in x], procan_vals,
-                    width=bar_width, color="#9e9e9e",
+                    width=bar_width, color=fs.COMPARISON["original"],
                     label="ProCan-DepMapSanger 2022")
     bars_d = ax.bar([xi + bar_width / 2 for xi in x], diann_vals,
-                    width=bar_width, color="#1f77b4",
+                    width=bar_width, color=fs.COMPARISON["quantmsdiann"],
                     label="quantmsdiann (DIA-NN)")
     for bars, vals in ((bars_p, procan_vals), (bars_d, diann_vals)):
         for bar, v in zip(bars, vals):
@@ -508,10 +559,10 @@ def render_proteins_per_tissue(
     x = list(range(len(tissues)))
     bar_width = 0.4
     bars_p = ax.bar([xi - bar_width / 2 for xi in x], procan_vals,
-                    width=bar_width, color="#9e9e9e",
+                    width=bar_width, color=fs.COMPARISON["original"],
                     label="ProCan-DepMapSanger 2022")
     bars_d = ax.bar([xi + bar_width / 2 for xi in x], diann_vals,
-                    width=bar_width, color="#1f77b4",
+                    width=bar_width, color=fs.COMPARISON["quantmsdiann"],
                     label="quantmsdiann (DIA-NN)")
     # Value labels intentionally omitted: with 28 tissues × 2 bars and values
     # often within 1-5% of each other, the numeric annotations overlap and
@@ -534,31 +585,37 @@ def render_proteins_per_tissue(
 
 
 def render_per_run_completeness(
-    procan_per_run: dict[str, float],
-    diann_per_run: dict[str, float],
+    procan_freqs: list[float],
+    diann_freqs: list[float],
     svg_path: Path,
 ) -> None:
-    """Line plot: per-run fraction of detected proteins, both pipelines.
-    Runs aligned by sorting each pipeline's set independently — they don't
-    share a common run-naming convention (ProCan: `180822_e0022_p02_*_s_m04_1`;
-    quantmsdiann: `180822_E0022_P02_*_S_M04_1.mzML`). Paper-ready: no title,
-    no footer."""
-    procan_vals = sorted(procan_per_run.values())
-    diann_vals = sorted(diann_per_run.values())
+    """Data-completeness curve: number of protein groups detected in at least
+    X% of runs, for each pipeline. This is the fair way to show missing values
+    — unlike per-run fraction it is NOT confounded by total proteome size, so a
+    pipeline that identifies *more* proteins is no longer artificially pushed
+    down. Left edge (>=0%) = total identified; right edge (>=100%) = the fully
+    complete core present in every run. Paper-ready: no title, no footer."""
+    procan = np.asarray(procan_freqs, dtype=float)
+    diann = np.asarray(diann_freqs, dtype=float)
+    thresholds = np.linspace(0.0, 1.0, 101)
+    procan_curve = [int((procan >= t).sum()) for t in thresholds]
+    diann_curve = [int((diann >= t).sum()) for t in thresholds]
+    x = thresholds * 100.0
 
-    fig, ax = plt.subplots(figsize=(10, 4.5))
-    ax.plot(range(len(procan_vals)), procan_vals,
-            color="#9e9e9e", linewidth=0.8,
-            label=f"ProCan-DepMapSanger 2022 (n={len(procan_vals)} runs)")
-    ax.plot(range(len(diann_vals)), diann_vals,
-            color="#1f77b4", linewidth=0.8,
-            label=f"quantmsdiann (DIA-NN) (n={len(diann_vals)} runs)")
-    ax.set_xlabel("Run rank (sorted ascending within each pipeline)")
-    ax.set_ylabel("Fraction of protein groups\ndetected per run")
-    ax.set_ylim(0, 1.0)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.legend(loc="lower right", frameon=False)
+    fig, ax = plt.subplots(figsize=(7.5, 5))
+    ax.plot(x, procan_curve,
+            color=fs.COMPARISON["original"], linewidth=1.8,
+            label=f"ProCan-DepMapSanger 2022 ({len(procan):,} protein groups)")
+    ax.plot(x, diann_curve,
+            color=fs.COMPARISON["quantmsdiann"], linewidth=1.8,
+            label=f"quantmsdiann (DIA-NN) ({len(diann):,} protein groups)")
+    ax.set_xlabel("Detected in ≥ X% of runs (data completeness)")
+    ax.set_ylabel("Protein groups")
+    ax.set_xlim(0, 100)
+    ax.set_ylim(bottom=0)
+    fs.kfmt_axis(ax.yaxis)
+    fs.despine(ax)
+    ax.legend(loc="upper right", frameon=False)
 
     fig.tight_layout()
     svg_path.parent.mkdir(parents=True, exist_ok=True)
@@ -653,44 +710,48 @@ def main() -> int:  # pragma: no cover
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Reanalysis inputs
-    log_path = download_if_missing(DIANN_SUMMARY_LOG_URL,
-                                   DATA_DIR / "diannsummary.log")
-    pg_path = download_if_missing(DIANN_PG_MATRIX_URL,
-                                  DATA_DIR / "diann_report.pg_matrix.tsv")
-    pr_path = download_if_missing(DIANN_PR_MATRIX_URL,
-                                  DATA_DIR / "diann_report.pr_matrix.tsv")
-    sdrf_path = download_if_missing(QUANTMS_SDRF_URL,
-                                    DATA_DIR / "PXD030304.sdrf.tsv")
+    # Reanalysis inputs: staged from the fresh DIA-NN 2.5.1 run
+    # (absolute-expression/cell-lines-proteomes/PXD030304) into data/PXD030304/
+    # (filesystem only, no FTP). The heavy aggregates over the 40 GB
+    # report.parquet (per-tissue protein sets, the report-based protein count at
+    # 1% global PG q, and the >=2-peptide count) are precomputed on the cluster
+    # and staged as diann_per_tissue_procan_filter.json + diann_report_protein_counts.json.
+    log_path = DATA_DIR / "diannsummary.log"
+    pg_path = DATA_DIR / "diann_report.pg_matrix.tsv"
+    sdrf_path = DATA_DIR / "PXD030304.sdrf.tsv"
+    import json as _json
+    with open(DATA_DIR / "diann_report_protein_counts.json", encoding="utf-8") as _fh:
+        _rep = _json.load(_fh)
 
-    # ProCan figshare inputs
-    fs_paths: dict[str, Path] = {}
-    for name, fid in FIGSHARE_FILES.items():
-        fs_paths[name] = download_if_missing(
-            f"{FIGSHARE_BASE}/{fid}", DATA_DIR / name,
-        )
+    # ProCan figshare reference data (the original-paper matrices; an external
+    # comparison baseline, not our reanalysis). Cached locally under data/.
+    fs_paths = {name: DATA_DIR / name for name in FIGSHARE_FILES}
 
     # Headline counts
     print("Parsing DIA-NN summary log...")
     pg_log, prec = parse_diann_summary_log(log_path)
     print(f"  protein groups (log, unfiltered): {pg_log:,}  precursors: {prec:,}")
 
-    print("Counting pg_matrix.tsv protein-group rows (unfiltered + target-only)...")
+    print("Counting pg_matrix.tsv protein-group rows (audit only)...")
     pg_unf, pg_target = count_target_protein_groups(pg_path)
-    print(f"  pg_matrix rows: unfiltered={pg_unf:,}  target_only={pg_target:,} "
-          f"(delta {pg_unf - pg_target:,})")
+    print(f"  pg_matrix rows: unfiltered={pg_unf:,}  target_only={pg_target:,}")
 
-    print("Computing quantmsdiann >=2-peptide protein-group count...")
-    pep_per_pg = unique_peptides_per_protein_diann(pr_path)
-    diann_stringent = proteins_with_min_peptides(pep_per_pg, 2)
-    print(f"  >=2 unique peptides: {diann_stringent:,}")
+    # Headline protein count and the >=2-peptide count come from the DIA-NN
+    # REPORT (Global.PG.Q.Value <= 0.01 / >=2 unique Stripped.Sequence per
+    # Protein.Group), precomputed on the cluster from the 40 GB report.parquet
+    # and staged. This is the count comparable to ProCan's 8,498 (proteotypic,
+    # Global.Q.Value <= 0.01); the pg_matrix row count is kept only as an audit.
+    report_proteins = int(_rep["proteins_global_tgt"])
+    diann_stringent = int(_rep["stringent_tgt"])
+    print(f"  report protein groups (Global.PG.Q.Value<=0.01, target): {report_proteins:,}")
+    print(f"  report >=2-peptide protein groups (target): {diann_stringent:,}")
 
     counts = Counts(
         procan_proteins=PROCAN_PROTEINS,
         procan_proteins_stringent=PROCAN_PROTEINS_STRINGENT,
-        # Headline = post-filter pg_matrix count (per 2026-05-21 spec §1.6).
-        quantmsdiann_proteins=pg_target,
-        quantmsdiann_proteins_unfiltered=pg_log,
+        # Headline = report-based protein count at 1% global PG FDR (target).
+        quantmsdiann_proteins=report_proteins,
+        quantmsdiann_proteins_unfiltered=int(_rep["proteins_global_unf"]),
         quantmsdiann_proteins_pg_matrix_unfiltered=pg_unf,
         quantmsdiann_proteins_stringent=diann_stringent,
         quantmsdiann_precursors=prec,
@@ -709,16 +770,14 @@ def main() -> int:  # pragma: no cover
     )
     print(f"  {len(procan_per_tissue)} tissues")
 
-    print("Computing per-tissue protein sets (quantmsdiann, ProCan-style filter)...")
-    # Apply Gonçalves et al. 2022's filter (Proteotypic == 1 AND
-    # Global.Q.Value <= 0.01, no per-cell quant FDR) so the per-tissue
-    # comparison is methodologically equivalent on both sides. Streams the
-    # 33 GB diann_report.parquet over HTTP with column projection on the
-    # 4 columns we need; the result is cached to a small JSON so subsequent
-    # runs are instant.
+    print("Loading per-tissue protein sets (quantmsdiann, ProCan-style filter)...")
+    # Gonçalves et al. 2022's filter (Proteotypic == 1 AND Global.Q.Value <= 0.01,
+    # no per-cell quant FDR) applied to the long-format report and grouped by
+    # tissue. Precomputed on the cluster from the 40 GB diann_report.parquet and
+    # staged as the JSON below (only re-streamed if the cache is absent).
     diann_per_tissue = _compute_or_load_diann_procan_filter(
         DATA_DIR / "diann_per_tissue_procan_filter.json",
-        DIANN_PARQUET_URL,
+        DATA_DIR / "diann_report.parquet",  # local fresh parquet (only read if cache absent)
         sdrf_path,
         fs_paths["mapping_file_averaged.txt"],
     )
@@ -730,19 +789,19 @@ def main() -> int:  # pragma: no cover
         FIGURES_DIR / "supp_proteins_per_tissue.svg",
     )
 
-    print("Computing per-run completeness (ProCan)...")
-    procan_per_run = per_run_completeness_procan(
+    print("Computing per-protein detection frequency (ProCan)...")
+    procan_freqs = protein_detection_freq_procan(
         fs_paths["peptide_counts_per_protein_per_sample.txt"],
     )
-    print(f"  {len(procan_per_run)} runs")
+    print(f"  {len(procan_freqs):,} protein groups")
 
-    print("Computing per-run completeness (quantmsdiann)...")
-    diann_per_run = per_run_completeness_quantmsdiann(pg_path)
-    print(f"  {len(diann_per_run)} runs")
+    print("Computing per-protein detection frequency (quantmsdiann)...")
+    diann_freqs = protein_detection_freq_quantmsdiann(pg_path)
+    print(f"  {len(diann_freqs):,} protein groups")
 
-    print("Rendering per-run completeness supp figure...")
+    print("Rendering data-completeness supp figure...")
     render_per_run_completeness(
-        procan_per_run, diann_per_run,
+        procan_freqs, diann_freqs,
         FIGURES_DIR / "supp_missing_values_per_run.svg",
     )
 
@@ -768,14 +827,15 @@ def main() -> int:  # pragma: no cover
         d = len(diann_per_tissue.get(t, set()))
         print(f"  {t:32s} {p:>6,} | {d:>6,}")
 
-    # Cross-check (the diannsummary.log unfiltered number is what the
-    # historical baseline pinned; the post-filter target count is lower).
-    if pg_log != 9370:
+    # Cross-check against the fresh DIA-NN 2.5.1 run
+    # (absolute-expression/cell-lines-proteomes/PXD030304). The
+    # diannsummary.log unfiltered headline is the baseline.
+    if pg_log != 9680:
         print(f"WARN: quantmsdiann protein groups (log) {pg_log} != "
-              f"expected 9,370",
+              f"expected 9,680",
               file=sys.stderr)
-    if prec != 153644:
-        print(f"WARN: quantmsdiann precursors {prec} != expected 153,644",
+    if prec != 156411:
+        print(f"WARN: quantmsdiann precursors {prec} != expected 156,411",
               file=sys.stderr)
 
     return 0

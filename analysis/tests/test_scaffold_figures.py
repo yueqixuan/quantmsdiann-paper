@@ -62,7 +62,8 @@ def test_collect_sweep_rows_returns_empty_when_no_data(tmp_path: Path) -> None:
         figure_queue_size_sweep.SWEEP_DIR = orig
     assert df.empty
     assert list(df.columns) == [
-        "queue_size", "wallclock_s", "peak_concurrent", "n_tasks",
+        "queue_size", "wallclock_s", "wallclock_with_lib_s",
+        "insilico_lib_s", "peak_concurrent", "n_tasks",
     ]
 
 
@@ -77,87 +78,3 @@ def test_render_queue_size_sweep_handles_empty_input(tmp_path: Path) -> None:
     out = tmp_path / "queue_size_sweep.svg"
     render_queue_size_sweep(df, out)
     assert out.exists() and out.stat().st_size > 0
-
-
-# ---------------------------------------------------------------------------
-# #13 — cell-line cross-version progression scaffolding
-# ---------------------------------------------------------------------------
-
-def test_cohort_matrix_path_layout() -> None:
-    """Reruns of cell-line cohorts must land their matrices at
-    `data/<PXD>/<version>/diann_report.{pr,pg}_matrix.tsv`. The path
-    builder enforces this so the SLURM job knows where to stage them."""
-    from analysis.figure_cell_line_version_progression import (
-        cohort_matrix_path,
-    )
-    p_pr = cohort_matrix_path("PXD003539", "v1_8_1", "pr")
-    assert p_pr.parts[-3:] == (
-        "PXD003539", "v1_8_1", "diann_report.pr_matrix.tsv",
-    )
-    p_pg = cohort_matrix_path("PXD030304", "v2_5_0", "pg")
-    assert p_pg.parts[-3:] == (
-        "PXD030304", "v2_5_0", "diann_report.pg_matrix.tsv",
-    )
-
-
-def test_count_matrix_rows_returns_zero_for_missing(tmp_path: Path) -> None:
-    """Missing matrix file → 0, not an exception. Lets the consumer
-    code report partial sweeps without special-casing."""
-    from analysis.figure_cell_line_version_progression import (
-        count_matrix_rows,
-    )
-    assert count_matrix_rows(tmp_path / "does_not_exist.tsv") == 0
-
-
-def test_count_matrix_rows_excludes_header(tmp_path: Path) -> None:
-    p = tmp_path / "diann_report.pr_matrix.tsv"
-    p.write_text("h1\th2\nval\tval\nval\tval\nval\tval\n")
-    from analysis.figure_cell_line_version_progression import (
-        count_matrix_rows,
-    )
-    assert count_matrix_rows(p) == 3
-
-
-def test_render_progression_handles_empty_input(tmp_path: Path) -> None:
-    """Render must emit a placeholder panel when no cell-line reruns
-    have landed. CI's render-everything pass must not fail because
-    experiment #13 is data-bound."""
-    from analysis.figure_cell_line_version_progression import (
-        render_progression,
-    )
-    df = pd.DataFrame(
-        columns=[
-            "cohort", "version", "version_label",
-            "n_precursors", "n_proteins",
-        ]
-    )
-    out = tmp_path / "progression.svg"
-    render_progression(df, out)
-    assert out.exists() and out.stat().st_size > 0
-
-
-def test_progression_render_path_skipped_when_no_data(tmp_path: Path) -> None:
-    """**Regression guard.** When `collect_progression_rows` returns
-    empty, the script's entry point must NOT ship an empty SVG to
-    `analysis/figures/combined/`. A previous revision rendered an
-    explainer panel as a real SVG, which the user correctly flagged
-    as carrying no information. The fix: short-circuit before render
-    and remove any stale SVG from a prior run.
-
-    We exercise the short-circuit by pointing the consumer at an
-    empty cohorts list — equivalent to "no data on disk for any
-    cohort" — and confirm no SVG is written. We do NOT call `main()`
-    directly because it writes into the repo's real figure tree."""
-    import analysis.figure_cell_line_version_progression as fig
-    # No cohorts × no versions => empty result.
-    df = fig.collect_progression_rows(cohorts=(), versions=())
-    assert df.empty
-    # Render IS still supported with an explainer for partial data
-    # (1 row, < 2 cohorts), but main() must skip it for the fully-empty
-    # case. The empty-data branch in main() is what protects us; this
-    # test asserts the precondition (empty DataFrame) is honoured.
-    out = tmp_path / "should_not_exist.svg"
-    # main() short-circuits on empty df — simulate by checking the
-    # df.empty branch directly.
-    assert df.empty
-    assert not out.exists()

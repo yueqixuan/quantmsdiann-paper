@@ -25,14 +25,13 @@ from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from analysis import figure_style as fs
+fs.apply_house_style()
 import pandas as pd
 
 from analysis.contaminant_filter import (
     count_target_protein_groups,
     is_target_protein_group,
-)
-from analysis.figure_original_vs_quantmsdiann import (
-    download_if_missing,
 )
 from analysis.figure_pxd030304_procan_vs_quantmsdiann import (
     PG_METADATA_COLS,
@@ -42,19 +41,13 @@ from analysis.figure_pxd030304_procan_vs_quantmsdiann import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+# Inputs are staged from the fresh DIA-NN 2.5.1 run
+# (absolute-expression/cell-lines-proteomes/PXD004701) into data/PXD004701/
+# (filesystem only, no FTP); the per-subtype consistency filter over the
+# multi-GB report.parquet is precomputed on the cluster and staged as
+# diann_per_subtype_consistency_filter.json.
 DATA_DIR = REPO_ROOT / "data" / "PXD004701"
 FIGURES_DIR = REPO_ROOT / "analysis" / "figures" / "PXD004701"
-
-PRIDE_QUANT_BASE = (
-    "https://ftp.pride.ebi.ac.uk/pub/databases/pride/resources/proteomes/"
-    "quantms-collections/absolute-expression-2.0/cell-lines/PXD004701"
-)
-
-DIANN_SUMMARY_LOG_URL = f"{PRIDE_QUANT_BASE}/quant_tables/diannsummary.log"
-DIANN_PG_MATRIX_URL = f"{PRIDE_QUANT_BASE}/quant_tables/diann_report.pg_matrix.tsv"
-DIANN_PR_MATRIX_URL = f"{PRIDE_QUANT_BASE}/quant_tables/diann_report.pr_matrix.tsv"
-DIANN_PARQUET_URL = f"{PRIDE_QUANT_BASE}/quant_tables/diann_report.parquet"
-QUANTMS_SDRF_URL = f"{PRIDE_QUANT_BASE}/sdrf/PXD004701.sdrf.tsv"
 
 # Headline constants from Sun et al. 2023 (MCP).
 SUN_PROTEINS = 6091           # global 1% Global.Q.Value + <=90% missing
@@ -387,8 +380,12 @@ def render_main_figure(
     quantmsdiann post-filter union.
     Metric 2: Proteotypic peptides — paper 90,762 vs quantmsdiann unique
     Stripped.Sequence in pr_matrix.tsv.
-    Metric 3: Protein groups (strict 1% FDR, no consistency) — paper 8,952
-    pre-filter vs quantmsdiann 7,746 from diannsummary.log.
+    Metric 3: Protein groups (strict 1% global protein-group FDR, no
+    consistency filter) — Sun 8,952 vs quantmsdiann 7,886, counted from the
+    DIA-NN report (Global.PG.Q.Value <= 0.01), not the pg_matrix. Sun's
+    library-based search against a curated pan-human spectral library
+    (10,323 proteins) explains the residual gap, whereas at the consistency
+    filter (Metric 1) quantmsdiann's library-free analysis exceeds Sun.
 
     Paper-ready: no title, no footer."""
     metrics = [
@@ -407,10 +404,10 @@ def render_main_figure(
     bar_width = 0.35
     x = list(range(len(metrics)))
     bars_s = ax.bar([xi - bar_width / 2 for xi in x], sun_vals,
-                    width=bar_width, color="#9e9e9e",
+                    width=bar_width, color=fs.COMPARISON["original"],
                     label="Sun et al. 2023")
     bars_d = ax.bar([xi + bar_width / 2 for xi in x], diann_vals,
-                    width=bar_width, color="#1f77b4",
+                    width=bar_width, color=fs.COMPARISON["quantmsdiann"],
                     label="quantmsdiann (DIA-NN)")
     for bars, vals in ((bars_s, sun_vals), (bars_d, diann_vals)):
         for bar, v in zip(bars, vals):
@@ -455,7 +452,7 @@ def render_proteins_per_subtype(
     for bar, v in zip(bars, vals):
         ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height(),
                 f"{v:,}", ha="center", va="bottom", fontsize=10)
-    ax.axhline(sun_reference, color="#9e9e9e", linestyle="--", linewidth=1,
+    ax.axhline(sun_reference, color=fs.COMPARISON["original"], linestyle="--", linewidth=1,
                label=f"Sun et al. 2023 global ({sun_reference:,})")
     ax.set_xticks(x)
     ax.set_xticklabels(labels)
@@ -600,8 +597,9 @@ def write_counts_tsv(
         ("Protein groups (1% FDR, no consistency)",
          "quantmsdiann (DIA-NN, target-only)",
          counts.quantmsdiann_proteins_strict,
-         "post-filter: pg_matrix.tsv rows whose Protein.Group has no "
-         "CONTAM_/Cont_/ENTRAP_/DECOY_/decoy_ token (2026-05-21 spec)"),
+         "report-based: unique Protein.Group at Global.PG.Q.Value<=0.01 in "
+         "diann_report.parquet (DIA-NN 2.5.1, --qvalue 0.05), contaminant/"
+         "entrapment/decoy stripped; comparable to Sun's 8,952"),
         ("Protein groups (1% FDR, no consistency)",
          "quantmsdiann (DIA-NN, unfiltered pg_matrix)",
          counts.quantmsdiann_proteins_pg_matrix_unfiltered,
@@ -679,14 +677,15 @@ def main() -> int:  # pragma: no cover
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 
-    log_path = download_if_missing(DIANN_SUMMARY_LOG_URL,
-                                   DATA_DIR / "diannsummary.log")
-    pg_path = download_if_missing(DIANN_PG_MATRIX_URL,
-                                  DATA_DIR / "diann_report.pg_matrix.tsv")
-    pr_path = download_if_missing(DIANN_PR_MATRIX_URL,
-                                  DATA_DIR / "diann_report.pr_matrix.tsv")
-    sdrf_path = download_if_missing(QUANTMS_SDRF_URL,
-                                    DATA_DIR / "PXD004701.sdrf.tsv")
+    # Filesystem only: the small quant_tables/ + sdrf files are staged from the
+    # fresh DIA-NN 2.5.1 run under data/PXD004701/ (no FTP). The heavy
+    # per-subtype consistency filter over the multi-GB report.parquet is
+    # precomputed on the cluster and staged as
+    # diann_per_subtype_consistency_filter.json (see _compute_or_load...).
+    log_path = DATA_DIR / "diannsummary.log"
+    pg_path = DATA_DIR / "diann_report.pg_matrix.tsv"
+    pr_path = DATA_DIR / "diann_report.pr_matrix.tsv"
+    sdrf_path = DATA_DIR / "PXD004701.sdrf.tsv"
 
     print("Parsing DIA-NN summary log...")
     pg_log, prec = parse_diann_summary_log(log_path)
@@ -701,13 +700,28 @@ def main() -> int:  # pragma: no cover
     pep = unique_peptides_quantified(pr_path)
     print(f"  unique Stripped.Sequence: {pep:,}")
 
+    # Report-based protein-group count at 1% GLOBAL protein-group q-value
+    # (Global.PG.Q.Value <= 0.01), precomputed on the cluster from the
+    # diann_report.parquet (DIA-NN 2.5.1, --qvalue 0.05) and staged. This is
+    # the count that is methodologically comparable to Sun et al.'s 8,952
+    # ("strict 1% FDR, no consistency filter"); the pg_matrix row count
+    # understates it because the matrix applies the additional
+    # --matrix-qvalue / --matrix-spec-q passes.
+    import json as _json
+    with open(DATA_DIR / "diann_report_protein_counts.json", encoding="utf-8") as _fh:
+        _rep_prot = _json.load(_fh)
+    report_proteins_target = int(_rep_prot["target"])
+    report_proteins_unfiltered = int(_rep_prot["unfiltered"])
+    print(f"  report protein groups (Global.PG.Q.Value<=0.01): "
+          f"target={report_proteins_target:,} unfiltered={report_proteins_unfiltered:,}")
+
     print("Computing per-subtype consistency-filtered protein sets "
           "(streaming parquet)...")
     # Streams 33 GB of diann_report.parquet over HTTP with column projection;
     # cached to a small JSON.
     diann_per_subtype = _compute_or_load_diann_subtype_consistency_filter(
         DATA_DIR / "diann_per_subtype_consistency_filter.json",
-        DIANN_PARQUET_URL,
+        DATA_DIR / "diann_report.parquet",  # local fresh parquet (only read if cache absent)
         sdrf_path,
         BC_SUBTYPES,
     )
@@ -732,8 +746,11 @@ def main() -> int:  # pragma: no cover
         sun_peptides=SUN_PEPTIDES,
         sun_tnbc=SUN_TNBC,
         sun_non_tnbc=SUN_NON_TNBC,
-        quantmsdiann_proteins_strict=pg_target,
-        quantmsdiann_proteins_strict_unfiltered=pg_log,
+        # Strict (no-consistency) count is the REPORT-based protein-group count
+        # at 1% global PG q-value (target-only), comparable to Sun's 8,952 --
+        # NOT the pg_matrix row count (kept below as an audit field).
+        quantmsdiann_proteins_strict=report_proteins_target,
+        quantmsdiann_proteins_strict_unfiltered=report_proteins_unfiltered,
         quantmsdiann_proteins_pg_matrix_unfiltered=pg_unf,
         quantmsdiann_proteins_consistent=len(diann_proteins_consistent),
         quantmsdiann_proteins_consistent_unfiltered=(
@@ -741,12 +758,6 @@ def main() -> int:  # pragma: no cover
         ),
         quantmsdiann_peptides=pep,
         quantmsdiann_precursors=prec,
-    )
-
-    print("Rendering main figure...")
-    render_main_figure(
-        counts,
-        FIGURES_DIR / "main_comparison.svg",
     )
 
     print("Rendering per-subtype supp figure...")
@@ -788,14 +799,16 @@ def main() -> int:  # pragma: no cover
         diann_per_subtype=diann_per_subtype,
     )
 
-    # Cross-checks (non-gating). The diannsummary.log number is the
-    # historical baseline; the post-filter target count is lower.
-    if pg_log != 7746:
+    # Cross-checks (non-gating) against the fresh DIA-NN 2.5.1 run
+    # (absolute-expression/cell-lines-proteomes/PXD004701). The
+    # diannsummary.log headline is the unfiltered baseline; the post-filter
+    # target count is lower.
+    if pg_log != 8008:
         print(f"WARN: quantmsdiann protein groups (log) {pg_log} != "
-              f"expected 7,746",
+              f"expected 8,008",
               file=sys.stderr)
-    if prec != 100499:
-        print(f"WARN: quantmsdiann precursors {prec} != expected 100,499",
+    if prec != 104238:
+        print(f"WARN: quantmsdiann precursors {prec} != expected 104,238",
               file=sys.stderr)
 
     return 0

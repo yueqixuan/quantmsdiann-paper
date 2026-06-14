@@ -42,6 +42,8 @@ from typing import Iterable
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from analysis import figure_style as fs
+fs.apply_house_style()
 import pandas as pd
 
 from analysis.figure_original_vs_quantmsdiann import download_if_missing
@@ -332,22 +334,10 @@ def collect_runtime_rows(*, fetch: bool = True) -> pd.DataFrame:
 # Rendering
 # ---------------------------------------------------------------------------
 
-# Stable instrument colour palette. Keys must match `BENCHMARK_INSTRUMENT`
-# values and the SDRF NT= strings exactly so the same dot color is reused
-# across datasets.
-INSTRUMENT_COLOURS = {
-    "TripleTOF 5600": "#fb8c00",   # orange
-    "TripleTOF 6600": "#e53935",   # red
-    "timsTOF SCP":   "#8e24aa",    # purple
-    "Orbitrap Astral": "#1e88e5",  # blue
-    "Orbitrap Eclipse": "#3949ab", # indigo (PXD071075 single-cell sweep)
-    "ZenoTOF 7600":  "#00897b",    # teal
-    "Q Exactive":    "#d81b60",    # pink (MSV000093870 single-cell plexDIA)
-    "timsTOF Pro":   "#6d4c41",    # brown (PXD034128 phospho diaPASEF)
-    "timsTOF HT":    "#558b2f",    # green (PXD049692 NK phospho diaPASEF)
-    "Orbitrap Exploris 480": "#00838f", # cyan (PXD034623 phospho DIA)
-    "unknown":       "#9e9e9e",    # grey
-}
+# Stable instrument colour palette — centralised (colour-blind-safe, grouped by
+# vendor) in figure_style so the same instrument is the same colour in every
+# figure. Keys match `BENCHMARK_INSTRUMENT` values and the SDRF NT= strings.
+INSTRUMENT_COLOURS = dict(fs.INSTRUMENT_COLORS)
 
 
 # NOTE: this module no longer renders a figure. The earlier

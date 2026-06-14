@@ -50,14 +50,11 @@ from typing import Iterable
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from analysis import figure_style as fs
+fs.apply_house_style()
 import pandas as pd
 
-from analysis.figure_original_vs_quantmsdiann import download_if_missing
 from analysis.figure_performance_runtime import (
-    BENCHMARK_DATASETS,
-    BENCHMARK_INSTRUMENT,
-    BENCHMARK_BASE,
-    DIANN_VERSIONS,
     INSTRUMENT_COLOURS,
     parse_duration_to_seconds,
     parse_pipeline_report_duration,
@@ -385,6 +382,62 @@ def trace_wallclock_seconds(df: pd.DataFrame) -> float:
     return float(span)
 
 
+# The collective in-silico spectral-library prediction step. It runs once over
+# the whole cohort and sits on the critical path before quantification. The
+# paper's wall-clock panels (Fig 1b/1c) report time-to-finish *excluding* this
+# step, because the predicted library is a one-time, cacheable/reusable cost
+# that is independent of cohort size — keeping it in would conflate library
+# prediction with the per-file quantification scaling the panels are about.
+INSILICO_STEP = "INSILICO_LIBRARY_GENERATION"
+
+
+def insilico_seconds(df: pd.DataFrame) -> float:
+    """Total wall-clock seconds spent in INSILICO_LIBRARY_GENERATION for a
+    single run, summed over its task rows (normally one). Accepts either a
+    `load_trace`/`load_report_window_data` frame (`step` + `duration_s`).
+    Returns 0.0 when the step is absent (e.g. a user-supplied library run or
+    a truncated trace). COMPLETED-only when a status column is present, so a
+    failed-then-retried attempt is not double counted."""
+    if df is None or df.empty or "step" not in df.columns:
+        return 0.0
+    sub = df[df["step"] == INSILICO_STEP]
+    if "status" in sub.columns and sub["status"].astype(bool).any():
+        completed = sub[sub["status"] == "COMPLETED"]
+        if not completed.empty:
+            sub = completed
+    if sub.empty or "duration_s" not in sub.columns:
+        return 0.0
+    return float(sub["duration_s"].fillna(0.0).sum())
+
+
+def busy_span_seconds(df: pd.DataFrame) -> float:
+    """Total wall-clock seconds during which at least one task was running —
+    the union of all [submit, finish] intervals. Unlike `trace_wallclock_seconds`
+    (raw span) this ignores idle gaps between `-resume` invocations, so it is a
+    resume-robust "active compute time". For a single uninterrupted run it
+    equals the raw span (and the pipeline_report.txt duration). Returns 0.0 for
+    an empty frame."""
+    if df is None or df.empty:
+        return 0.0
+    iv = sorted(
+        (s, f) for s, f in zip(df["submit"], df["finish"])
+        if pd.notna(s) and pd.notna(f)
+    )
+    if not iv:
+        return 0.0
+    total = cur_s = cur_e = None
+    for s, e in iv:
+        if cur_s is None:
+            cur_s, cur_e, total = s, e, 0.0
+        elif s <= cur_e:
+            cur_e = max(cur_e, e)
+        else:
+            total += (cur_e - cur_s).total_seconds()
+            cur_s, cur_e = s, e
+    total += (cur_e - cur_s).total_seconds()
+    return float(total)
+
+
 def aggregate_step_durations(
     traces: Iterable[pd.DataFrame],
     *,
@@ -413,11 +466,6 @@ def aggregate_step_durations(
 # ---------------------------------------------------------------------------
 # Analysis enumeration
 # ---------------------------------------------------------------------------
-
-PRIDE_CELL_LINE_BASE = (
-    "https://ftp.pride.ebi.ac.uk/pub/databases/pride/resources/proteomes/"
-    "quantms-collections/absolute-expression-2.0/cell-lines"
-)
 
 
 _PARAMS_FILENAME_RE = __import__("re").compile(
@@ -514,171 +562,115 @@ CELL_LINE_ANALYSES: dict[str, dict[str, str]] = {
 }
 
 
-def iter_analyses() -> Iterable[tuple[str, str, str, str, Path]]:
-    """Yield (dataset, version, instrument, report_url, local_report_path)
-    for every analysis we know about — 3 cell-line + 20 benchmark = 23 rows.
-    Both groups serve `nextflow_report.html` but at different URL shapes:
-    cell-lines under `<dataset>/pipeline_info/`; benchmarks under
-    `<dataset>/<version>/`."""
-    for dataset, info in CELL_LINE_ANALYSES.items():
-        base = f"{PRIDE_CELL_LINE_BASE}/{dataset}"
-        url = f"{base}/pipeline_info/nextflow_report.html"
-        local = (DATA_DIR / dataset / "pipeline_info"
-                 / "nextflow_report.html")
-        yield dataset, info["version"], info["instrument"], url, local
-    for dataset in BENCHMARK_DATASETS:
-        for version in DIANN_VERSIONS:
-            base = f"{BENCHMARK_BASE}/{dataset}/{version}"
-            url = f"{base}/nextflow_report.html"
-            local = (DATA_DIR / "quantmsdiann_benchmarks" / dataset
-                     / version / "nextflow_report.html")
-            yield dataset, version, BENCHMARK_INSTRUMENT.get(
-                dataset, "unknown"
-            ), url, local
-
-
 # ---------------------------------------------------------------------------
 # Row builders
 # ---------------------------------------------------------------------------
 
-def collect_parallelism_rows(*, fetch: bool = True) -> pd.DataFrame:
-    """One row per analysis (3 cell-line + 20 benchmark = 23) with:
+# Fig 1c "time to finish" bars are built from ONE representative fresh run per
+# dataset, each staged under data/perf_traces/<dataset>/ as nextflow_trace.txt
+# (+ pipeline_report.txt when available). Reading the wall-clock and the
+# in-silico library time from the SAME trace is what makes the library
+# subtraction well-defined: the per-version deposited report.html /
+# pipeline_report.txt pairs were confounded by -resume (the library step often
+# ran in a different invocation than the one pipeline_report.txt's "duration"
+# measures), which drove naive subtraction to zero. Benchmarks use the v2_5_1
+# run; cell-line / single-cohort analyses use their absolute-expression run.
+PERF_TRACE_DIR = DATA_DIR / "perf_traces"
 
-    - n_runs: number of MS data files in the analysis (SDRF rows for
-      cell-lines, --f count from diannsummary.log for benchmarks).
-    - total_wallclock_seconds: earliest `params_*.json` timestamp to
-      `pipeline_report.txt`'s "completed at" datetime — captures the real
-      wall time the user waited, including queue time between `-resume`
-      re-runs. For single-invocation workflows this matches the report's
-      reported duration; for multi-resume workflows it's larger.
-    - n_invocations: how many `params_*.json` invocations the dataset
-      went through.
-    - n_tasks: number of tasks observed in the report's trace JSON (low
-      for `-resume`d cell-line runs since only the post-resume tasks are
-      traced).
+# (dataset, instrument, fallback n_runs). n_runs is normally counted from the
+# trace's INDIVIDUAL_ANALYSIS tasks; the fallback covers traces whose module
+# layout does not emit that step (PXD034128 / PXD064049).
+PERF_DATASETS: tuple[tuple[str, str, int], ...] = (
+    ("PXD049412", "Orbitrap Astral", 6),
+    ("PXD062685", "timsTOF SCP", 6),
+    ("PXD070049", "ZenoTOF 7600", 6),
+    ("ProteoBench_Module_7", "Orbitrap Astral", 6),
+    ("PXD003539", "TripleTOF 5600", 120),
+    ("PXD004701", "TripleTOF 5600", 300),
+    ("PXD030304", "TripleTOF 6600", 5798),
+    ("MSV000093870", "Q Exactive", 38),
+    ("PXD034128", "timsTOF Pro", 7),
+    ("PXD034623", "Orbitrap Exploris 480", 63),
+    ("PXD064049", "timsTOF SCP", 12),
+    ("PXD049692", "timsTOF HT", 10),
+)
+
+
+def iter_perf_trace_paths() -> Iterable[Path]:
+    """Yield the staged per-dataset `nextflow_trace.txt` paths under
+    data/perf_traces/ (one representative fresh run per dataset). Filesystem
+    only — these are staged from the cluster, never fetched from FTP. Missing
+    datasets are skipped."""
+    for dataset, *_ in PERF_DATASETS:
+        trace = PERF_TRACE_DIR / dataset / "nextflow_trace.txt"
+        if trace.exists():
+            yield trace
+
+
+def _n_runs_from_trace(df: pd.DataFrame, fallback: int) -> int:
+    """Count MS data files = per-file INDIVIDUAL_ANALYSIS tasks in the trace
+    (all statuses, since `-resume`d runs mark earlier-leg tasks CACHED rather
+    than COMPLETED). Falls back to the known SDRF file count when the trace
+    layout doesn't emit that step."""
+    if df is None or df.empty or "step" not in df.columns:
+        return fallback
+    n = int((df["step"] == "INDIVIDUAL_ANALYSIS").sum())
+    return n if n > 0 else fallback
+
+
+def collect_parallelism_rows(*, fetch: bool = True) -> pd.DataFrame:
+    """One row per dataset for the Fig 1c "wall-clock time to finish" bars,
+    built from the fresh per-dataset traces staged under data/perf_traces/.
+
+    Wall-clock = the run's pipeline_report.txt "duration" when present, else the
+    resume-robust `busy_span_seconds` of the trace (the two agree for single
+    uninterrupted runs). `insilico_lib_seconds` is the INSILICO_LIBRARY_GENERATION
+    time from the SAME trace; `wallclock_seconds` is wall-clock minus that, so the
+    bar reflects per-file quantification time rather than the one-time,
+    cohort-independent library-prediction cost. `wallclock_with_lib_seconds`
+    keeps the raw value for the audit TSV. `fetch` is accepted for API
+    compatibility but unused — the traces are staged locally.
     """
     rows: list[dict] = []
-    for dataset, version, instrument, url, local in iter_analyses():
-        if fetch:
-            download_if_missing(url, local)
-        df = load_report_window_data(local)
-        n_tasks = int(len(df))
-
-        # pipeline_info/ directory URL (for params listing + report.txt).
-        pipeline_info_url = url.rsplit("/", 1)[0]
-        # Cell-line reports already live under pipeline_info/; benchmarks
-        # have the report at the version root with pipeline_info/ as a
-        # subdir. Compute the URL that hosts params_*.json + pipeline_report.txt.
-        if pipeline_info_url.endswith("/pipeline_info"):
-            params_listing_url = pipeline_info_url + "/"
-            report_txt_url = pipeline_info_url + "/pipeline_report.txt"
-            report_txt_local = local.parent / "pipeline_report.txt"
-        else:
-            params_listing_url = pipeline_info_url + "/pipeline_info/"
-            report_txt_url = (pipeline_info_url
-                              + "/pipeline_info/pipeline_report.txt")
-            report_txt_local = (local.parent / "pipeline_info"
-                                / "pipeline_report.txt")
-        if fetch:
-            download_if_missing(report_txt_url, report_txt_local)
-
-        # Wallclock = the final run's "duration:" line from
-        # pipeline_report.txt — well-defined and matches the real compute
-        # cost of finishing the workflow (post-resume). The "span from
-        # first params_*.json to last completion" metric we tried earlier
-        # was confounded by benchmark re-tests done days apart (idle gaps
-        # between unrelated invocations dwarfing the actual run time).
-        # n_invocations is reported separately so the resume count is
-        # visible without polluting Y.
-        try:
-            wallclock = parse_pipeline_report_duration(report_txt_local)
-            starts = list_params_timestamps(params_listing_url)
-            n_invocations = len(starts) if starts else 1
-        except (ValueError, FileNotFoundError, OSError):
+    for dataset, instrument, fallback_runs in PERF_DATASETS:
+        tdir = PERF_TRACE_DIR / dataset
+        trace_path = tdir / "nextflow_trace.txt"
+        if not trace_path.exists():
             continue
-
-        # n_runs: SDRF rows for cell-lines, --f count for benchmarks.
-        # SDRF caches are dataset-scoped from earlier downloads.
-        if dataset in CELL_LINE_ANALYSES:
-            sdrf_local = DATA_DIR / dataset / f"{dataset}.sdrf.tsv"
-        else:
-            sdrf_local = (DATA_DIR / "quantmsdiann_benchmarks" / dataset
-                          / f"{dataset}.sdrf.tsv")
-        log_local = (DATA_DIR / dataset / "diannsummary.log"
-                     if dataset in CELL_LINE_ANALYSES
-                     else DATA_DIR / "quantmsdiann_benchmarks" / dataset
-                          / version / "quant_tables" / "diannsummary.log")
-        try:
-            n_runs = count_ms_runs(dataset, sdrf_local, log_local)
-        except (FileNotFoundError, ValueError):
-            n_runs = 0
-
+        df = load_trace(trace_path)
+        n_tasks = int(len(df))
+        report_txt = tdir / "pipeline_report.txt"
+        wallclock = None
+        if report_txt.exists():
+            try:
+                wallclock = parse_pipeline_report_duration(report_txt)
+            except (ValueError, FileNotFoundError, OSError):
+                wallclock = None
+        if wallclock is None:
+            wallclock = busy_span_seconds(df)
+        # A complete trace lets us isolate (and subtract) the library step.
+        # A stub trace — only the post-resume tail of tasks survives in the
+        # final invocation's trace (PXD003539 keeps just 2 rows) — cannot, so we
+        # report the full wall-clock and flag it rather than subtracting a bogus
+        # zero. The wall-clock itself is still trustworthy (from pipeline_report.txt).
+        separable = n_tasks >= MIN_ROWS_COMPLETE
+        lib_seconds = insilico_seconds(df) if separable else 0.0
+        n_runs = _n_runs_from_trace(df, fallback_runs)
         rows.append({
             "dataset": dataset,
-            "version": version,
+            "version": "v2_5_1",
             "instrument": instrument,
             "n_runs": n_runs,
             "n_tasks_observed": n_tasks,
-            "n_invocations": n_invocations,
-            "wallclock_seconds": wallclock,
-            "trace_complete": n_tasks >= MIN_ROWS_COMPLETE,
-            "source_file": str(report_txt_local.relative_to(REPO_ROOT)),
-        })
-    rows.extend(collect_extra_parallelism_rows(fetch=fetch))
-    return pd.DataFrame(rows)
-
-
-# Single-cohort analyses deposited under quantmsdiann-benchmarks/<subdir> with
-# their own pipeline_info/pipeline_report.txt (a different FTP layout from the
-# cell-line and per-version benchmark analyses). Each contributes one
-# parallelism-scatter row: wall-clock is read live from the deposited
-# pipeline_report.txt; n_runs is the number of MS data files in the deposit
-# (a fixed property, verified from the SDRF / counts.tsv at incorporation).
-_QB_BASE = (
-    "https://ftp.pride.ebi.ac.uk/pub/databases/pride/resources/proteomes/"
-    "quantmsdiann-benchmarks"
-)
-# (plot label, FTP subdir, instrument, n_runs MS data files)
-EXTRA_ANALYSES: tuple[tuple[str, str, str, int], ...] = (
-    ("MSV000093870", "plexDIA/MSV000093870-plexDIA", "Q Exactive", 38),
-    ("PXD034128", "PXD034128.1", "timsTOF Pro", 7),
-    ("PXD034623", "PXD034623", "Orbitrap Exploris 480", 63),
-    ("PXD064049", "PXD064049-MYCN-DVP-diaPASEF", "timsTOF SCP", 12),
-    ("PXD049692", "PXD049692", "timsTOF HT", 10),
-)
-EXTRA_ANALYSIS_LABELS = frozenset(label for label, *_ in EXTRA_ANALYSES)
-
-
-def collect_extra_parallelism_rows(*, fetch: bool = True) -> list[dict]:
-    """Build parallelism-scatter rows for the single-cohort analyses in
-    EXTRA_ANALYSES (plexDIA + the two phospho datasets). Each entry that can
-    be resolved (report downloadable + parseable) yields one row; the rest
-    are skipped."""
-    out: list[dict] = []
-    for label, subdir, instrument, n_runs in EXTRA_ANALYSES:
-        report_url = f"{_QB_BASE}/{subdir}/pipeline_info/pipeline_report.txt"
-        report_local = DATA_DIR / "extra" / label / "pipeline_report.txt"
-        if fetch:
-            try:
-                download_if_missing(report_url, report_local)
-            except OSError:
-                continue
-        try:
-            wallclock = parse_pipeline_report_duration(report_local)
-        except (ValueError, FileNotFoundError, OSError):
-            continue
-        out.append({
-            "dataset": label,
-            "version": "v2_5_0",
-            "instrument": instrument,
-            "n_runs": n_runs,
-            "n_tasks_observed": 0,
             "n_invocations": 1,
-            "wallclock_seconds": wallclock,
-            "trace_complete": False,
-            "source_file": str(report_local.relative_to(REPO_ROOT)),
+            "wallclock_seconds": max(0.0, float(wallclock) - float(lib_seconds)),
+            "wallclock_with_lib_seconds": float(wallclock),
+            "insilico_lib_seconds": float(lib_seconds),
+            "insilico_separable": bool(separable),
+            "trace_complete": separable,
+            "source_file": str(trace_path.relative_to(REPO_ROOT)),
         })
-    return out
+    return pd.DataFrame(rows)
 
 
 def _iter_pxd071075_sweep_trace_paths() -> Iterable[Path]:
@@ -791,33 +783,24 @@ def collect_pxd071075_sweep_rows() -> pd.DataFrame:
 def collect_step_runtime_rows(*, fetch: bool = True) -> tuple[
     dict[str, list[float]], pd.DataFrame,
 ]:
-    """Aggregate per-step task durations across the **20 benchmark
-    analyses + the 5 PXD071075 cluster-node sweep runs**. The 3
-    cell-line analyses (PXD003539 / PXD030304 / PXD004701) are still
-    excluded — PRIDE publishes their `nextflow_report.html` but not
-    `nextflow_trace.txt` and the report's embedded JSON conflates
-    different scales (a single 300-file PXD004701 run contributes 300
-    PRELIMINARY_ANALYSIS tasks against 20×6=120 benchmark tasks on the
-    same step). The PXD071075 sweep is added because per-task duration
-    for a given step is roughly invariant to queueSize — only the
-    workflow-level parallelism shifts — so pooling the 5 sweep
-    traces gives the distribution more weight at the real-cohort
-    scale (~2,310 input files) without distorting the per-step shape.
+    """Aggregate per-step task durations across the staged per-dataset fresh
+    traces (data/perf_traces/<dataset>/nextflow_trace.txt — one representative
+    run per dataset) plus the 5 PXD071075 cluster-node sweep runs. Filesystem
+    only; nothing is fetched from FTP. The PXD071075 sweep dominates the
+    high-count per-file steps because each sweep point runs the full ~2,310-file
+    cohort, so the per-step shape is weighted toward real-cohort scale.
 
     Returns (durations_by_step, summary_df) where summary_df has columns
     `step, n, p05_seconds, p25_seconds, p50_seconds, p75_seconds,
     p95_seconds, min_seconds, max_seconds`.
     """
-    traces: list[pd.DataFrame] = []
-    for dataset, _, _, url, local in iter_analyses():
-        if dataset in CELL_LINE_ANALYSES:
-            continue
-        if fetch:
-            download_if_missing(url, local)
-        traces.append(load_report_window_data(local))
-    # Pool the PXD071075 cluster-node sweep traces alongside the
-    # benchmarks. Already cached locally; trace.txt has the same
-    # step / status / duration columns we need.
+    # Filesystem only: pool the staged per-dataset fresh traces (one
+    # representative run each, data/perf_traces/<dataset>/nextflow_trace.txt)
+    # plus the 5 PXD071075 cluster-node sweep traces. `fetch` is accepted for
+    # API compatibility but unused.
+    traces: list[pd.DataFrame] = [
+        load_trace(p) for p in iter_perf_trace_paths()
+    ]
     traces.extend(_load_pxd071075_sweep_traces())
     durations = aggregate_step_durations(traces)
 
@@ -893,9 +876,11 @@ def render_parallelism_scatter(
 
     if own_fig:
         fig, ax = plt.subplots(figsize=(7.0, 5.0))
-    label_size = 8 if composite else 10
-    tick_size = 6.5 if composite else 8.5
-    ann_size = 6 if composite else 8
+    # Composite (fig1 sub-panel) stays compact; standalone matches the house
+    # rcParams sizes so it reads identically to the other figures.
+    label_size = 8 if composite else 12
+    tick_size = 6.5 if composite else 10
+    ann_size = 6 if composite else 9
 
     y = list(range(len(rep)))
     colours = [INSTRUMENT_COLOURS.get(i, "#9e9e9e") for i in rep["instrument"]]
@@ -911,8 +896,7 @@ def render_parallelism_scatter(
     ax.set_xlabel("Wall-clock time to finish (hours)", fontsize=label_size)
     ax.set_xlim(0, hmax * 1.16)
     ax.tick_params(axis="x", labelsize=tick_size)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
+    fs.despine(ax)
 
     # Deduplicated instrument-colour legend below the axes.
     if show_legend:
@@ -922,8 +906,8 @@ def render_parallelism_scatter(
             seen.setdefault(inst, INSTRUMENT_COLOURS.get(inst, "#9e9e9e"))
         handles = [Patch(facecolor=c, edgecolor="#222222", label=i)
                    for i, c in seen.items()]
-        legend_fs = 6 if composite else 8
-        legend_title_fs = 7 if composite else 9
+        legend_fs = 6 if composite else 10
+        legend_title_fs = 7 if composite else 10
         ncol = 2 if composite else legend_ncol
         bbox_y = -0.22 if composite else legend_bbox_y
         ax.legend(
@@ -968,10 +952,10 @@ def render_per_step_boxplot(
             marker="o", markerfacecolor="#888888", markeredgecolor="none",
             markersize=3.5, alpha=0.6,
         ),
-        medianprops=dict(color="#e53935", linewidth=1.6),
-        boxprops=dict(color="#1e88e5", linewidth=1.2),
-        whiskerprops=dict(color="#555555", linewidth=1.0),
-        capprops=dict(color="#555555", linewidth=1.0),
+        medianprops=dict(color=fs.OKABE_ITO["vermillion"], linewidth=1.6),
+        boxprops=dict(color=fs.OKABE_ITO["blue"], linewidth=1.2),
+        whiskerprops=dict(color=fs.OKABE_ITO["blue"], linewidth=1.0),
+        capprops=dict(color=fs.OKABE_ITO["blue"], linewidth=1.0),
         patch_artist=False,
     )
     del bp  # silence unused-var lint
@@ -982,8 +966,7 @@ def render_per_step_boxplot(
     ax.invert_yaxis()
 
     ax.set_xlabel("Task duration (s)", fontsize=10)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
+    fs.despine(ax)
     ax.tick_params(axis="both", labelsize=9)
 
     # Log scale when the range exceeds two orders of magnitude.
@@ -1011,9 +994,11 @@ def write_parallelism_tsv(df: pd.DataFrame, tsv_path: Path) -> None:
     tsv_path.parent.mkdir(parents=True, exist_ok=True)
     cols = [
         "dataset", "version", "instrument", "n_runs", "n_tasks_observed",
-        "n_invocations", "wallclock_seconds", "trace_complete",
+        "n_invocations", "wallclock_seconds", "wallclock_with_lib_seconds",
+        "insilico_lib_seconds", "insilico_separable", "trace_complete",
         "source_file",
     ]
+    cols = [c for c in cols if c in df.columns]
     out = df[cols].copy().sort_values(["dataset", "version"])
     out.to_csv(tsv_path, sep="\t", index=False)
 
@@ -1058,46 +1043,22 @@ def has_cell_line_traces() -> bool:
 def collect_step_resource_rows(*, fetch: bool = True) -> tuple[
     dict[str, dict[str, list[float]]], pd.DataFrame,
 ]:
-    """Aggregate per-task resource rows across the benchmark analyses
-    + the 5 PXD071075 cluster-node sweep runs.
-
-    Cell-line traces are included automatically when
-    `has_cell_line_traces()` returns True — that is, once experiment #11
-    has staged `data/<PXD>/pipeline_info/nextflow_trace.txt` for all
-    three cell-line cohorts. PXD071075 sweep traces are always
-    included when staged under `data/queue_size_sweep/q<N>/` — each
-    sweep run executes the same workflow on the same 2,310 input
-    files, so pooling all 5 runs increases the effective sample size
-    of the per-step resource distribution without distorting it.
+    """Aggregate per-task resource rows across the staged per-dataset fresh
+    traces (data/perf_traces/) plus the 5 PXD071075 cluster-node sweep runs.
+    Filesystem only; nothing is fetched from FTP. Each sweep point runs the
+    same workflow on the same ~2,310 input files, so pooling all 5 grows the
+    effective sample size of the per-step resource distribution without bias.
 
     Returns (resources_by_step, summary_df) where summary_df has
     columns `step, n_rss, peak_rss_p50_bytes, peak_rss_p95_bytes,
     pct_cpu_p50, pct_cpu_p95`.
     """
-    include_cell_lines = has_cell_line_traces()
-    traces: list[pd.DataFrame] = []
-    for dataset, version, *_ in iter_analyses():
-        if dataset in CELL_LINE_ANALYSES:
-            if not include_cell_lines:
-                continue
-            trace_local = cell_line_trace_local_path(dataset)
-            # No URL fetch path — these are local-only artefacts.
-        else:
-            trace_url = (
-                f"{BENCHMARK_BASE}/{dataset}/{version}/nextflow_trace.txt"
-            )
-            trace_local = (
-                DATA_DIR / "quantmsdiann_benchmarks" / dataset / version
-                / "nextflow_trace.txt"
-            )
-            if fetch:
-                download_if_missing(trace_url, trace_local)
-        traces.append(load_trace_resources(trace_local))
-    # Pool the PXD071075 cluster-node sweep traces alongside the
-    # benchmarks. Each sweep point is the same workflow at a different
-    # queueSize, so per-task resource usage is roughly equivalent
-    # across runs — pooling all 5 grows the effective sample without
-    # bias.
+    # Filesystem only: per-task resources from the staged per-dataset fresh
+    # traces plus the 5 PXD071075 sweep traces. `fetch` is accepted for API
+    # compatibility but unused.
+    traces: list[pd.DataFrame] = [
+        load_trace_resources(p) for p in iter_perf_trace_paths()
+    ]
     traces.extend(_load_pxd071075_sweep_resource_rows())
     resources = aggregate_step_resources(traces)
 
@@ -1193,44 +1154,55 @@ def render_resources_boxplot(
     ]
     fig, (ax_rss, ax_cpu) = plt.subplots(
         nrows=1, ncols=2,
-        figsize=(11.5, max(3.0, 0.36 * len(steps) + 1.0)),
+        # taller-per-step, narrower overall so the panels read as a normal
+        # box plot rather than a flat sliver.
+        figsize=(9.5, max(4.5, 0.55 * len(steps) + 1.5)),
         sharey=True,
+    )
+    _box_kw = dict(
+        medianprops=dict(color=fs.OKABE_ITO["vermillion"], linewidth=1.4),
+        boxprops=dict(color=fs.OKABE_ITO["blue"]),
+        whiskerprops=dict(color=fs.OKABE_ITO["blue"]),
+        capprops=dict(color=fs.OKABE_ITO["blue"]),
     )
     ax_rss.boxplot(
         rss_data, vert=False, widths=0.62,
-        labels=steps, showfliers=False,
-        medianprops=dict(color="#d62728", linewidth=1.4),
-        boxprops=dict(color="#445566"),
-        whiskerprops=dict(color="#445566"),
-        capprops=dict(color="#445566"),
+        labels=steps, showfliers=False, **_box_kw,
     )
     ax_rss.set_xlabel("Peak RSS per task (GB)", fontsize=10)
-    ax_rss.spines["top"].set_visible(False)
-    ax_rss.spines["right"].set_visible(False)
+    # Peak RSS spans ~0.1-500 GB (4 orders of magnitude across glue vs DIA-NN
+    # steps), so use a log x-axis. Bound xlim explicitly to the full data range
+    # (incl. outliers) plus headroom — otherwise the boxplot autoscales only to
+    # the whiskers and the per-step n= labels, placed at each step's raw max,
+    # land far off-axis and bbox="tight" explodes the canvas width.
+    all_rss = [v for vals in rss_data for v in vals if v > 0]
+    rss_hi = max(all_rss) if all_rss else 1.0
+    rss_lo = min(all_rss) if all_rss else 0.05
+    ax_rss.set_xscale("log")
+    ax_rss.set_xlim(rss_lo * 0.6, rss_hi * 2.2)
+    fs.despine(ax_rss)
     ax_rss.tick_params(axis="both", labelsize=8)
     ax_rss.invert_yaxis()  # highest-memory step at the top
-    # Annotate per-step n_rss to the right of each box.
+    # Annotate per-step n_rss just past each step's max box (now inside xlim).
     for i, step in enumerate(steps, start=1):
         n = len(resources[step]["peak_rss_bytes"])
         if n:
-            xpos = max(rss_data[i - 1]) if rss_data[i - 1] else 0
+            xpos = max(rss_data[i - 1]) if rss_data[i - 1] else rss_lo
             ax_rss.text(
-                xpos * 1.04, i, f"n={n}",
+                xpos * 1.15, i, f"n={n}",
                 va="center", ha="left", fontsize=7, color="#666666",
+                clip_on=True,
             )
 
     ax_cpu.boxplot(
         cpu_data, vert=False, widths=0.62,
-        labels=steps, showfliers=False,
-        medianprops=dict(color="#d62728", linewidth=1.4),
-        boxprops=dict(color="#445566"),
-        whiskerprops=dict(color="#445566"),
-        capprops=dict(color="#445566"),
+        labels=steps, showfliers=False, **_box_kw,
     )
     ax_cpu.set_xlabel("Threading efficiency (%)", fontsize=10)
     # 100 % reference: full saturation of the 12-thread allocation.
     ax_cpu.axvline(
-        100.0, color="#26a69a", linestyle="--", linewidth=0.9, zorder=1,
+        100.0, color=fs.OKABE_ITO["bluish_green"], linestyle="--",
+        linewidth=0.9, zorder=1,
     )
     # 1/12 reference for single-threaded glue tasks Nextflow allocates
     # 1 core to. Drawn light so it doesn't dominate.
@@ -1238,8 +1210,7 @@ def render_resources_boxplot(
         100.0 / DIANN_THREADS_BASELINE,
         color="#bdbdbd", linestyle=":", linewidth=0.8, zorder=1,
     )
-    ax_cpu.spines["top"].set_visible(False)
-    ax_cpu.spines["right"].set_visible(False)
+    fs.despine(ax_cpu)
     ax_cpu.tick_params(axis="both", labelsize=8)
     # Explanatory footnote intentionally not rendered into the figure;
     # the divisor (12-thread DIA-NN baseline) and the two reference

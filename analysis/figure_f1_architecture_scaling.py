@@ -7,12 +7,11 @@ Composite MCP-ready panel (7.2 x 6.0 in) built with matplotlib GridSpec:
   (b) right top    — cluster queueSize sweep (PXD071075)
   (c) right bottom — wallclock vs MS run count across cohorts
 
-Output: analysis/figures/manuscript/fig1_architecture_scaling.{svg,pdf}
+Output: analysis/figures/manuscript/fig1_architecture_scaling.svg
 """
 from __future__ import annotations
 
 import io
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -20,6 +19,8 @@ from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from analysis import figure_style as fs
+fs.apply_house_style()
 import numpy as np
 import pandas as pd
 from PIL import Image
@@ -42,8 +43,10 @@ WORKFLOW_FALLBACK_URL = (
 )
 
 # MCP full-page figure size (inches).
-FIG_W = 7.2
-FIG_H = 6.0
+# Enlarged so the embedded workflow schematic (panel a) is legible at print
+# size; the prior 7.2x6.0 shrank its node labels below readable.
+FIG_W = 11.5
+FIG_H = 7.4
 
 # DPI used when ImageMagick rasterises the workflow SVG. No -crop is
 # applied — the prior hard-coded "535x782+85+38" slice was tuned for an
@@ -80,13 +83,17 @@ def _annotate_panel_letter(ax: plt.Axes, letter: str) -> None:
 
 def _workflow_raster(workflow_svg: Path, *, dpi: int = WORKFLOW_RASTER_DPI) -> np.ndarray:
     """Rasterise the full workflow SVG to an RGB numpy array. No crop is
-    applied — keeping the diagram intact is the whole point of the panel."""
+    applied — keeping the diagram intact is the whole point of the panel.
+
+    Uses rsvg-convert, NOT ImageMagick: the source SVG styles its connecting
+    lines via a CSS `<style>` block (class selectors), which ImageMagick's SVG
+    renderer ignores -- so `magick` dropped every edge and only the nodes
+    survived. rsvg-convert honours the CSS, so the lines render."""
     cmd = [
-        "magick",
-        "-background", "white",
-        "-density", str(dpi),
+        "rsvg-convert",
+        "--background-color", "white",
+        "--dpi-x", str(dpi), "--dpi-y", str(dpi),
         str(workflow_svg),
-        "png:-",
     ]
     result = subprocess.run(cmd, capture_output=True, check=True)
     with Image.open(io.BytesIO(result.stdout)) as img:
@@ -120,12 +127,15 @@ def compose_fig1(
     par_df: pd.DataFrame,
 ) -> plt.Figure:
     fig = plt.figure(figsize=(FIG_W, FIG_H), facecolor="white", layout="constrained")
+    # Tighten the constrained-layout padding so b/c sit close to a.
+    fig.get_layout_engine().set(w_pad=0.01, h_pad=0.03, wspace=0.0, hspace=0.04)
     # Left column wide enough to give the subway diagram its native
     # 880x830 aspect ratio without crowding the right-column scatters.
     gs = fig.add_gridspec(
         2, 2,
-        width_ratios=[1.45, 1.0],
+        width_ratios=[1.95, 1.0],  # panel a (schematic) wider/bigger
         height_ratios=[1.0, 1.0],
+        wspace=0.0,                # pull b/c in close to a
     )
 
     ax_a = fig.add_subplot(gs[:, 0])
@@ -133,7 +143,7 @@ def compose_fig1(
     ax_c = fig.add_subplot(gs[1, 1])
 
     _draw_workflow_panel(ax_a, workflow_svg)
-    render_queue_size_sweep(sweep_df, ax=ax_b)
+    render_queue_size_sweep(sweep_df, ax=ax_b, composite=True)
     render_parallelism_scatter(
         par_df,
         ax=ax_c,
@@ -165,26 +175,15 @@ def render_fig1_architecture_scaling(
     stem = out_path.with_suffix("")
     save_kw = {"facecolor": "white", "dpi": 300}
     fig.savefig(stem.with_suffix(".svg"), **save_kw)
-    fig.savefig(stem.with_suffix(".pdf"), **save_kw)
     plt.close(fig)
-    if out_path.suffix.lower() == ".svg":
-        return
-    if out_path.suffix.lower() == ".pdf":
-        shutil.copy2(stem.with_suffix(".pdf"), out_path)
 
 
 def main() -> int:  # pragma: no cover
+    # SVG only — the manuscript PDF is produced by the paper Makefile
+    # (rsvg-convert of the SVG into paper/figures/pdf/), not here.
     out = FIGURES_DIR / "fig1_architecture_scaling.svg"
     render_fig1_architecture_scaling(out)
-    paper_out = REPO_ROOT / "paper" / "figures" / "pdf" / "manuscript"
-    paper_out.mkdir(parents=True, exist_ok=True)
-    for ext in (".svg", ".pdf"):
-        src = FIGURES_DIR / f"fig1_architecture_scaling{ext}"
-        if src.exists():
-            shutil.copy2(src, paper_out / src.name)
-    print(f"Wrote {FIGURES_DIR / 'fig1_architecture_scaling.svg'}")
-    print(f"Wrote {FIGURES_DIR / 'fig1_architecture_scaling.pdf'}")
-    print(f"Copied to {paper_out}")
+    print(f"Wrote {out}")
     return 0
 
 

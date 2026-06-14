@@ -25,6 +25,8 @@ from typing import Iterable
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from analysis import figure_style as fs
+fs.apply_house_style()
 import numpy as np
 import pandas as pd
 
@@ -35,7 +37,9 @@ from analysis.figure_quantmsdiann_benchmarks_vs_proteobench import (
     LIBRARY_KIND_OTHER_TOOL,
     LIBRARY_KIND_PREDICTED,
     LIBRARY_KIND_USER_DEFINED,
+    _VERSION_COLORS,
     _VERSION_LABELS,
+    _VERSION_MARKERS,
     _dataset_display_label,
     _dataset_sort_key,
     classify_predictors_library,
@@ -282,14 +286,20 @@ def render_id_vs_epsilon(
             Line2D([0], [0], marker="o", color="#d62728",
                    markerfacecolor="#d62728", markeredgecolor="#7f1d1d",
                    linewidth=1.2, markersize=8,
-                   label="quantmsdiann trajectory")
+                   label="quantmsdiann (distributed, this work)")
         )
+    # Equivalence framing: the community submissions are single-machine runs;
+    # the predicted-library DIA-NN set is the apples-to-apples comparator.
+    LEGEND_LABEL = {
+        LIBRARY_KIND_PREDICTED: "single-machine community (ProteoBench, predicted lib)",
+    }
     for k in (
         LIBRARY_KIND_EMPIRICAL, LIBRARY_KIND_PREDICTED,
         LIBRARY_KIND_USER_DEFINED, LIBRARY_KIND_OTHER_TOOL,
     ):
         if k in libs_drawn:
-            handles.append(Patch(facecolor=LIB_PALETTE[k], label=k))
+            handles.append(Patch(facecolor=LIB_PALETTE[k],
+                                 label=LEGEND_LABEL.get(k, k)))
     if handles:
         fig.legend(
             handles=handles, loc="upper center",
@@ -450,10 +460,10 @@ def render_per_species_log2(
 _COMMUNITY_COMPARATOR_DATASETS = ("ProteoBench_Module_7", "PXD062685")
 _SPECIES_X = {"HUMAN": 0, "YEAST": 1, "ECOLI": 2}
 _SPECIES_LABEL = {"HUMAN": "Human", "YEAST": "Yeast", "ECOLI": "E. coli"}
-_VERSION_BLUES = ["#bbdefb", "#64b5f6", "#1f77b4", "#1565c0", "#0d47a1"]
-# Distinct marker per DIA-NN version so versions are told apart by shape as
-# well as by the blue shade (accessible, and legible when points overlap).
-_VERSION_MARKERS = ["o", "^", "s", "D", "v"]
+# Per-version colour + marker are imported from the benchmarks module
+# (_VERSION_COLORS / _VERSION_MARKERS, keyed by version id) so Fig 2a (bars)
+# and Fig 2b/2c (scatter) stay colour-consistent. 1.8.1 -> 2.5.1 read
+# light -> dark blue; the 2.5.1 enterprise build is an amber accent.
 
 
 def render_accuracy_panels(
@@ -467,13 +477,14 @@ def render_accuracy_panels(
       (b) Per-species fold-change accuracy (2x2, one cell per module). x =
           HYE species, y = measured log2 ratio; a dashed line marks the
           ProteoBench-expected ratio per species (accuracy = distance to the
-          line) and the five DIA-NN versions are overlaid (light->dark) so
-          their tight clustering shows that accuracy is version-invariant.
+          line) and the three DIA-NN configurations are overlaid (1.8.1 and
+          2.5.1 light->dark blue, 2.5.1-enterprise amber) so their tight
+          clustering shows that accuracy is version-invariant.
 
       (c) quantmsdiann within the predicted-library community (1x2, only the
           modules with predicted-library DIA-NN comparators). Box + strip of
-          the community median |eps| with the five quantmsdiann versions
-          overlaid as a tight cluster.
+          the community median |eps| with the three quantmsdiann
+          configurations overlaid as a tight cluster.
 
     Returns the long-format audit table of every plotted point."""
     datasets = (
@@ -499,12 +510,15 @@ def render_accuracy_panels(
             ax.hlines(expected[species], x - 0.32, x + 0.32,
                       color="#444444", ls="--", lw=1.1, zorder=1)
             sub = df[df["species"] == species]
+            n_ver = len(DIANN_VERSIONS)
             for _, row in sub.iterrows():
                 vi = DIANN_VERSIONS.index(row["version"])
+                # spread the N version markers symmetrically around the species x
+                dx = (vi - (n_ver - 1) / 2) * 0.14
                 ax.scatter(
-                    x - 0.22 + 0.11 * vi, row["mean_log2_empirical"],
-                    s=20, marker=_VERSION_MARKERS[vi],
-                    color=_VERSION_BLUES[vi],
+                    x + dx, row["mean_log2_empirical"],
+                    s=20, marker=_VERSION_MARKERS.get(row["version"], "o"),
+                    color=_VERSION_COLORS.get(row["version"], "#1f77b4"),
                     edgecolor="#333333", linewidths=0.3, zorder=3,
                 )
                 long_rows.append({
@@ -530,17 +544,18 @@ def render_accuracy_panels(
              "(b) Per-species fold-change accuracy "
              "(dashed = expected ratio)",
              fontsize=10, fontweight="bold", va="top")
-    # Version colour key (light -> dark = oldest -> newest DIA-NN release).
+    # Version colour key (1.8.1 -> 2.5.1 light -> dark blue; enterprise amber).
     from matplotlib.lines import Line2D
     version_handles = [
-        Line2D([0], [0], marker=_VERSION_MARKERS[i], linestyle="none",
-               markersize=6, markerfacecolor=_VERSION_BLUES[i],
+        Line2D([0], [0], marker=_VERSION_MARKERS.get(v, "o"), linestyle="none",
+               markersize=6, markerfacecolor=_VERSION_COLORS.get(v, "#1f77b4"),
                markeredgecolor="#333333",
                label=_VERSION_LABELS.get(v, v))
-        for i, v in enumerate(DIANN_VERSIONS)
+        for v in DIANN_VERSIONS
     ]
     fig.legend(handles=version_handles, loc="upper right",
-               bbox_to_anchor=(0.99, 1.005), ncol=5, fontsize=7.5,
+               bbox_to_anchor=(0.99, 1.005), ncol=len(DIANN_VERSIONS),
+               fontsize=7.5,
                frameon=False, title="DIA-NN version", title_fontsize=7.5,
                handletextpad=0.2, columnspacing=0.9)
 
@@ -582,11 +597,15 @@ def render_accuracy_panels(
                        medianprops=dict(color="#d62728", lw=1.2))
             qx = (list(np.linspace(0.84, 1.16, len(qm_eps)))
                   if len(qm_eps) > 1 else [1.0])
+            qm_versions = list(qm["version"])
             for k, (xk, yk) in enumerate(zip(qx, qm_eps)):
-                ax.scatter(xk, yk, s=22, marker=_VERSION_MARKERS[k],
+                ver = qm_versions[k] if k < len(qm_versions) else None
+                ax.scatter(xk, yk, s=22,
+                           marker=_VERSION_MARKERS.get(ver, "o"),
                            color="#d62728", edgecolor="#7f1d1d",
                            linewidths=0.5, zorder=4,
-                           label="quantmsdiann (5 versions)" if k == 0 else None)
+                           label=(f"quantmsdiann ({len(DIANN_VERSIONS)} versions)"
+                                  if k == 0 else None))
         ax.set_xticks([0, 1])
         ax.set_xticklabels(["community", "quantmsdiann"], fontsize=8)
         ax.set_xlim(-0.6, 1.6)
@@ -641,15 +660,17 @@ def main() -> int:  # pragma: no cover
                     "Populate via cached_proteobench_metrics(...)."
                 )
 
-    # Fig 2 accuracy figure (main): (b) per-species fold-change accuracy +
-    # (c) quantmsdiann within the predicted-library community.
+    # SUPPLEMENTARY accuracy figure: per-species fold-change + community for ALL
+    # four modules (incl. the two without community comparators). The MAIN Fig 2
+    # accuracy figure (main_accuracy.svg, two comparable datasets only) is now
+    # produced by analysis/figure_proteobench_accuracy.py.
     acc_df = render_accuracy_panels(
-        threshold=3, svg_path=FIGURES_DIR / "main_accuracy.svg",
+        threshold=3, svg_path=supp_dir / "supp_accuracy_all_modules.svg",
     )
     acc_df.to_csv(data_dir / "accuracy_min3.tsv", sep="\t", index=False)
     print(
-        f"Fig 2b/c (≥3 rep): {acc_df.shape[0]} points rendered to "
-        f"{FIGURES_DIR / 'main_accuracy.svg'}"
+        f"Supp accuracy (≥3 rep): {acc_df.shape[0]} points rendered to "
+        f"{supp_dir / 'supp_accuracy_all_modules.svg'}"
     )
 
     # Identifications-vs-accuracy scatter, demoted to the supplement: it

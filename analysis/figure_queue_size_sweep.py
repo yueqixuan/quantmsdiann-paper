@@ -26,9 +26,12 @@ from typing import Iterable
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from analysis import figure_style as fs
+fs.apply_house_style()
 import pandas as pd
 
 from analysis.figure_performance_trace import (
+    insilico_seconds,
     load_trace,
     peak_concurrent_tasks,
     trace_wallclock_seconds,
@@ -81,21 +84,29 @@ def collect_sweep_rows(
     The wallclock is computed from
     `max(submit+duration) − min(submit)` across all rows in the trace
     (FAILED retries included — they did occupy slots), matching the
-    existing benchmark trace-wallclock semantics."""
+    existing benchmark trace-wallclock semantics, then the one-time
+    INSILICO_LIBRARY_GENERATION step duration is subtracted (see
+    `insilico_seconds`) so the panel reflects quantification scaling
+    rather than the cohort-independent library-prediction cost. The raw
+    span is retained in `wallclock_with_lib_s` for the audit TSV."""
     rows: list[dict] = []
     for q, path in iter_sweep_traces(queue_sizes):
         df = load_trace(path)
         wallclock_s = trace_wallclock_seconds(df)
+        lib_s = insilico_seconds(df)
         peak, _med = peak_concurrent_tasks(df)
         rows.append({
             "queue_size": q,
-            "wallclock_s": float(wallclock_s),
+            "wallclock_s": max(0.0, float(wallclock_s) - float(lib_s)),
+            "wallclock_with_lib_s": float(wallclock_s),
+            "insilico_lib_s": float(lib_s),
             "peak_concurrent": int(peak),
             "n_tasks": int(len(df)),
         })
     return pd.DataFrame(
         rows,
-        columns=["queue_size", "wallclock_s", "peak_concurrent", "n_tasks"],
+        columns=["queue_size", "wallclock_s", "wallclock_with_lib_s",
+                 "insilico_lib_s", "peak_concurrent", "n_tasks"],
     ).sort_values("queue_size").reset_index(drop=True)
 
 
@@ -149,9 +160,11 @@ def render_queue_size_sweep(
     dot_color = "#1976d2"
     dot_size = 90 if composite else 140
     line_width = 1.4 if composite else 1.8
-    ann_size = 7.0 if composite else 8.5
-    label_size = 9 if composite else 11
-    tick_size = 8 if composite else 10
+    # composite sizes match the parallelism panel (Fig 1c) so 1b and 1c read
+    # at the same font size.
+    ann_size = 6 if composite else 8.5
+    label_size = 8 if composite else 11
+    tick_size = 6.5 if composite else 10
     ax.plot(
         xs, ys,
         color=dot_color, linewidth=line_width, alpha=0.55, zorder=2,

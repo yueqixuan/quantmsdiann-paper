@@ -29,6 +29,8 @@ from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from analysis import figure_style as fs
+fs.apply_house_style()
 import pandas as pd
 
 from analysis.contaminant_filter import (
@@ -138,9 +140,7 @@ def render_main_comparison(or_pr: int, qm_pr: int, or_pg: int, qm_pg: int,
 
 def _save(fig, svg_path: Path) -> None:
     svg_path.parent.mkdir(parents=True, exist_ok=True)
-    stem = svg_path.with_suffix("")
-    for ext in (".svg", ".pdf", ".png"):
-        fig.savefig(stem.with_suffix(ext), dpi=300, bbox_inches="tight")
+    fig.savefig(svg_path, bbox_inches="tight")  # SVG-only (repo convention)
     plt.close(fig)
 
 

@@ -33,11 +33,15 @@
     cohort.
     (\textbf{c})~Wall-clock time to finish each reanalysis, one bar per
     dataset, ordered by cohort size (number of MS data files) and coloured
-    by instrument family. For proteome-scale cohorts, time-to-finish stays
-    within a few hours regardless of file count because per-file work is
-    parallelised; the longest run is a phosphoproteomics cohort (PXD049692),
-    where generating the deep variable-modification spectral library
-    dominates the wall-clock.
+    by instrument family. In both~(\textbf{b}) and~(\textbf{c}) the reported
+    time \emph{excludes} the in-silico spectral-library prediction step
+    (\texttt{INSILICO\_LIBRARY\_GENERATION}), a one-time, cohort-independent
+    cost that can be predicted once and reused, so the bars reflect the
+    per-file quantification work. Time-to-finish stays within a few hours
+    across two orders of magnitude in file count because per-file stages are
+    parallelised across the cluster; the deeper variable-modification search
+    of the phosphoproteomics cohorts (e.g.\ PXD049692) is the main residual
+    driver of wall-clock once library prediction is set aside.
   }
   \label{fig:architecture}
 \end{figure}
@@ -47,26 +51,26 @@
 %% protein-group / precursor breakdown is in Additional file 1 (Fig. S3).
 \begin{figure}[htbp]
   \centering
-  \textbf{(a)}\par\vspace{0.1em}
-  \mcpincludegraphics[width=0.60\textwidth,keepaspectratio]{quantmsdiann_benchmarks/main_benchmarks_precursors}\par
-  \vspace{0.5em}
-  \mcpincludegraphics[width=0.74\textwidth,keepaspectratio]{quantmsdiann_benchmarks/main_accuracy}
-  \caption[ProteoBench across DIA-NN versions]{%
-    \textbf{\quantmsdiann{} on ProteoBench across five \texttt{DIA-NN}
-    releases and four DIA modalities} (Orbitrap Astral, Module~7;
-    single-cell, Module~9/PXD049412; timsTOF diaPASEF, Module~5/PXD062685;
-    SCIEX ZenoTOF, Module~10/PXD070049).
-    (\textbf{a})~Precursors at 1\% FDR by \texttt{DIA-NN} version
-    (1.8.1--2.5.0; light to dark blue) from one \quantmsdiann{} invocation.
-    (\textbf{b})~Per-species quantification accuracy: measured log$_2$
-    fold-change for each HYE species against the ProteoBench-expected
-    ratio (dashed), with all five \texttt{DIA-NN} versions overlaid
-    (light to dark).
-    (\textbf{c})~For the two modules with predicted-from-FASTA community
-    submissions, \quantmsdiann{}'s five versions (red) against the
-    community median-$|\epsilon|$ distribution (grey; box = IQR).
-    See Additional file~1: Fig.~S3 for parameter-matched per-submission
-    comparisons.
+  \mcpincludegraphics[width=\linewidth,keepaspectratio]{manuscript/fig2_proteobench_equivalence}
+  \caption[quantmsdiann reproduces single-machine ProteoBench submissions]{%
+    \textbf{Distributed \quantmsdiann{} reproduces single-machine results on
+    ProteoBench.} For the two DIA modules with public predicted-from-FASTA
+    community submissions (Orbitrap Astral, Module~7; timsTOF diaPASEF,
+    PXD062685), \quantmsdiann{} (\texttt{DIA-NN} 1.8.1 and 2.5.1-enterprise) is
+    compared against the cloud of community submissions, which are
+    single-machine sequential runs. \quantmsdiann{} preserves
+    match-between-runs by design: a preliminary pass builds a combined
+    empirical library across all runs, against which each run is re-quantified.
+    (\textbf{a})~Accuracy per concentration --- measured log$_2$ fold-change for
+    each HYE species against the ProteoBench-expected ratio (dashed); community
+    submissions as grey points.
+    (\textbf{b})~Depth versus accuracy --- precursors quantified against
+    median-$|\epsilon|$; \quantmsdiann{} (coloured) sits within the
+    single-machine community cloud (grey), reaching greater depth at comparable
+    accuracy from 1.8.1 to 2.5.1-enterprise.
+    Datasets without predicted-library community comparators (single-cell
+    Module~9/PXD049412; ZenoTOF Module~10/PXD070049) and the per-version
+    protein-group counts are in Additional file~1.
   }
   \label{fig:proteobench}
 \end{figure}
@@ -130,7 +134,7 @@
 %% Fig. 4 — Pan-cohort of five DIA reanalyses
 \begin{figure}[htbp]
   \centering
-  \mcpincludegraphics[width=\textwidth,height=\mcpmaxfigheight,keepaspectratio]{combined/atlas_main}
+  \mcpincludegraphics[width=\textwidth,height=\mcpmaxfigheight,keepaspectratio]{manuscript/fig4_cellline_atlas}
   \caption[Pan-cohort of DIA reanalyses]{%
     \textbf{Pan-cohort of five public DIA cell-line reanalyses by
     \quantmsdiann{}.}

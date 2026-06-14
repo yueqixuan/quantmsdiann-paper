@@ -65,5 +65,6 @@ def test_render_fig1_writes_svg(tmp_path: Path, minimal_workflow_svg: Path) -> N
     assert out.exists() and out.stat().st_size > 1000
     text = out.read_text(encoding="utf-8")
     assert "<svg" in text[:500]
-    pdf = tmp_path / "fig1.pdf"
-    assert pdf.exists() and pdf.stat().st_size > 1000
+    # SVG only — no PDF is emitted by the script (the manuscript PDF is made
+    # by the paper Makefile via rsvg-convert).
+    assert not (tmp_path / "fig1.pdf").exists()

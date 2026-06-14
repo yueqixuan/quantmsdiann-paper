@@ -32,6 +32,8 @@ from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from analysis import figure_style as fs
+fs.apply_house_style()
 import numpy as np
 import pandas as pd
 
@@ -126,7 +128,7 @@ def render_qc_matched(matched: pd.DataFrame, svg_path: Path) -> None:
                c=QM_COLOUR, alpha=0.7, edgecolors="#37474f", linewidths=0.5)
     lo = 0
     hi = max(matched["orig_proteins"].max(), matched["qm_proteins"].max()) * 1.05
-    ax.plot([lo, hi], [lo, hi], color="#9e9e9e", linestyle="--", linewidth=1)
+    ax.plot([lo, hi], [lo, hi], color=fs.COMPARISON["original"], linestyle="--", linewidth=1)
     ax.set_xlim(lo, hi); ax.set_ylim(lo, hi)
     ax.set_xlabel("Galatidou 2024 proteins / oocyte")
     ax.set_ylabel("quantmsdiann proteins / oocyte")
@@ -157,9 +159,7 @@ def render_qc_matched(matched: pd.DataFrame, svg_path: Path) -> None:
 
     fig.tight_layout()
     svg_path.parent.mkdir(parents=True, exist_ok=True)
-    stem = svg_path.with_suffix("")
-    for ext in (".svg", ".pdf", ".png"):
-        fig.savefig(stem.with_suffix(ext), dpi=300, bbox_inches="tight")
+    fig.savefig(svg_path, bbox_inches="tight")  # SVG-only (repo convention)
     plt.close(fig)
     return r
 
@@ -238,9 +238,7 @@ def render_comparison(
 
     fig.tight_layout()
     svg_path.parent.mkdir(parents=True, exist_ok=True)
-    stem = svg_path.with_suffix("")
-    for ext in (".svg", ".pdf", ".png"):
-        fig.savefig(stem.with_suffix(ext), dpi=300, bbox_inches="tight")
+    fig.savefig(svg_path, bbox_inches="tight")  # SVG-only (repo convention)
     plt.close(fig)
 
 
@@ -268,9 +266,7 @@ def render_total_pg(orig_total: int, qm_total: int, svg_path: Path) -> None:
     ax.tick_params(labelsize=9)
     fig.tight_layout()
     svg_path.parent.mkdir(parents=True, exist_ok=True)
-    stem = svg_path.with_suffix("")
-    for ext in (".svg", ".pdf", ".png"):
-        fig.savefig(stem.with_suffix(ext), dpi=300, bbox_inches="tight")
+    fig.savefig(svg_path, bbox_inches="tight")  # SVG-only (repo convention)
     plt.close(fig)
 
 

@@ -18,18 +18,14 @@ SVGS := \
 	performance/runtime_per_step.svg \
 	performance/resources_per_step.svg \
 	performance/queue_size_sweep.svg \
-	quantmsdiann_benchmarks/main_benchmarks_overview.svg \
 	quantmsdiann_benchmarks/main_benchmarks_precursors.svg \
-	quantmsdiann_benchmarks/main_diann_quantmsdiann_parity.svg \
+	quantmsdiann_benchmarks/main_benchmarks_proteins.svg \
 	quantmsdiann_benchmarks/main_accuracy.svg \
-	quantmsdiann_benchmarks/supp_vs_proteobench_matched_min3.svg \
-	quantmsdiann_benchmarks/supp_vs_proteobench_min3.svg \
 	PXD003539/main_comparison.svg \
 	PXD003539/supp_genes_per_condition.svg \
 	PXD003539/supp_missing_values_per_run.svg \
 	PXD003539/supp_peptides_per_protein.svg \
 	PXD003539/supp_venn_protein_accessions.svg \
-	PXD004701/main_comparison.svg \
 	PXD004701/supp_missing_values_per_run.svg \
 	PXD004701/supp_proteins_per_subtype.svg \
 	PXD030304/main_comparison.svg \

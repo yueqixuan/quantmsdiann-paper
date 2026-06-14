@@ -3,12 +3,25 @@
 reanalysis: quantmsdiann (DIA-NN 2.5.0, library-free) versus the originally
 deposited Spectronaut directDIA analysis on the identical 10 runs.
 
+!!! STALE — DO NOT USE IN THE MANUSCRIPT YET (2026-06-12) !!!
+The staged quantmsdiann run was produced with sdrf-pipelines 0.1.4, whose
+convert-diann emitted `--var-mod Phospho,79.966331,S,T,Y` (comma bug) so DIA-NN
+searched **serine only** — the matrix is 100% pS, with all pT/pY missing.
+Comparing that S-only count to the Spectronaut S/T/Y report is apples-to-oranges.
+A re-run on the current dev (sdrf-pipelines 0.1.5 -> `Phospho,...,STY`) is in
+flight; once it lands, REPLACE this with a phosphosite-level figure (class-I
+localised pS/pT/pY) per the manuscript focus. See memory:
+reference_sdrf_diann_multiresidue_mod_bug.
+
+
 Both analyses are library-free / directDIA, so the comparison is like-for-like.
 The deposited Spectronaut report (`*_PH_Report.tsv`) is a fragment-level report
 without a PTM-localisation-probability column, so a class-I *site* head-to-head
 is not possible; the fair, engine-independent metric is the number of distinct
 phosphopeptides (stripped sequences carrying a phospho modification) at 1% FDR.
-On the shared runs the two analyses are at parity (~4,250 phosphopeptides).
+On the shared runs quantmsdiann recovers more phosphopeptide backbones
+(4,784 vs 4,254, +12.5%); the original Spectronaut report carries more distinct
+phosphopeptidoforms (7,993 vs 5,196), reflecting its site-variant reporting.
 
 main_comparison.svg -- phosphopeptides at 1% FDR, original (grey) vs
 quantmsdiann (blue); the bar style and (7,5) canvas match the other Fig.~3
@@ -26,6 +39,8 @@ from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from analysis import figure_style as fs
+fs.apply_house_style()
 import pandas as pd
 
 from analysis.contaminant_filter import is_target_protein_group
@@ -34,8 +49,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 FIGURES_DIR = REPO_ROOT / "analysis" / "figures" / "PXD049692"
 CACHE_DIR = FIGURES_DIR / "data" / "cache"
 
-ORIG_COLOUR = "#9e9e9e"
-QM_COLOUR = "#1e88e5"
+ORIG_COLOUR = fs.COMPARISON["original"]
+QM_COLOUR = fs.COMPARISON["quantmsdiann"]
 
 _QB = ("https://ftp.pride.ebi.ac.uk/pub/databases/pride/resources/proteomes/"
        "quantmsdiann-benchmarks/PXD049692")
@@ -114,9 +129,7 @@ def render_main_comparison(orig: int, qm: int, svg_path: Path) -> None:
     ax.tick_params(labelsize=9)
     fig.tight_layout()
     svg_path.parent.mkdir(parents=True, exist_ok=True)
-    stem = svg_path.with_suffix("")
-    for ext in (".svg", ".pdf", ".png"):
-        fig.savefig(stem.with_suffix(ext), dpi=300, bbox_inches="tight")
+    fig.savefig(svg_path, bbox_inches="tight")  # SVG-only (repo convention)
     plt.close(fig)
 
 

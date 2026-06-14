@@ -1,0 +1,160 @@
+#!/usr/bin/env python
+"""Phospho panel - quantms.io DIA-NN reanalysis, standard 2.5.1 vs 2.5.1 Enterprise.
+
+Three panels (all counts at 1% FDR, max_mods=2; see data/phospho/phospho_counts.tsv):
+  A  Phosphopeptides  -- distinct phospho-bearing modified precursors
+     (UniMod:21 in Modified.Sequence; Q.Value & Global.Q.Value <= 0.01, targets).
+  B  Class-I phosphosites -- localized sites from the DIA-NN site report
+     (Modification == UniMod:21, localization Probability >= 0.99), unique by
+     protein + residue/site.
+  C  PXD049692 deposited-vs-reanalysis -- distinct stripped phosphopeptide
+     backbones on the identical 10 diaPASEF runs: the originally deposited
+     Spectronaut directDIA report vs the quantms.io DIA-NN 2.5.1 Enterprise
+     reanalysis. Stripped backbones are the engine-independent metric (the
+     Spectronaut report has no localization-probability column for a site-level
+     head-to-head). This supersedes the stale serine-only 2.5.0 comparison.
+
+Datasets in A/B: PXD034128 (phospho-enriched, two acquisitions), PXD049692
+(NK-cell Fe-NTA diaPASEF). PXD034623 (Galectin-1 DIA) is NOT phospho-enriched
+(~280 phosphopeptides vs >20k for PXD034128) so it is recorded in the TSV but
+left out of the bar panels, where it would be an unreadable sliver.
+
+Counts staged in data/phospho/phospho_counts.tsv (computed on the cluster from
+diann_report.parquet + diann_report.site_report.parquet).
+
+Run:  python -m analysis.figure_phospho
+Out:  analysis/figures/supplementary/supp_phospho.svg
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+import pandas as pd
+
+from analysis import figure_style as fs
+fs.apply_house_style()
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+COUNTS = REPO_ROOT / "data" / "phospho" / "phospho_counts.tsv"
+OUT = REPO_ROOT / "analysis" / "figures" / "supplementary" / "supp_phospho.svg"
+
+VERSIONS = ["2_5_1", "2_5_1_enterprise"]
+VLABEL = {"2_5_1": "2.5.1", "2_5_1_enterprise": "2.5.1 Enterprise"}
+VCOL = {v: fs.VERSION_COLORS[v] for v in VERSIONS}
+
+# Phospho-enriched datasets shown in the version-comparison bars (A/B). The
+# non-enriched PXD034623 is in the TSV but excluded here (see module docstring).
+BAR_DATASETS = [
+    "PXD034128 biological-study",
+    "PXD034128 highspeed-DIA",
+    "PXD049692 NK-phospho",
+]
+
+# Panel C -- PXD049692 deposited (Spectronaut directDIA) vs quantms.io DIA-NN
+# 2.5.1 Enterprise, distinct stripped phosphopeptide backbones on the shared
+# 10 runs at 1% FDR. Original from the deposited *_PH_Report.tsv (cached in
+# analysis/figures/PXD049692/counts.tsv); reanalysis from the cluster Enterprise
+# diann_report.parquet (Stripped.Sequence, UniMod:21, Q & Global.Q <= 0.01).
+PXD049692_DEPOSITED = 4254
+PXD049692_QUANTMSDIANN = 5347
+
+
+def _short(label: str) -> str:
+    pxd, _, rest = label.partition(" ")
+    return f"{pxd}\n{rest}"
+
+
+def _val(df, ds, ver, col):
+    s = df[(df["dataset"] == ds) & (df["version"] == ver)]
+    return int(s[col].iloc[0]) if len(s) else 0
+
+
+def _version_panel(ax, df, col, title, ylabel):
+    bw = 0.38
+    xs = range(len(BAR_DATASETS))
+    for k, ver in enumerate(VERSIONS):
+        vals = [_val(df, d, ver, col) for d in BAR_DATASETS]
+        off = (k - 0.5) * bw
+        bars = ax.bar([x + off for x in xs], vals, bw, color=VCOL[ver],
+                      edgecolor="white", linewidth=0.6, label=VLABEL[ver])
+        if ver == VERSIONS[-1]:
+            for x, d, bar in zip(xs, BAR_DATASETS, bars):
+                lo, hi = _val(df, d, VERSIONS[0], col), _val(df, d, ver, col)
+                if lo:
+                    ax.annotate(f"+{round(100*(hi-lo)/lo)}%",
+                                (bar.get_x()+bar.get_width()/2, hi),
+                                textcoords="offset points", xytext=(0, 2),
+                                ha="center", va="bottom", fontsize=8,
+                                fontweight="bold", color=VCOL[ver])
+    ax.set_xticks(list(xs))
+    ax.set_xticklabels([_short(d) for d in BAR_DATASETS], fontsize=8.5)
+    ax.set_title(title)
+    ax.set_ylabel(ylabel)
+    fs.kfmt_axis(ax.yaxis)
+    fs.despine(ax)
+
+
+def _deposited_panel(ax):
+    vals = [PXD049692_DEPOSITED, PXD049692_QUANTMSDIANN]
+    cols = [fs.COMPARISON["original"], fs.COMPARISON["quantmsdiann"]]
+    bars = ax.bar([0, 1], vals, 0.55, color=cols, edgecolor="white", linewidth=0.6)
+    for b, v in zip(bars, vals):
+        ax.text(b.get_x()+b.get_width()/2, v, f"{v:,}", ha="center",
+                va="bottom", fontsize=9.5)
+    pct = round(100*(vals[1]-vals[0])/vals[0])
+    ax.annotate(f"+{pct}%", (bars[1].get_x()+bars[1].get_width()/2, vals[1]),
+                textcoords="offset points", xytext=(0, 16), ha="center",
+                va="bottom", fontsize=9, fontweight="bold",
+                color=fs.COMPARISON["quantmsdiann"])
+    ax.set_xticks([0, 1])
+    ax.set_xticklabels(["Original\n(Spectronaut\ndirectDIA)",
+                        "quantms.io\n(DIA-NN 2.5.1\nEnterprise)"], fontsize=8.5)
+    ax.set_xlim(-0.7, 1.7)
+    ax.set_ylim(0, max(vals) * 1.22)
+    ax.set_title("PXD049692 — deposited vs reanalysis")
+    ax.set_ylabel("phosphopeptide backbones (1% FDR)")
+    fs.kfmt_axis(ax.yaxis)
+    fs.despine(ax)
+
+
+def render(out: Path) -> Path:
+    df = pd.read_csv(COUNTS, sep="\t")
+    fig, axes = plt.subplots(1, 3, figsize=(12.6, 4.3))
+    _version_panel(axes[0], df, "phosphopeptides", "Phosphopeptides", "phosphopeptides")
+    _version_panel(axes[1], df, "sites_classI",
+                   "Class-I phosphosites (loc ≥ 0.99)", "localized sites")
+    _deposited_panel(axes[2])
+    handles = [Line2D([0], [0], marker="s", linestyle="none", markersize=9,
+               markerfacecolor=VCOL[v], markeredgecolor="white",
+               label=f"DIA-NN {VLABEL[v]}") for v in VERSIONS]
+    handles += [
+        Line2D([0], [0], marker="s", linestyle="none", markersize=9,
+               markerfacecolor=fs.COMPARISON["original"], markeredgecolor="white",
+               label="deposited (original)"),
+        Line2D([0], [0], marker="s", linestyle="none", markersize=9,
+               markerfacecolor=fs.COMPARISON["quantmsdiann"], markeredgecolor="white",
+               label="quantms.io reanalysis"),
+    ]
+    fig.legend(handles=handles, loc="upper center", ncol=4,
+               bbox_to_anchor=(0.5, 1.03), fontsize=9)
+    for a, lab in zip(axes, "ABC"):
+        a.text(-0.16, 1.06, lab, transform=a.transAxes, fontsize=14,
+               fontweight="bold", va="bottom", ha="right")
+    fig.tight_layout(rect=(0, 0, 1, 0.91))
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out)
+    plt.close(fig)
+    return out
+
+
+def main() -> int:
+    print(f"wrote {render(OUT)}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

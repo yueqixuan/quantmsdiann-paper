@@ -145,48 +145,39 @@ These figures decompose the end-to-end wall-clock and resource use reported in m
   \label{fig:resources-per-step}
 \end{figure}
 
-\section{ProteoBench head-to-head and accuracy benchmarks}
-\label{sec:supp-proteobench}
 
-These figures complement main-text Fig.~2 by placing \quantmsdiann{} on the public ProteoBench leaderboards alongside standalone \texttt{DIA-NN} GUI submissions and other DIA engines.
+\section{ProteoBench protein-group depth across \texttt{DIA-NN} versions}
+\label{sec:supp-proteobench-proteins}
 
-\begin{figure}[htbp]
-  \centering
-  \mcpincludegraphics[width=\textwidth,keepaspectratio]{quantmsdiann_benchmarks/main_diann_quantmsdiann_parity}
-  \caption[ProteoBench parity]{%
-    \textbf{\quantmsdiann{} versus parameter-matched standalone
-    \texttt{DIA-NN} GUI submissions.}
-    Precursor and protein-group identification counts for \quantmsdiann{}'s
-    five \texttt{DIA-NN} versions (blue) alongside the ProteoBench
-    \texttt{DIA-NN} GUI submissions whose acquisition and search parameters
-    most closely match (grey). \quantmsdiann{}'s counts fall within the range
-    spanned by the parameter-matched GUI submissions, confirming that the
-    SDRF-driven wrapper does not erode \texttt{DIA-NN} performance; the
-    residual spread among the grey points reflects parameter and
-    \texttt{DIA-NN}-version differences between community submissions.
-  }
-  \label{fig:proteobench-parity}
-\end{figure}
+Main-text Fig.~\ref{fig:proteobench}a reports precursor identifications; the
+protein-group depth behind the same runs is summarised here. Protein groups are
+counted from the per-precursor \texttt{DIA-NN} report at a 1\% run-specific
+protein-group q-value, target-only, as the average per run (panel~a) and the
+number quantified in every run (``complete profiles'', panel~b).
 
 \begin{figure}[htbp]
   \centering
-  \mcpincludegraphics[width=\textwidth,height=\mcpmaxfigheight,keepaspectratio]{quantmsdiann_benchmarks/main_benchmarks_overview}
-  \caption[ProteoBench per-version per-module breakdown]{%
-    \textbf{ProteoBench identification counts per \texttt{DIA-NN} version
-    and per module: a detailed view.}
-    Rows: ProteoBench DIA modules
-    (Module~7 Orbitrap Astral 2~Th; Module~9 single-cell DIA, PXD049412;
-    Module~5 timsTOF diaPASEF, PXD062685; Module~10 SCIEX ZenoTOF~7600,
-    PXD070049).
-    Columns: precursors (left, blue) and protein groups (right, red)
-    quantified at 1\% FDR by \quantmsdiann{} when invoked with
-    \diannversion{1.8.1}, \diannversion{2.1.0}, \diannversion{2.2.0},
-    \diannversion{2.3.2}, and \diannversion{2.5.0} from the same SDRF.
-    This is the per-version per-metric expansion of the headline summary
-    in main-text Fig.~2a.
+  \textbf{(a)}\par\vspace{0.1em}
+  \mcpincludegraphics[width=0.60\textwidth,keepaspectratio]{quantmsdiann_benchmarks/main_benchmarks_proteins}\par
+  \vspace{0.5em}
+  \textbf{(b)}\par\vspace{0.1em}
+  \mcpincludegraphics[width=0.60\textwidth,keepaspectratio]{quantmsdiann_benchmarks/supplementary/supp_benchmarks_proteins_complete}
+  \caption[ProteoBench protein groups across DIA-NN versions]{%
+    \textbf{Protein-group depth on ProteoBench across three \texttt{DIA-NN}
+    configurations and four DIA modalities.}
+    (\textbf{a})~Protein groups per run (averaged over the six replicates) at a
+    1\% run-specific protein-group FDR, by \texttt{DIA-NN} configuration (1.8.1
+    and 2.5.1 light to dark blue; 2.5.1-enterprise in amber) from one
+    \quantmsdiann{} invocation.
+    (\textbf{b})~Complete-profile protein groups (quantified in every run).
+    Both metrics rise monotonically from 1.8.1 to 2.5.1 to the enterprise build
+    on every module; the gain is larger for the complete profiles (up to
+    $+$20\% to the enterprise build) than for the per-run average ($+$8--14\%),
+    reflecting improved cross-run consistency in the newer release.
   }
-  \label{fig:proteobench-overview}
+  \label{fig:supp-proteobench-proteins}
 \end{figure}
+
 
 \section{Per-cohort completeness and overlap (cell-line reanalyses)}
 \label{sec:supp-reanalyses}
@@ -254,22 +245,6 @@ These figures complement main-text Fig.~3 with per-condition completeness, per-p
 
 \begin{figure}[htbp]
   \centering
-  \mcpincludegraphics[width=\mcponehalfcolwidth,keepaspectratio]{PXD004701/main_comparison}
-  \caption[PXD004701 reanalysis vs original]{%
-    \textbf{PXD004701 (Sun 2023, PCT-SWATH breast-cancer panel, 76 lines):
-    \quantmsdiann{} reanalysis versus the originally published quantification.}
-    Under the original consistency filter ($-90\%$ missing, proteotypic)
-    \quantmsdiann{} recovers 6{,}146 versus 6{,}091 protein groups
-    ($+0.9\%$); raw-matrix counts are within 10\% on both
-    proteotypic-peptide and protein-group metrics. This near-parity cohort,
-    already analysed with a current DIA engine in the original study,
-    is shown here rather than in the main reanalysis figure.
-  }
-  \label{fig:supp-pxd004701-comparison}
-\end{figure}
-
-\begin{figure}[htbp]
-  \centering
   \mcpincludegraphics[width=\textwidth,keepaspectratio]{plexDIA/MSV000093870/main_galatidou_comparison}
   \caption[MSV000093870 single-cell plexDIA reanalysis]{%
     \textbf{MSV000093870 (Galatidou 2024, single-cell oocyte plexDIA):
@@ -308,6 +283,33 @@ These figures complement main-text Fig.~3 with per-condition completeness, per-p
     949-cell-line panel.}
   }
   \label{fig:supp-pxd030304-missing}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \mcpincludegraphics[width=\textwidth,keepaspectratio]{supplementary/supp_phospho}
+  \caption[Phosphoproteomics reanalysis]{%
+    \textbf{Phosphoproteomics reanalysis by \quantmsdiann{} (DIA-NN, max.\ two
+    variable modifications per peptide, 1\% FDR).}
+    (\textbf{a})~Phosphopeptides (distinct phospho-bearing modified precursors)
+    and (\textbf{b})~class-I phosphosites (localization probability
+    $\geq 0.99$, unique by protein and residue) for the phospho-enriched
+    cohorts under standard DIA-NN~2.5.1 versus 2.5.1-enterprise: PXD034128
+    (HeLa EGF, biological-study and high-speed acquisitions) and PXD049692
+    (NK-cell Fe-NTA diaPASEF). The enterprise build adds a few percent of
+    identifications across both metrics.
+    (\textbf{c})~PXD049692 deposited-versus-reanalysis: distinct stripped
+    phosphopeptide backbones on the identical ten diaPASEF runs, comparing the
+    originally deposited Spectronaut directDIA report with the \quantmsdiann{}
+    DIA-NN~2.5.1-enterprise reanalysis. Stripped backbones are the
+    engine-independent metric, as the deposited fragment-level report carries
+    no per-site localization probability; \quantmsdiann{} recovers 26\% more
+    phosphopeptide backbones (5{,}347 vs 4{,}254).
+    The non-enriched PXD034623 (Galectin-1 DIA) is reanalysed for completeness
+    but omitted here, as its $\sim$280 phosphopeptides are not comparable to
+    the enriched cohorts.
+  }
+  \label{fig:supp-phospho}
 \end{figure}
 
 \bibliographystyle{elsarticle-num}

@@ -42,6 +42,8 @@ from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from analysis import figure_style as fs
+fs.apply_house_style()
 import pandas as pd
 
 from analysis.contaminant_filter import (
@@ -157,7 +159,7 @@ _DEFAULT_DIANN_COUNTS = {
     "PXD030304": 9_370,    # diannsummary.log baseline (unfiltered)
     "PXD004701": 6_296,    # paper-side fallback
     "PXD017199": 10_572,   # diannsummary.log baseline (unfiltered)
-    "PXD041421": 9_124,    # diannsummary.log baseline (unfiltered)
+    "PXD041421": 9_129,    # report Global.PG.Q<=0.01, target-only (DIA-NN 2.5.1 --relaxed-prot-inf rerun)
 }
 
 
@@ -1215,7 +1217,7 @@ def _render_panel_a_headlines(ax, headlines: dict[str, DatasetHeadline]) -> None
     (grey) vs quantmsdiann (blue); value labels sit just above each bar
     top with a small fractional pad so they never touch the bar."""
     datasets = list(headlines.keys())
-    bar_width = 0.36
+    bar_width = 0.34
     x = list(range(len(datasets)))
     paper_drawn_xs: list[float] = []
     paper_drawn_vals: list[int] = []
@@ -1233,48 +1235,44 @@ def _render_panel_a_headlines(ax, headlines: dict[str, DatasetHeadline]) -> None
         diann_vals_drawn.append(h.diann_count)
     bars_p = ax.bar(
         paper_drawn_xs, paper_drawn_vals,
-        width=bar_width, color="#9e9e9e", label="Original analysis",
+        width=bar_width, color=fs.COMPARISON["original"], label="Original analysis",
     )
     bars_d = ax.bar(
         diann_xs, diann_vals_drawn,
-        width=bar_width, color="#1f77b4", label="quantmsdiann (DIA-NN)",
+        width=bar_width, color=fs.COMPARISON["quantmsdiann"], label="quantmsdiann (DIA-NN)",
     )
     all_vals = [h.diann_count for h in headlines.values()] + [
         h.paper_count for h in headlines.values() if h.paper_count > 0
     ]
-    ymax = (max(all_vals) if all_vals else 1) * 1.18
+    ymax = (max(all_vals) if all_vals else 1) * 1.30
     pad = ymax * 0.02
     for bar, v in zip(bars_p, paper_drawn_vals):
         ax.text(
             bar.get_x() + bar.get_width() / 2, bar.get_height() + pad,
-            f"{v:,}", ha="center", va="bottom", fontsize=8,
+            f"{v:,}", ha="center", va="bottom", fontsize=13, fontweight="bold",
         )
-    for bar, v in zip(bars_d, diann_vals_drawn):
+    for bar, v, d in zip(bars_d, diann_vals_drawn, datasets):
+        pc = headlines[d].paper_count
+        label = f"{v:,}\n(+{round(100 * (v - pc) / pc)}%)" if pc > 0 else f"{v:,}"
         ax.text(
             bar.get_x() + bar.get_width() / 2, bar.get_height() + pad,
-            f"{v:,}", ha="center", va="bottom", fontsize=8,
+            label, ha="center", va="bottom", fontsize=12, fontweight="bold",
+            color=fs.COMPARISON["quantmsdiann"],
         )
     ax.set_xticks(x)
-    # X-tick labels: rely on the canonical `DATASET_LABELS` (PXDxxx +
-    # paper-year line) so cohorts with no paper bar are still
-    # identifiable without any explanatory annotation.
     ax.set_xticklabels(
-        [DATASET_LABELS.get(d, d) for d in datasets],
-        fontsize=8,
+        [DATASET_LABELS.get(d, d) for d in datasets], fontsize=12,
     )
-    ax.set_ylabel("Protein groups")
+    # Generous x-margins so the few groups don't render as over-wide bars.
+    ax.set_xlim(-1.2, len(datasets) + 0.2)
+    ax.set_ylabel("Protein groups", fontsize=13)
     ax.set_ylim(0, ymax)
+    ax.tick_params(axis="y", labelsize=12)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    # Legend below the x-axis labels so the two-entry key (paper bar
-    # vs quantmsdiann bar) never overlaps a tall cohort bar regardless
-    # of which cohort has the highest count. The cohort identities are
-    # already on the x-tick labels.
-    ax.legend(
-        loc="upper center",
-        bbox_to_anchor=(0.5, -0.22),
-        frameon=False, fontsize=8, ncol=2,
-    )
+    # Legend inside the panel (upper-left) so it never collides with the
+    # per-tissue panels below.
+    ax.legend(loc="upper left", frameon=False, fontsize=12)
 
 
 def _render_upset_in_axes(
@@ -1282,7 +1280,7 @@ def _render_upset_in_axes(
     sets: dict[str, set[str]],
     ds_order: list[str],
     *,
-    bar_color: str = "#445566",
+    bar_color: str = fs.OKABE_ITO["blue"],
     panel_title: str | None = None,
     panel_letter: str | None = None,
     panel_subtitle: str | None = None,
@@ -1385,7 +1383,7 @@ def _render_panel_b_cellline_venn(
         if d in sets
     ]
     _render_upset_in_axes(
-        ax, sets, ds_order, bar_color="#445566",
+        ax, sets, ds_order, bar_color=fs.OKABE_ITO["blue"],
         panel_title="Cell-line set intersections (UpSet)",
     )
 
@@ -1428,14 +1426,20 @@ def _render_panel_c_tissue_coverage(
     totals = [sum(r[1].values()) for r in rows]
     for yi, t in zip(y_top, totals):
         ax.text(t + max(totals) * 0.005, yi, f"{t:,}",
-                ha="left", va="center", fontsize=6)
+                ha="left", va="center", fontsize=11)
     ax.set_yticks(y_top)
-    ax.set_yticklabels(tissues, fontsize=6)
-    ax.set_xlabel("Cell lines (sum across datasets)", fontsize=9)
+    ax.set_yticklabels(tissues, fontsize=11)
+    ax.tick_params(axis="x", labelsize=11)
+    ax.set_xlabel("Cell lines (sum across datasets)", fontsize=12)
     ax.set_xlim(0, max(totals) * 1.10)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.legend(loc="lower right", frameon=False, fontsize=7)
+    fs.despine(ax)
+    # Cohort legend below the panel (horizontal) so it never overruns the
+    # neighbouring per-tissue protein panel in the composite layout.
+    ax.legend(
+        loc="upper center", bbox_to_anchor=(0.5, -0.10),
+        ncol=min(3, len(ds_order)), frameon=False, fontsize=10,
+        columnspacing=1.2, handletextpad=0.5,
+    )
 
 
 def _render_panel_d_protein_venn(
@@ -1458,7 +1462,7 @@ def _render_panel_d_protein_venn(
         if d in sets
     ]
     _render_upset_in_axes(
-        ax, sets, ds_order, bar_color="#445566",
+        ax, sets, ds_order, bar_color=fs.OKABE_ITO["blue"],
         panel_letter=panel_letter, panel_subtitle=panel_subtitle,
     )
 
@@ -1544,7 +1548,7 @@ def _render_panel_e_breadth_vs_depth(
     # Dot size encodes √(MS runs) when run-count metadata is provided;
     # the encoding is described in the manuscript methods, not on the
     # figure itself.
-    ax.legend(loc="lower right", frameon=False, fontsize=7)
+    ax.legend(loc="lower right", frameon=False, fontsize=10)
 
 
 def _render_panel_f_tissue_protein_counts(
@@ -1592,10 +1596,11 @@ def _render_panel_f_tissue_protein_counts(
     )
     for yi, t in zip(y_top, counts):
         ax.text(t + max_total * 0.005, yi, f"{t:,}",
-                ha="left", va="center", fontsize=6)
+                ha="left", va="center", fontsize=11)
     ax.set_yticks(y_top)
-    ax.set_yticklabels(tissues, fontsize=6)
-    ax.set_xlabel(x_label, fontsize=9)
+    ax.set_yticklabels(tissues, fontsize=11)
+    ax.tick_params(axis="x", labelsize=11)
+    ax.set_xlabel(x_label, fontsize=12)
     ax.set_xlim(0, max_total * 1.12)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -1635,8 +1640,8 @@ def _render_panel_g_detection_histogram(
         )
     ax.set_xticks(xs)
     ax.set_xticklabels([f"{k}" for k in xs])
-    ax.set_xlabel("Datasets a protein is detected in", fontsize=9)
-    ax.set_ylabel("UniProt accessions", fontsize=9)
+    ax.set_xlabel("Datasets a protein is detected in", fontsize=12)
+    ax.set_ylabel("UniProt accessions", fontsize=12)
     ax.set_title(f"Pan-cohort core ({n_sets} datasets)", fontsize=10)
     ax.set_ylim(0, ymax)
     ax.spines["top"].set_visible(False)
@@ -1679,12 +1684,12 @@ def _render_panel_h_expression_atlas_overlap(
     for bar, v in zip(bars, vals):
         ax.text(
             bar.get_x() + bar.get_width() / 2, bar.get_height(),
-            f"{v:,}", ha="center", va="bottom", fontsize=8,
+            f"{v:,}", ha="center", va="bottom", fontsize=13, fontweight="bold",
         )
     coverage_pct = (100.0 * len(inter) / len(ea_genes)) if ea_genes else 0.0
     ax.set_xticks(xs)
     ax.set_xticklabels(labels, fontsize=8)
-    ax.set_ylabel("Gene symbols", fontsize=9)
+    ax.set_ylabel("Gene symbols", fontsize=12)
     ax.set_title(
         f"PXD003539 covers {coverage_pct:.1f}% of E-PROT-73 gene catalogue",
         fontsize=10,
@@ -1803,6 +1808,85 @@ def render_atlas_distribution(
     plt.close(fig)
 
 
+def _render_tissue_combined(
+    ax,
+    tissue_rows: list[tuple[str, dict[str, int]]],
+    protein_rows: list[tuple[str, set[str]]] | list[tuple[str, dict[str, int]]],
+) -> None:
+    """Combined per-tissue panel merging old panels b and c onto one shared
+    tissue axis, drawn back-to-back (population-pyramid style):
+      - LEFT  of centre -> cell lines, stacked by contributing cohort
+      - RIGHT of centre -> unique UniProt proteins, single colour
+    The two metrics differ ~100x in scale, so each side is normalised to its
+    own maximum (bar *length* is a fraction of that metric's max); real counts
+    are annotated at every bar end and tissue labels appear once on the left."""
+    if not tissue_rows:
+        ax.text(0.5, 0.5, "no tissue rows", ha="center", va="center",
+                transform=ax.transAxes)
+        return
+    from matplotlib.patches import Patch
+    ds_order = ["PXD003539", "PXD030304", "PXD004701", "PXD017199", "PXD041421"]
+    tissues = [t for t, _ in tissue_rows]
+    prot_map = {t: (len(v) if isinstance(v, set) else sum(v.values()))
+                for t, v in protein_rows}
+    n = len(tissues)
+    y = list(reversed(range(n)))            # highest-count tissue at top
+    bh = 0.62
+    cell_tot = [sum(d.values()) for _, d in tissue_rows]
+    max_c = max(cell_tot) if cell_tot else 1
+    max_p = max(prot_map.get(t, 0) for t in tissues) or 1
+    prot_color = "#34495e"                  # dark slate -- distinct from cohorts
+
+    # Cell lines: stacked, growing LEFT (negative, normalised to max_c).
+    drawn: set[str] = set()
+    for yi, (t, d) in zip(y, tissue_rows):
+        left = 0.0
+        for ds in ds_order:
+            c = d.get(ds, 0)
+            if not c:
+                continue
+            w = c / max_c
+            ax.barh(yi, -w, left=-left, height=bh,
+                    color=DATASET_COLORS[ds], edgecolor="white", linewidth=0.4,
+                    label=(DATASET_LABELS[ds].replace("\n", " ")
+                           if ds not in drawn else None))
+            drawn.add(ds)
+            left += w
+        ax.text(-left - 0.015, yi, f"{int(round(left * max_c)):,}",
+                ha="right", va="center", fontsize=9.5)
+    # Unique proteins: growing RIGHT (positive, normalised to max_p).
+    for yi, t in zip(y, tissues):
+        p = prot_map.get(t, 0)
+        w = p / max_p
+        ax.barh(yi, w, height=bh, color=prot_color,
+                edgecolor="white", linewidth=0.4)
+        ax.text(w + 0.015, yi, f"{p:,}",
+                ha="left", va="center", fontsize=9.5, color=prot_color)
+
+    ax.axvline(0, color="#888888", linewidth=0.8)
+    ax.set_yticks(y)
+    ax.set_yticklabels(tissues, fontsize=11)
+    ax.set_ylim(-0.7, n - 0.3)
+    ax.set_xlim(-1.32, 1.30)
+    ax.set_xticks([])
+    for sp in ("top", "right", "bottom"):
+        ax.spines[sp].set_visible(False)
+    ax.spines["left"].set_visible(False)
+    # Side headers naming each direction + its real-count scale.
+    ax.text(-0.5, n - 0.15, f"← Cell lines per tissue (max {max_c:,})",
+            ha="center", va="bottom", fontsize=12, fontweight="bold")
+    ax.text(0.5, n - 0.15, f"Unique proteins per tissue (max {max_p:,}) →",
+            ha="center", va="bottom", fontsize=12, fontweight="bold",
+            color=prot_color)
+    # Legend: cohorts (cell-line stack) + the protein bar.
+    handles, labels = ax.get_legend_handles_labels()
+    handles.append(Patch(facecolor=prot_color, edgecolor="white"))
+    labels.append("Unique proteins")
+    ax.legend(handles, labels, loc="upper center",
+              bbox_to_anchor=(0.5, -0.04), frameon=False, fontsize=10,
+              ncol=len(labels))
+
+
 def render_atlas_main(
     headlines: dict[str, DatasetHeadline],
     tissue_rows: list[tuple[str, dict[str, int]]],
@@ -1825,22 +1909,18 @@ def render_atlas_main(
     # Landscape layout so the figure fills the text width and stays legible:
     # panel (a) spans the top, and the two per-tissue panels (b, c) -- which
     # share the same tissue rows -- sit side by side below.
-    fig = plt.figure(figsize=(17, 11))
+    fig = plt.figure(figsize=(15, 11))
     gs = fig.add_gridspec(
-        2, 2, height_ratios=[0.5, 1.0], hspace=0.22, wspace=0.16,
+        2, 1, height_ratios=[0.5, 1.0], hspace=0.30,
     )
-    ax_a = fig.add_subplot(gs[0, :])
-    ax_b = fig.add_subplot(gs[1, 0])
-    ax_c = fig.add_subplot(gs[1, 1])
+    ax_a = fig.add_subplot(gs[0])
+    ax_bc = fig.add_subplot(gs[1])
 
     _render_panel_a_headlines(ax_a, headlines)
-    _annotate_panel_letter(ax_a, "a", subtitle="Headline counts (paper vs quantmsdiann)")
+    _annotate_panel_letter(ax_a, "a", subtitle="Protein groups (≥2 peptides): deposited vs quantms.io")
 
-    _render_panel_c_tissue_coverage(ax_b, tissue_rows)
-    _annotate_panel_letter(ax_b, "b", subtitle="Cell lines per tissue")
-
-    _render_panel_f_tissue_protein_counts(ax_c, tissue_protein_rows)
-    _annotate_panel_letter(ax_c, "c", subtitle="Proteins per tissue")
+    _render_tissue_combined(ax_bc, tissue_rows, tissue_protein_rows)
+    _annotate_panel_letter(ax_bc, "b", subtitle="Per-tissue cell lines and unique proteins")
 
     svg_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(svg_path, bbox_inches="tight")
@@ -2309,9 +2389,28 @@ def main() -> int:  # pragma: no cover
 
     print("Rendering main pan-cohort figure (headline + per-tissue panels)...")
     main_svg = FIGURES_DIR / "atlas_main.svg"
+    # Panel A: deposited-vs-reanalysis at >=2 unique peptides per protein
+    # (both sides), restricted to the two cohorts with a recomputable deposited
+    # peptide matrix. Sun (PXD004701) has only raw .wiff on PRIDE, so it is
+    # excluded from the COMPARISON but stays in the atlas (panels b/c) via
+    # tissue_rows. Numbers verified 2026-06-14.
+    panel_a_headlines = {
+        "PXD003539": DatasetHeadline(
+            4284, 6328, "Guo 2019 (OpenSWATH)", "Protein groups (>=2 peptides)"),
+        "PXD030304": DatasetHeadline(
+            6698, 8166, "ProCan 2022", "Protein groups (>=2 peptides)"),
+    }
+    # Panels b/c: curate to the most-represented tissues for resolution
+    # (tissue_rows is pre-sorted by combined cell-line count, descending).
+    TOP_TISSUES = 12
+    tissue_rows_top = tissue_rows[:TOP_TISSUES]
+    _top_set = {t for t, _ in tissue_rows_top}
+    tissue_protein_rows_top = [
+        (t, d) for (t, d) in tissue_protein_rows if t in _top_set
+    ]
     render_atlas_main(
-        DATASET_HEADLINES, tissue_rows, main_svg,
-        tissue_protein_rows=tissue_protein_rows,
+        panel_a_headlines, tissue_rows_top, main_svg,
+        tissue_protein_rows=tissue_protein_rows_top,
     )
     print(f"  saved: {main_svg}")
 

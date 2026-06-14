@@ -11,6 +11,8 @@ from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from analysis import figure_style as fs
+fs.apply_house_style()
 import pandas as pd
 import requests
 
@@ -910,9 +912,9 @@ def render_missing_values_per_run(
     fig, ax = plt.subplots(figsize=(10, 4))
     x = range(len(common))
     ax.plot(list(x), [guo_by_stem[s] for s in common],
-            label="Guo 2019 (OpenSWATH)", color="#9e9e9e", linewidth=1.0)
+            label="Guo 2019 (OpenSWATH)", color=fs.COMPARISON["original"], linewidth=1.0)
     ax.plot(list(x), [diann_by_stem[s] for s in common],
-            label="quantmsdiann (DIA-NN)", color="#1f77b4", linewidth=1.0)
+            label="quantmsdiann (DIA-NN)", color=fs.COMPARISON["quantmsdiann"], linewidth=1.0)
     ax.set_xlabel(f"MS run index ({len(common)} runs, ordered by acquisition date)")
     ax.set_ylabel("Fraction of precursors quantified per run")
     ax.set_ylim(0, 1.05)
@@ -962,7 +964,7 @@ def render_genes_per_condition(
                     width=bar_width, color="#90caf9",
                     label="Walzer 2022 (E-PROT-73)")
     bars_d = ax.bar([xi + bar_width / 2 for xi in x], diann_vals,
-                    width=bar_width, color="#1f77b4",
+                    width=bar_width, color=fs.COMPARISON["quantmsdiann"],
                     label="quantmsdiann (DIA-NN)")
     for bars, vals in ((bars_w, walzer_vals), (bars_d, diann_vals)):
         for bar, v in zip(bars, vals):
@@ -1007,9 +1009,9 @@ def render_peptides_per_protein(
     width = 0.38
     x = list(range(len(thresholds)))
     bars_guo = ax.bar([xi - width / 2 for xi in x], guo_values, width=width,
-                      color="#9e9e9e", label="Guo 2019 (OpenSWATH)")
+                      color=fs.COMPARISON["original"], label="Guo 2019 (OpenSWATH)")
     bars_diann = ax.bar([xi + width / 2 for xi in x], diann_values, width=width,
-                        color="#1f77b4", label="quantmsdiann (DIA-NN)")
+                        color=fs.COMPARISON["quantmsdiann"], label="quantmsdiann (DIA-NN)")
     for bars, vals in [(bars_guo, guo_values), (bars_diann, diann_values)]:
         for bar, v in zip(bars, vals):
             ax.text(
@@ -1098,19 +1100,20 @@ def main() -> int:  # pragma: no cover
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 
-    # 2. Download input files (idempotent)
+    # 2. Inputs. The quantmsdiann DIA-NN files (pr_matrix, log, parquet,
+    # unique_genes_matrix) are staged from the fresh DIA-NN 2.5.1 run
+    # (absolute-expression/cell-lines/PXD003539) into data/PXD003539/ --
+    # filesystem only, no FTP. The external comparison baselines (Walzer's
+    # Expression Atlas E-PROT-73 and the original OpenSWATH requant matrix) are
+    # cached locally; download_if_missing is a no-op when present.
     pr_path = DATA_DIR / "diann_report.pr_matrix.tsv"
     log_path = DATA_DIR / "diannsummary.log"
     opensw_path = DATA_DIR / "feature_alignment_requant_matrix.tsv"
     parquet_path = DATA_DIR / "diann_report.parquet"
     diann_genes_path = DATA_DIR / "diann_report.unique_genes_matrix.tsv"
 
-    print("Downloading files (skipped if already cached)...")
-    download_if_missing(PR_MATRIX_URL, pr_path)
-    download_if_missing(SUMMARY_LOG_URL, log_path)
+    print("Resolving inputs (filesystem; external baselines cached)...")
     download_if_missing(OPENSWATH_MATRIX_URL, opensw_path)
-    download_if_missing(DIANN_REPORT_PARQUET_URL, parquet_path)
-    download_if_missing(DIANN_UNIQUE_GENES_MATRIX_URL, diann_genes_path)
     eprot73_path = download_if_missing(EPROT73_URL, DATA_DIR / "E-PROT-73.tsv")
 
     # 3. Compute counts
@@ -1125,8 +1128,14 @@ def main() -> int:  # pragma: no cover
     diann_proteins_log = parse_summary_log(log_path)
     pg_unf, pg_target = count_target_protein_groups_pr_matrix(pr_path)
     print(f"  pr_matrix unique Protein.Group: unfiltered={pg_unf:,}  "
-          f"target_only={pg_target:,} (delta {pg_unf - pg_target:,})")
-    diann_proteins = pg_target
+          f"target_only={pg_target:,} (audit only)")
+    # Headline protein count is REPORT-based: unique Protein.Group at
+    # Global.PG.Q.Value <= 0.01 (target), from diann_report.parquet (DIA-NN
+    # 2.5.1), precomputed and staged -- not the pr_matrix row count.
+    import json as _json
+    with open(DATA_DIR / "diann_report_protein_counts.json", encoding="utf-8") as _fh:
+        diann_proteins = int(_json.load(_fh)["target"])
+    print(f"  report protein groups (Global.PG.Q.Value<=0.01, target): {diann_proteins:,}")
 
     print("Computing Guo 2019 (OpenSWATH) counts...")
     guo_precursors, guo_peptides, guo_proteins = count_openswath_quantified(opensw_path)
@@ -1221,7 +1230,7 @@ def main() -> int:  # pragma: no cover
         left_label="Walzer 2022\n(E-PROT-73)",
         right_label="quantmsdiann\n(DIA-NN, $\\geq$50% of runs)",
         left_color="#90caf9",
-        right_color="#1f77b4",
+        right_color=fs.COMPARISON["quantmsdiann"],
     )
     inter_ensg = walzer_ensg & diann_ensg
     print(

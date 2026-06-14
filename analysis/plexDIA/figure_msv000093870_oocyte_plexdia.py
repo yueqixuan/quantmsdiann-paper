@@ -28,6 +28,8 @@ from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from analysis import figure_style as fs
+fs.apply_house_style()
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
@@ -144,9 +146,7 @@ def render_per_cell_figure(cells: pd.DataFrame, svg_path: Path) -> None:
 
     fig.tight_layout()
     svg_path.parent.mkdir(parents=True, exist_ok=True)
-    stem = svg_path.with_suffix("")
-    for ext in (".svg", ".pdf", ".png"):
-        fig.savefig(stem.with_suffix(ext), dpi=300, bbox_inches="tight")
+    fig.savefig(svg_path, bbox_inches="tight")  # SVG-only (repo convention)
     plt.close(fig)
 
 
