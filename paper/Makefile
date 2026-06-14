@@ -13,29 +13,24 @@ LATEXMK   := latexmk
 BUILD_DIR := build
 
 SVGS := \
-	manuscript/fig1_architecture_scaling.svg \
+	manuscript/fig2_proteobench_equivalence.svg \
+	manuscript/fig3_single_cell_combined.svg \
+	manuscript/fig4_cellline_atlas.svg \
 	performance/parallelism_vs_wallclock.svg \
 	performance/runtime_per_step.svg \
 	performance/resources_per_step.svg \
 	performance/queue_size_sweep.svg \
-	quantmsdiann_benchmarks/main_benchmarks_precursors.svg \
 	quantmsdiann_benchmarks/main_benchmarks_proteins.svg \
-	quantmsdiann_benchmarks/main_accuracy.svg \
-	PXD003539/main_comparison.svg \
-	PXD003539/supp_genes_per_condition.svg \
+	quantmsdiann_benchmarks/supplementary/supp_benchmarks_proteins_complete.svg \
 	PXD003539/supp_missing_values_per_run.svg \
 	PXD003539/supp_peptides_per_protein.svg \
 	PXD003539/supp_venn_protein_accessions.svg \
 	PXD004701/supp_missing_values_per_run.svg \
 	PXD004701/supp_proteins_per_subtype.svg \
-	PXD030304/main_comparison.svg \
 	PXD030304/supp_missing_values_per_run.svg \
 	PXD030304/supp_proteins_per_tissue.svg \
-	plexDIA/MSV000093870/main_galatidou_total_pg.svg \
 	plexDIA/MSV000093870/main_galatidou_comparison.svg \
-	PXD064049/main_comparison.svg \
-	PXD049692/main_comparison.svg \
-	combined/atlas_main.svg
+	supplementary/supp_phospho.svg
 
 PDF_TARGETS := $(addprefix $(FIG_PDF)/,$(SVGS:.svg=.pdf)) \
 	$(FIG_PDF)/manuscript/workflow_panel.pdf
