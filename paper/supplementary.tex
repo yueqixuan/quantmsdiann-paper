@@ -17,6 +17,9 @@
 \usepackage{xurl}
 \usepackage{array}
 \usepackage{longtable}
+%% Keep each figure within its own Supplementary Note: a float barrier at every
+%% \section stops figures from drifting past their note (and past the References).
+\usepackage[section]{placeins}
 \Urlmuskip=0mu plus 1mu
 \emergencystretch=3em
 
@@ -389,6 +392,7 @@ Cellosaurus & Cell-line nomenclature and tissue annotation & \url{https://www.ce
 \end{longtable}
 }
 
+\FloatBarrier
 \bibliographystyle{elsarticle-num}
 \bibliography{references}
 
