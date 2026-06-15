@@ -15,16 +15,26 @@
 
 %% Keep long URLs / container names / paths inside the margins.
 \usepackage{xurl}
+\usepackage{array}
+\usepackage{longtable}
 \Urlmuskip=0mu plus 1mu
 \emergencystretch=3em
 
-%% Number supplementary figures S1, S2, ... independently of the main text.
+%% Number supplementary figures S1, S2, ... and tables S1, S2, ...
+%% independently of the main text.
 \renewcommand{\thefigure}{S\arabic{figure}}
 \setcounter{figure}{0}
+\renewcommand{\thetable}{S\arabic{table}}
+\setcounter{table}{0}
 
 %% Number the prose sections as "Supplementary Note 1, 2, ..." (figures stay S1..S12,
 %% Table S1). Each \section{...} below therefore renders as a Supplementary Note.
 \renewcommand{\thesection}{Supplementary Note~\arabic{section}}
+%% Widen the table-of-contents number box so the long "Supplementary Note N"
+%% labels fit without overflowing the entry.
+\makeatletter
+\renewcommand*\l@section{\@dottedtocline{1}{1.5em}{10.5em}}
+\makeatother
 
 \journal{Molecular \& Cellular Proteomics}
 
@@ -56,7 +66,7 @@ text (e.g.\ PXD003539 was deposited in 2016 and published as Guo \textit{et al.}
 PXD004701 deposited 2016, published as Sun \textit{et al.}~2023).}
 \label{tab:datasets-supp}
 {\setlength{\tabcolsep}{4pt}
-\begin{tabular}{llll}
+\begin{tabular}{ll>{\raggedright\arraybackslash}p{0.34\textwidth}l}
 \hline
 \textbf{Accession} & \textbf{Instrument} & \textbf{Type} & \textbf{Public date} \\
 \hline
@@ -71,7 +81,7 @@ PXD003539 & TripleTOF 5600 & Cell line (NCI-60) & 2016 \\
 PXD030304 & TripleTOF 6600 & Cell line (ProCan) & 2022 \\
 PXD004701 & TripleTOF 5600 & Cell line (Sun 2023) & 2016 \\
 PXD041421 & timsTOF (diaPASEF) & Cell line (Wang 2023) & 2023 \\
-PXD017199 & TripleTOF 6600 & Cell line (Tognetti 2021) & 2021 \\
+PXD017199 & Q Exactive Plus & Cell line (Tognetti 2021) & 2021 \\
 \hline
 \multicolumn{4}{l}{\textit{Single-cell plexDIA}} \\
 MSV000093870 & Q Exactive & Single-cell oocyte plexDIA (Galatidou 2024) & 2024 \\
@@ -315,6 +325,69 @@ These figures complement main-text Fig.~3 with per-condition completeness, per-p
   }
   \label{fig:supp-phospho}
 \end{figure}
+
+\section{Software and resources}
+\label{sec:supp-software}
+
+Table~\ref{tab:software-supp} lists the software packages, formats, and public
+resources used by \quantmsdiann{} and in this study, with their canonical
+repositories or portals. \quantmsdiann{} and its supporting tools
+(\texttt{sdrf-pipelines}, \texttt{pmultiqc}, \qpx{}, \texttt{wiffconverter},
+container recipes) are released open-source under the \texttt{bigbio}
+organisation; per-version \texttt{DIA-NN} container images are built from the
+recipes in \texttt{quantms-containers} (Supplementary Note~2).
+
+{\footnotesize
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.19\textwidth}>{\raggedright\arraybackslash}p{0.31\textwidth}>{\raggedright\arraybackslash}p{0.42\textwidth}@{}}
+\caption{Software, formats, and public resources used in this study, with their
+canonical repositories or portals.}\label{tab:software-supp}\\
+\hline
+\textbf{Name} & \textbf{Role in this study} & \textbf{Repository / URL} \\
+\hline
+\endfirsthead
+\hline
+\textbf{Name} & \textbf{Role in this study} & \textbf{Repository / URL} \\
+\hline
+\endhead
+\hline
+\endfoot
+\multicolumn{3}{@{}l}{\textit{quantmsdiann and the bigbio ecosystem}} \\
+\quantmsdiann{} & SDRF-driven DIA-NN reanalysis workflow (this work) & \url{https://github.com/bigbio/quantmsdiann} \\
+quantms & Sibling SDRF-driven multi-engine quantitative proteomics pipeline & \url{https://github.com/bigbio/quantms} \\
+quantms-containers & Per-release \texttt{DIA-NN} container recipes & \url{https://github.com/bigbio/quantms-containers} \\
+SDRF-Proteomics & Sample-and-Data-Relationship-Format metadata standard & \url{https://github.com/bigbio/proteomics-sample-metadata} \\
+sdrf-pipelines & SDRF validation and \texttt{DIA-NN} configuration generation (\texttt{convert-diann}) & \url{https://github.com/bigbio/sdrf-pipelines} \\
+qpx & Quantitative Proteomics eXchange format and \texttt{qpxc} CLI & \url{https://github.com/bigbio/qpx} \\
+pmultiqc & Proteomics QC reporting (MultiQC extension) & \url{https://github.com/bigbio/pmultiqc} \\
+wiffconverter & SCIEX \texttt{.wiff} to mzML conversion & \url{https://github.com/bigbio/wiffconverter} \\
+pridepy & PRIDE/MassIVE raw-file download client & \url{https://github.com/PRIDE-Archive/pridepy} \\
+\hline
+\multicolumn{3}{@{}l}{\textit{Workflow engine and analysis tools}} \\
+DIA-NN & Data-independent acquisition search and quantification engine & \url{https://github.com/vdemichev/DiaNN} \\
+Nextflow & Workflow orchestration engine & \url{https://github.com/nextflow-io/nextflow} \\
+nf-core & Community framework and conventions for the workflow & \url{https://nf-co.re} \\
+MultiQC & Aggregated analysis-report framework (extended by pmultiqc) & \url{https://github.com/MultiQC/MultiQC} \\
+MSstats & Statistical quantification; target output format & \url{https://github.com/Vitek-Lab/MSstats} \\
+ProteoBench & Community benchmarking platform for DIA workflows & \url{https://github.com/Proteobench/ProteoBench} \\
+ThermoRawFileParser & Thermo \texttt{.raw} to mzML conversion & \url{https://github.com/compomics/ThermoRawFileParser} \\
+\hline
+\multicolumn{3}{@{}l}{\textit{Containers and data structures}} \\
+Docker & Container runtime (workflow profile) & \url{https://www.docker.com} \\
+Apptainer (Singularity) & HPC container runtime (workflow profile) & \url{https://apptainer.org} \\
+BioContainers & Source of the default \texttt{DIA-NN}~1.8.1 image & \url{https://biocontainers.pro} \\
+DuckDB & In-process engine for querying the \qpx{} Parquet archive & \url{https://github.com/duckdb/duckdb} \\
+MuData (\texttt{.h5mu}) & Multimodal container for single-cell export & \url{https://github.com/scverse/mudata} \\
+scverse & Single-cell analysis ecosystem (downstream of MuData export) & \url{https://scverse.org} \\
+\hline
+\multicolumn{3}{@{}l}{\textit{Data resources and ontologies}} \\
+PRIDE Archive & Source repository for deposited datasets & \url{https://www.ebi.ac.uk/pride} \\
+ProteomeXchange & Data-deposition consortium / dataset search API & \url{https://www.proteomexchange.org} \\
+MassIVE & Source repository for the plexDIA cohort & \url{https://massive.ucsd.edu} \\
+UniProt & Reference protein sequences (search FASTA) & \url{https://www.uniprot.org} \\
+Cellosaurus & Cell-line nomenclature and tissue annotation & \url{https://www.cellosaurus.org} \\
+\hline
+\end{longtable}
+}
 
 \bibliographystyle{elsarticle-num}
 \bibliography{references}
