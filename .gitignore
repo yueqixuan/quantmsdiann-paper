@@ -47,3 +47,12 @@ build/
 
 #Ignore cursor AI rules
 .cursor/rules/codacy.mdc
+
+# Transient collaborator share bundles (one-off exports; regenerated on demand,
+# not manuscript content — e.g. ProteoBench result tarballs sent to co-authors).
+*_for_vadim/
+*_for_vadim.tar.gz
+reports_for_vadim*/
+
+# Standalone presentation / slides project (separate from the manuscript source).
+presentation/
