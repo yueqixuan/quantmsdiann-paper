@@ -9,9 +9,9 @@
 build/
 
 # Compiled manuscript PDFs — regenerable via `make pdf` / `make supplementary`.
-# main.pdf is intentionally tracked so the latest manuscript is downloadable
-# from the repo without a LaTeX toolchain; remember to rebuild before committing.
-supplementary.pdf
+# main.pdf AND supplementary.pdf are intentionally tracked so the latest
+# manuscript and supplement are downloadable from the repo without a LaTeX
+# toolchain; remember to rebuild both before committing.
 graphical_abstract.pdf
 
 # Figure PDFs generated from the analysis SVGs by `make figures`
