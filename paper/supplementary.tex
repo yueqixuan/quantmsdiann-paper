@@ -1,4 +1,4 @@
-%% Additional file 1 — Supplementary figures for the quantmsdiann MCP manuscript.
+%% Supplementary Notes for the quantmsdiann MCP manuscript.
 %% Build: cd paper && make supplementary
 
 \documentclass[preprint,12pt]{elsarticle}
@@ -22,12 +22,16 @@
 \renewcommand{\thefigure}{S\arabic{figure}}
 \setcounter{figure}{0}
 
+%% Number the prose sections as "Supplementary Note 1, 2, ..." (figures stay S1..S12,
+%% Table S1). Each \section{...} below therefore renders as a Supplementary Note.
+\renewcommand{\thesection}{Supplementary Note~\arabic{section}}
+
 \journal{Molecular \& Cellular Proteomics}
 
 \begin{document}
 
 \begin{frontmatter}
-\title{Additional file 1: Supplementary figures for ``quantmsdiann: a scalable SDRF-driven DIA-NN workflow for reanalysis of single-cell, spatial, and bulk proteomics datasets''}
+\title{Supplementary Notes for ``quantmsdiann: a scalable SDRF-driven DIA-NN workflow for reanalysis of single-cell, spatial, and bulk proteomics datasets''}
 \end{frontmatter}
 
 \tableofcontents

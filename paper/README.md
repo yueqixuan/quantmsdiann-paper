@@ -10,7 +10,7 @@ using Elsevier's `elsarticle` class.
 paper/
   main.tex              # master document: full manuscript body (all sections inlined)
   graphical_abstract.tex  # graphical abstract + research highlights (separate upload)
-  supplementary.tex     # Additional file 1 (supplementary figures + notes)
+  supplementary.tex     # Supplementary Notes (numbered notes + figures S1-S12 + Table S1)
   macros.tex            # \placeholder{}, \quantmsdiann, etc.
   mcpfigures.sty        # MCP column widths (3.5 / 5 / 7.2 in; max height 6 in)
   references.bib        # bibliography (numeric elsarticle-num style)
