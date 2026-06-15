@@ -8,24 +8,17 @@ using Elsevier's `elsarticle` class.
 
 ```
 paper/
-  main.tex              # master document (abstract + body; no GA/highlights)
+  main.tex              # master document: full manuscript body (all sections inlined)
   graphical_abstract.tex  # graphical abstract + research highlights (separate upload)
+  supplementary.tex     # Additional file 1 (supplementary figures + notes)
   macros.tex            # \placeholder{}, \quantmsdiann, etc.
   mcpfigures.sty        # MCP column widths (3.5 / 5 / 7.2 in; max height 6 in)
   references.bib        # bibliography (numeric elsarticle-num style)
-  sections/
-    introduction.tex    # Background section body
-    results.tex
-    discussion.tex
-    conclusions.tex
-    methods.tex
-    declarations.tex
-    figures.tex         # figure floats + links to analysis/figures SVGs
   figures/pdf/          # PDF exports for LaTeX (generated; git-ignored)
   Makefile
 ```
 
-Manuscript figures in `sections/figures.tex` follow MCP guidelines:
+The manuscript figure floats live directly in `main.tex` and follow MCP guidelines:
 
 | Width macro | Size | MCP use |
 |---|---|---|
