@@ -593,6 +593,13 @@ PERF_DATASETS: tuple[tuple[str, str, int], ...] = (
     ("PXD034623", "Orbitrap Exploris 480", 63),
     ("PXD064049", "timsTOF SCP", 12),
     ("PXD049692", "timsTOF HT", 10),
+    # Single-cell cohorts (Fig 3) and the two cell-line-atlas cohorts (Fig 4)
+    # that were missing from the timing figure; traces from the reported runs
+    # (single-cell: 2.5.1-enterprise build; cell lines: standard 2.5.x).
+    ("PXD046357", "Orbitrap Astral", 12),
+    ("PXD044991", "Orbitrap Astral", 12),
+    ("PXD017199", "Q Exactive", 206),
+    ("PXD041421", "timsTOF Pro", 48),
 )
 
 
