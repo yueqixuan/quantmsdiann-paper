@@ -79,6 +79,7 @@ PXD030304_COUNTS_TSV = REPO_ROOT / "analysis" / "figures" / "PXD030304" / "data"
 
 PXD004701_SDRF = DATA_ROOT / "PXD004701" / "PXD004701.sdrf.tsv"
 PXD004701_PROTEIN_JSON = DATA_ROOT / "PXD004701" / "diann_per_subtype_consistency_filter.json"
+PXD003539_PROTEIN_JSON = DATA_ROOT / "PXD003539" / "diann_report_protein_counts.json"
 PXD004701_PG_MATRIX = DATA_ROOT / "PXD004701" / "diann_report.pg_matrix.tsv"
 PXD004701_COUNTS_TSV = REPO_ROOT / "analysis" / "figures" / "PXD004701" / "data" / "counts.tsv"
 
@@ -278,6 +279,29 @@ def refresh_dataset_headlines() -> None:
                 metric=h.metric,
             )
             DATASET_HEADLINES_UNFILTERED["PXD004701"] = len(pgs)
+
+    # PXD003539: use the canonical REPORT-based target-only protein-group count
+    # (unique Protein.Group at Global.PG.Q.Value <= 0.01) from
+    # diann_report_protein_counts.json, so the atlas Panel B bar equals the
+    # per-cohort figure (figure_original_vs_quantmsdiann). The pr_matrix-derived
+    # count (~6,747) is a precursor-matrix proxy and is retained only for the
+    # Panel A accession-overlap geometry; the FDR-controlled headline is the
+    # report count (6,767). This removes the prior 6,747-vs-6,767 mismatch
+    # between the atlas and the per-cohort comparison.
+    if PXD003539_PROTEIN_JSON.exists() and PXD003539_PROTEIN_JSON.stat().st_size > 0:
+        with open(PXD003539_PROTEIN_JSON, encoding="utf-8") as fh:
+            report_target = int(json.load(fh).get("target", 0))
+        if report_target > 0:
+            h = DATASET_HEADLINES["PXD003539"]
+            DATASET_HEADLINES["PXD003539"] = DatasetHeadline(
+                paper_count=h.paper_count,
+                diann_count=report_target,
+                paper_label=h.paper_label,
+                metric=h.metric,
+            )
+            # report-consistent unfiltered baseline (diannsummary.log), matching
+            # the per-cohort counts.tsv, rather than the pr_matrix proxy.
+            DATASET_HEADLINES_UNFILTERED["PXD003539"] = _DEFAULT_DIANN_COUNTS["PXD003539"]
 
 
 # ---------------------------------------------------------------------------
