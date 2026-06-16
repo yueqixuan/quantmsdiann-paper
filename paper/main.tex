@@ -166,20 +166,21 @@ Per-cohort completeness, peptide-per-protein distributions, gene-versus-accessio
 
 %% Fig. 1 — pipeline architecture (subway, vector PDF from rsvg-convert)
 %% on the left, runtime scaling panels stacked on the right.
-\begin{figure}[htbp]
+\begin{figure}[p]
   \centering
-  \begin{minipage}[t]{0.62\linewidth}
-    \centering
-    \textbf{(a)}\par\vspace{0.2em}
-    \mcpincludegraphics[width=\linewidth,keepaspectratio]{manuscript/workflow_panel}
-  \end{minipage}\hfill
-  \begin{minipage}[t]{0.36\linewidth}
+  \textbf{(a)}\par\vspace{0.2em}
+  \mcpincludegraphics[width=0.66\linewidth,keepaspectratio]{manuscript/workflow_panel}\par
+  \vspace{0.5em}
+  \begin{minipage}[c]{0.39\linewidth}
     \centering
     \textbf{(b)}\par\vspace{0.2em}
     \mcpincludegraphics[width=\linewidth,keepaspectratio]{performance/queue_size_sweep}
-  \end{minipage}\par\vspace{1.0em}
-  \textbf{(c)}\par\vspace{0.2em}
-  \mcpincludegraphics[width=\textwidth,height=\mcpmaxfigheight,keepaspectratio]{performance/parallelism_vs_wallclock}
+  \end{minipage}\hfill
+  \begin{minipage}[c]{0.59\linewidth}
+    \centering
+    \textbf{(c)}\par\vspace{0.2em}
+    \mcpincludegraphics[width=\linewidth,keepaspectratio]{performance/parallelism_vs_wallclock}
+  \end{minipage}
   \caption[Pipeline and scaling]{%
     \textbf{\quantmsdiann{} pipeline architecture and runtime scaling.}
     (\textbf{a})~Subway diagram of the \quantmsdiann{} workflow: mandatory modules as filled circles, optional/skippable modules as open circles. Per-file parallel stages (red; file preparation, preliminary calibration, individual search) run as one task per raw file, whereas
@@ -235,7 +236,7 @@ Per-cohort completeness, peptide-per-protein distributions, gene-versus-accessio
 %% Fig. 3 — Single-cell DIA reanalysis (DIA-NN 1.8.1 vs 2.5.1-enterprise)
 \begin{figure}[htbp]
   \centering
-  \mcpincludegraphics[width=\textwidth,height=\mcpmaxfigheight,keepaspectratio]{manuscript/fig3_single_cell_combined}
+  \mcpincludegraphics[width=\linewidth,height=0.84\textheight,keepaspectratio]{manuscript/fig3_single_cell_combined}
   \caption[Single-cell DIA reanalysis]{%
     \textbf{Single-cell DIA reanalysis by \quantmsdiann{}, comparing
     \texttt{DIA-NN}~1.8.1 with the current 2.5.1-enterprise build on identical

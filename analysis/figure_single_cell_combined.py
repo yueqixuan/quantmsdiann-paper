@@ -2,7 +2,7 @@
 """Fig 3 (combined) - single-cell reanalysis, DIA-NN 1.8.1 vs 2.5.1 Enterprise.
 
 Merges the count overview and the mechanistic multi-view into one figure, with
-dataset accessions on every panel. 2x3:
+dataset accessions on every panel. 3 rows x 2 cols (portrait, fills page height):
   A  Per-cell protein groups  (box + jitter, both HeLa datasets x version)
   B  Data-completeness curve  (HeLa Astral) -- the MBR headline
   C  plexDIA deposited vs quantms.io (MSV000093870) -- orthogonal reanalysis axis
@@ -50,9 +50,9 @@ def _completeness(ax):
     df = df[df["dataset"] == FLAG]
     for v in VERS:
         s = df[df["version"] == v].sort_values("min_cells")
-        ax.plot(s["min_cells"], s["n_proteins"], "-o", ms=4, color=VCOL[v], label=VLAB[v])
+        ax.plot(s["min_cells"], s["n_proteins"], "-o", ms=6, lw=2, color=VCOL[v], label=VLAB[v])
     ax.set_xlabel("quantified in ≥ N cells"); ax.set_ylabel("protein groups")
-    ax.set_title(f"Data completeness — {FLAG_T}")
+    ax.set_title("Data completeness — HeLa Astral")
     fs.kfmt_axis(ax.yaxis); fs.despine(ax)
 
 
@@ -79,8 +79,8 @@ def _plexdia(ax):
     b = ax.bar(pos, vals, bw, color=cols, edgecolor="white", linewidth=0.6)
     pct = round(100*(vals[1]-vals[0])/vals[0])
     ax.annotate(f"+{pct}%", (b[1].get_x()+b[1].get_width()/2, vals[1]), textcoords="offset points",
-                xytext=(0, 2), ha="center", va="bottom", fontsize=8, fontweight="bold", color=fs.COMPARISON["quantmsdiann"])
-    ax.set_xticks(pos); ax.set_xticklabels(["Galatidou 2024\n(deposited)\n1.8.1b16", "quantms.io\n2.5.0"])
+                xytext=(0, 3), ha="center", va="bottom", fontsize=12, fontweight="bold", color=fs.COMPARISON["quantmsdiann"])
+    ax.set_xticks(pos); ax.set_xticklabels(["Galatidou 2024\n(deposited)\n1.8.1b16", "quantms.io\n2.5.0"], fontsize=11)
     ax.set_xlim(-0.6, 0.6); ax.set_ylabel("protein groups"); ax.set_title("plexDIA — MSV000093870")
     fs.kfmt_axis(ax.yaxis); fs.despine(ax)
 
@@ -92,7 +92,7 @@ def _rank(ax):
         y = s["log10_intensity"].values - s["log10_intensity"].max()  # relative to top protein
         ax.plot(s["rank"], y, "-", color=VCOL[v], label=VLAB[v])
     ax.set_xlabel("protein group rank"); ax.set_ylabel("log10 intensity (rel. to top)")
-    ax.set_title(f"Dynamic range — {FLAG_T}")
+    ax.set_title("Dynamic range — HeLa Astral")
     fs.despine(ax)
 
 
@@ -104,7 +104,7 @@ def _cv(ax):
         ax.hist(cv, bins=bins, density=True, histtype="step", linewidth=1.6, color=VCOL[v], label=VLAB[v])
         ax.axvline(np.median(df[df["version"] == v]["cv"]), color=VCOL[v], linestyle=":", linewidth=1)
     ax.set_xlabel("CV across cells"); ax.set_ylabel("density")
-    ax.set_title(f"Quantitative precision — {FLAG_T}")
+    ax.set_title("Quantitative precision — HeLa Astral")
     fs.despine(ax)
 
 
@@ -134,38 +134,41 @@ def _totals(ax):
                 if v != "1_8_1":
                     lo = TOTALS[d][metric][0]
                     target.annotate(f"+{round(100*(hi-lo)/lo)}%", (x, hi), textcoords="offset points",
-                                    xytext=(0, 2), ha="center", va="bottom", fontsize=7, fontweight="bold", color=VCOL[v])
+                                    xytext=(0, 3), ha="center", va="bottom", fontsize=10, fontweight="bold", color=VCOL[v])
     draw(ax, prec_x, "precursors")
     draw(ax2, prot_x, "proteins")
     ax.axvline(len(dsx) - 0.2, color="#cccccc", linewidth=0.8)
     ticks = [prec_x[d] for d in dsx] + [prot_x[d] for d in dsx]
     ax.set_xticks(ticks)
-    ax.set_xticklabels([d.replace("HeLa ", "").replace(" SC", "") for d in dsx] * 2, fontsize=8)
+    ax.set_xticklabels([d.replace("HeLa ", "").replace(" SC", "") for d in dsx] * 2, fontsize=11)
     ax.set_xlim(-0.7, prot_x[dsx[-1]] + 0.7)
     ax.set_ylabel("precursors"); ax2.set_ylabel("protein groups")
     ax.set_ylim(0, 27000); ax2.set_ylim(0, 5400)
     fs.kfmt_axis(ax.yaxis); fs.kfmt_axis(ax2.yaxis)
     ax.set_title("Total identifications")
-    ax.text(np.mean([prec_x[d] for d in dsx]), -0.16, "precursors", transform=ax.get_xaxis_transform(),
-            ha="center", va="top", fontsize=8.5, fontweight="bold")
-    ax.text(np.mean([prot_x[d] for d in dsx]), -0.16, "protein groups", transform=ax.get_xaxis_transform(),
-            ha="center", va="top", fontsize=8.5, fontweight="bold")
+    ax.text(np.mean([prec_x[d] for d in dsx]), -0.20, "precursors", transform=ax.get_xaxis_transform(),
+            ha="center", va="top", fontsize=11, fontweight="bold")
+    ax.text(np.mean([prot_x[d] for d in dsx]), -0.20, "protein groups", transform=ax.get_xaxis_transform(),
+            ha="center", va="top", fontsize=11, fontweight="bold")
     for sp in ("top",): ax.spines[sp].set_visible(False); ax2.spines[sp].set_visible(False)
 
 
 def render(out: Path) -> Path:
-    fig, ax = plt.subplots(2, 3, figsize=(13.5, 7.8))
-    _totals(ax[0, 0]); _percell(ax[0, 1]); _completeness(ax[0, 2])
-    _rank(ax[1, 0]); _cv(ax[1, 1]); _plexdia(ax[1, 2])
-    handles = [Line2D([0], [0], color=VCOL[v], marker="o", linewidth=2, markersize=7, label=f"DIA-NN {VLAB[v]}") for v in VERS]
-    handles += [Line2D([0], [0], marker="s", linestyle="none", markersize=9, markerfacecolor=fs.COMPARISON["original"],
+    # 3 rows x 2 cols (portrait): fills the page height so each panel renders
+    # larger than the old 2x3 landscape layout (which scaled down to fit width).
+    fig, ax = plt.subplots(3, 2, figsize=(10.5, 10.8))
+    _totals(ax[0, 0]); _percell(ax[0, 1])
+    _completeness(ax[1, 0]); _rank(ax[1, 1])
+    _cv(ax[2, 0]); _plexdia(ax[2, 1])
+    handles = [Line2D([0], [0], color=VCOL[v], marker="o", linewidth=2, markersize=8, label=f"DIA-NN {VLAB[v]}") for v in VERS]
+    handles += [Line2D([0], [0], marker="s", linestyle="none", markersize=10, markerfacecolor=fs.COMPARISON["original"],
                 markeredgecolor="white", label="plexDIA deposited (Galatidou 1.8.1b16)"),
-                Line2D([0], [0], marker="s", linestyle="none", markersize=9, markerfacecolor=fs.COMPARISON["quantmsdiann"],
+                Line2D([0], [0], marker="s", linestyle="none", markersize=10, markerfacecolor=fs.COMPARISON["quantmsdiann"],
                 markeredgecolor="white", label="plexDIA quantms.io (2.5.0)")]
-    fig.legend(handles=handles, loc="upper center", ncol=4, bbox_to_anchor=(0.5, 1.015), fontsize=9.5)
-    for a, lab in zip([ax[0,0],ax[0,1],ax[0,2],ax[1,0],ax[1,1],ax[1,2]], "ABCDEF"):
-        a.text(-0.14, 1.06, lab, transform=a.transAxes, fontsize=14, fontweight="bold", va="bottom", ha="right")
-    fig.tight_layout(rect=(0, 0, 1, 0.96))
+    fig.legend(handles=handles, loc="upper center", ncol=2, bbox_to_anchor=(0.5, 1.005), fontsize=13)
+    for a, lab in zip([ax[0,0],ax[0,1],ax[1,0],ax[1,1],ax[2,0],ax[2,1]], "ABCDEF"):
+        a.text(-0.12, 1.05, lab, transform=a.transAxes, fontsize=17, fontweight="bold", va="bottom", ha="right")
+    fig.tight_layout(rect=(0, 0, 1, 0.955), h_pad=2.6, w_pad=2.2)
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out); plt.close(fig)
     return out
