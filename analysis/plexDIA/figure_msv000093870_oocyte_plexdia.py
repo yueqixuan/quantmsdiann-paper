@@ -42,7 +42,7 @@ CACHE_DIR = FIGURES_DIR / "data" / "cache"
 
 FTP_BASE = (
     "https://ftp.pride.ebi.ac.uk/pub/databases/pride/resources/proteomes/"
-    "quantmsdiann-benchmarks/plexDIA/MSV000093870-plexDIA"
+    "quantmsdiann-benchmarks/single-cell/MSV000093870/v2_5_1"
 )
 REPORT_PARQUET_URL = f"{FTP_BASE}/quant_tables/diann_report.parquet"
 

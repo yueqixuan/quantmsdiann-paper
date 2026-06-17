@@ -47,7 +47,7 @@ ORIG_COLOUR = "#9e9e9e"
 QM_COLOUR = "#1e88e5"
 
 _QB = ("https://ftp.pride.ebi.ac.uk/pub/databases/pride/resources/proteomes/"
-       "quantmsdiann-benchmarks/PXD064049-MYCN-DVP-diaPASEF/quant_tables")
+       "quantmsdiann-benchmarks/spatial/PXD064049/v2_5_0/quant_tables")
 _ORIG_ZIP = ("https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/07/"
              "PXD064049/DIANN_results.zip")
 
