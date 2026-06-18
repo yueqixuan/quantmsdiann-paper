@@ -842,6 +842,7 @@ def render_parallelism_scatter(
     legend_bbox_y: float = -0.14,
     composite: bool = False,
     show_legend: bool = True,
+    short_labels: bool = False,
 ) -> None:
     """Horizontal bar chart of the wall-clock time each reanalysis took to
     finish (hours, from pipeline_report.txt), one bar per analysis, ordered
@@ -874,6 +875,8 @@ def render_parallelism_scatter(
     # Bar label: dataset id + file count (+ node count when known — only the
     # PXD071075 production sweep row carries an explicit queueSize).
     def _bar_label(row) -> str:
+        if short_labels:  # narrow composite column: accession + compact file count
+            return f"{row['dataset']} ({int(row['n_runs']):,})"
         base = f"{row['dataset']}  ({int(row['n_runs']):,} files"
         q = row.get("queue_size")
         if q is not None and pd.notna(q):

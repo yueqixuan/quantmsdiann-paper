@@ -1,6 +1,6 @@
 # Build the quantmsdiann MCP manuscript PDF and convert analysis SVGs to PDF.
 #
-# Requires: pdflatex, bibtex, and one of inkscape / rsvg-convert / cairosvg
+# Requires: latexmk (drives pdflatex + bibtex), and one of inkscape / rsvg-convert / cairosvg
 # for figure conversion.
 
 MAIN      := main
@@ -13,13 +13,11 @@ LATEXMK   := latexmk
 BUILD_DIR := build
 
 SVGS := \
-	manuscript/fig2_proteobench_equivalence.svg \
+	manuscript/fig2_validation.svg \
 	manuscript/fig3_single_cell_combined.svg \
 	manuscript/fig4_cellline_atlas.svg \
-	performance/parallelism_vs_wallclock.svg \
 	performance/runtime_per_step.svg \
 	performance/resources_per_step.svg \
-	performance/queue_size_sweep.svg \
 	quantmsdiann_benchmarks/main_benchmarks_proteins.svg \
 	quantmsdiann_benchmarks/supplementary/supp_benchmarks_proteins_complete.svg \
 	PXD003539/supp_missing_values_per_run.svg \

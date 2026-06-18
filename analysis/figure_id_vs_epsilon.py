@@ -342,12 +342,24 @@ def extract_qm_per_species_log2(
                 continue
             if pd.isna(value):
                 continue
+            # ProteoBench reports the per-species summary as a MEDIAN log2; the
+            # community comparators are read as `median_log2_empirical_*`, so we
+            # expose the matching qm median for like-for-like overlays (the
+            # accuracy panels plot median, falling back to mean if absent).
+            median = res.get(f"median_log2_empirical_{species}")
+            try:
+                median = float(median)
+            except (TypeError, ValueError):
+                median = value
+            if pd.isna(median):
+                median = value
             rows.append({
                 "dataset": dataset,
                 "version": version,
                 "version_label": _VERSION_LABELS.get(version, version),
                 "species": species,
                 "mean_log2_empirical": value,
+                "median_log2_empirical": median,
             })
     return pd.DataFrame(rows)
 

@@ -1,31 +1,24 @@
 #!/usr/bin/env python
-"""Fig 2 - ProteoBench accuracy: quantmsdiann within the single-machine community.
+"""Fig 1d - ProteoBench quantification-accuracy concordance vs standalone DIA-NN.
 
-Restricted to the two datasets that HAVE public ProteoBench community
-submissions to compare against (ProteoBench_Module_7 Astral, PXD062685
-timsTOF/diaPASEF). The two datasets without predicted-library community
-comparators (PXD049412 single-cell, PXD070049 ZenoTOF) are NOT shown here;
-they go to the supplement (figure_id_vs_epsilon.py).
+A single concordance panel: for the two ProteoBench DIA modules with public
+predicted-from-FASTA **DIA-NN** community submissions (Module 7, Orbitrap
+Astral; PXD062685, timsTOF diaPASEF), the measured HYE log2 fold-change (Y) is
+plotted against the ProteoBench-expected ratio (X), with the dashed Y=X line.
+Standalone DIA-NN community runs (ALL versions) are grey; quantms-diann (1.8.1
+and 2.5.1-enterprise) are coloured. Points on the diagonal => quantms-diann
+quantifies as accurately as single-machine DIA-NN, independent of release.
 
-Two accuracy styles, two columns (one per dataset):
-  Row A  Accuracy per concentration -- the HYE mix is a set of fixed multiples
-         (Human 1x -> log2 0, Yeast 2x -> +1, E. coli 1/4x -> -2). Observed
-         log2 fold-change per species: community submissions as a grey strip,
-         the expected ratio as a dashed line, quantmsdiann versions as coloured
-         markers. Shows quantmsdiann lands on the expected ratio within the
-         community spread, at every concentration.
-  Row B  Overall accuracy -- median |epsilon| (distance to expected, lower is
-         better): community as a box+strip, quantmsdiann versions as markers.
-         The equivalence headline: distributed quantmsdiann sits inside the
-         single-machine community.
+Only DIA-NN community submissions are used (other ProteoBench tools excluded),
+so "standalone DIA-NN" is the literal comparator. Per-version, per-module
+identification DEPTH (precursors / protein groups) is in Supplementary Note 5
+(figure_id_vs_epsilon.py); this panel is accuracy only.
 
-All community per-species / global accuracy comes from the cached ProteoBench
-submission JSONs (data/quantmsdiann_benchmarks/proteobench/<dataset>.json),
-which carry median_log2_empirical_<SP> and median_abs_epsilon_global per
-submission. quantmsdiann from the metrics cache via the shared extractors.
+Source: data/quantmsdiann_benchmarks/proteobench/<dataset>.json (community) and
+the quantms-diann metrics cache (per version).
 
 Run:  python -m analysis.figure_proteobench_accuracy
-Out:  analysis/figures/quantmsdiann_benchmarks/main_accuracy.svg
+Out:  analysis/figures/manuscript/fig1d_proteobench_accuracy.svg
 """
 from __future__ import annotations
 
@@ -37,144 +30,171 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 import numpy as np
-import pandas as pd
 
 from analysis import figure_style as fs
 fs.apply_house_style()
 from analysis.figure_id_vs_epsilon import (
-    DATASET_TO_MODULE,
-    DIANN_VERSIONS,
-    METRICS_CACHE_DIR,
-    SPECIES_EXPECTED_LOG2_A_vs_B,
-    _COMMUNITY_COMPARATOR_DATASETS,
-    _SPECIES_LABEL,
-    _VERSION_COLORS,
-    _VERSION_LABELS,
-    _dataset_display_label,
+    DATASET_TO_MODULE, SPECIES_EXPECTED_LOG2_A_vs_B, _COMMUNITY_COMPARATOR_DATASETS,
+    _VERSION_COLORS, _VERSION_LABELS, _SPECIES_LABEL, METRICS_CACHE_DIR,
     extract_qm_per_species_log2,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 COMMUNITY_DIR = REPO_ROOT / "data" / "quantmsdiann_benchmarks" / "proteobench"
-OUT = REPO_ROOT / "analysis" / "figures" / "manuscript" / "fig2_proteobench_equivalence.svg"
+OUT = REPO_ROOT / "analysis" / "figures" / "manuscript" / "fig1d_proteobench_accuracy.svg"
 
 SPECIES = ("HUMAN", "YEAST", "ECOLI")
-COMMUNITY_COLOR = fs.OKABE_ITO["grey"]
-# Per Vadim: showcase 1.8.1 vs 2.5.1 Enterprise only (the state-of-the-art
-# build); the free standard 2.5.1 is dropped from the comparison.
+GREY = fs.OKABE_ITO["grey"]
 VERSIONS = ("v1_8_1", "v2_5_1_enterprise")
+MARKER = {"ProteoBench_Module_7": "o", "PXD062685": "s"}
+MARKER_LABEL = {"ProteoBench_Module_7": "Astral (Module 7)", "PXD062685": "timsTOF diaPASEF"}
 
 
-def _community_entries(dataset: str, threshold: int) -> list[dict]:
-    path = COMMUNITY_DIR / f"{dataset}.json"
-    if not path.exists():
-        return []
-    with open(path, encoding="utf-8") as fh:
-        payload = json.load(fh)
+def diann_community(dataset: str, threshold: int = 3) -> list[dict]:
+    """Standalone DIA-NN, predicted-from-FASTA submissions (ALL versions).
+
+    Only DIA-NN entries with DIA-NN-predicted libraries are kept, so other
+    ProteoBench tools (AlphaDIA, Spectronaut, ...) and user-supplied-library
+    runs are excluded — the grey cloud is literally standalone DIA-NN.
+    """
+    payload = json.load(open(COMMUNITY_DIR / f"{dataset}.json", encoding="utf-8"))
     out = []
-    for entry in payload:
-        res = entry.get("results", {}).get(str(threshold))
-        if isinstance(res, dict):
-            out.append(res)
+    for e in payload:
+        if str(e.get("software_name", "")).strip().upper() != "DIA-NN":
+            continue
+        pred = e.get("predictors_library")
+        if not (isinstance(pred, dict) and str(pred.get("RT", "")).upper() == "DIANN"):
+            continue
+        r = e.get("results", {}).get(str(threshold))
+        if isinstance(r, dict):
+            out.append(r)
     return out
 
 
-def _qm_ids_eps(dataset: str, threshold: int) -> list[tuple[str, float, float]]:
-    """(version, nr_prec, median_abs_epsilon_global) per quantms.io version,
-    in DIANN_VERSIONS order so the trajectory line reads 1.8.1 -> 2.5.1 -> ent."""
-    rows = []
-    for ver in VERSIONS:
-        p = METRICS_CACHE_DIR / f"{dataset}_{ver}.json"
-        if not p.exists():
-            continue
-        res = json.load(open(p, encoding="utf-8")).get("results", {}).get(str(threshold), {})
-        n, e = res.get("nr_prec"), res.get("median_abs_epsilon_global")
-        if n is not None and e is not None:
-            rows.append((ver, float(n), float(e)))
-    return rows
-
-
-def _per_species(ax, dataset, threshold):
-    module = DATASET_TO_MODULE[dataset]
-    expected = SPECIES_EXPECTED_LOG2_A_vs_B.get(module, {})
-    comm = _community_entries(dataset, threshold)
-    qm = extract_qm_per_species_log2(dataset, threshold)
-    qm = qm[qm["version"].isin(VERSIONS)]
-    present = [s for s in SPECIES if s in expected]
+def draw(ax, threshold: int = 3, *, with_legend: bool = True, compact: bool = False,
+         square: bool = True) -> None:
+    """Draw the accuracy concordance into `ax` (reused by the Fig 2 row)."""
+    datasets = list(_COMMUNITY_COMPARATOR_DATASETS)
     rng = np.random.default_rng(0)
-    for x, sp in enumerate(present):
-        ax.hlines(expected[sp], x - 0.34, x + 0.34, color="#444444",
-                  linestyle="--", linewidth=1.0, zorder=1)
-        cvals = [r.get(f"median_log2_empirical_{sp}") for r in comm]
-        cvals = [v for v in cvals if isinstance(v, (int, float)) and not pd.isna(v)]
-        if cvals:
-            jit = rng.uniform(-0.13, 0.13, len(cvals))
-            ax.scatter([x - 0.18 + j for j in jit], cvals, s=22,
-                       color=COMMUNITY_COLOR, alpha=0.55, edgecolors="none", zorder=2)
-        sub = qm[qm["species"] == sp]
-        for _, row in sub.iterrows():
-            ax.scatter(x + 0.18, row["mean_log2_empirical"], s=70,
-                       color=_VERSION_COLORS.get(row["version"], "#d62728"),
-                       edgecolors="white", linewidths=0.7, zorder=3)
-    ax.set_xticks(range(len(present)))
-    ax.set_xticklabels([f"{_SPECIES_LABEL[s]}\n(log2={expected[s]:+.2g})" for s in present])
-    ax.set_ylabel("Observed log2 fold-change")
+    lab = 9 if compact else None
+    for ds in datasets:
+        module = DATASET_TO_MODULE[ds]
+        expected = SPECIES_EXPECTED_LOG2_A_vs_B.get(module, {})
+        comm = diann_community(ds, threshold)
+        qm = extract_qm_per_species_log2(ds, threshold)
+        qm = qm[qm["version"].isin(VERSIONS)]
+        for sp in SPECIES:
+            if sp not in expected:
+                continue
+            x = expected[sp]
+            cv = [c.get(f"median_log2_empirical_{sp}") for c in comm]
+            cv = [v for v in cv if isinstance(v, (int, float)) and not np.isnan(v)]
+            ax.scatter(x + rng.uniform(-0.05, 0.05, len(cv)), cv, s=22, color=GREY,
+                       alpha=0.5, edgecolors="none", zorder=2)
+            for _, r in qm[qm["species"] == sp].iterrows():
+                ax.scatter(x, r["median_log2_empirical"], s=80, marker=MARKER[ds],
+                           color=_VERSION_COLORS.get(r["version"], "#d62728"),
+                           edgecolors="white", linewidths=0.8, zorder=3)
+    lim = [-2.7, 1.7]
+    ax.plot(lim, lim, "--", color="#444444", linewidth=1.1, zorder=1)
+    ax.set_xlim(*lim); ax.set_ylim(*lim)
+    if square:
+        ax.set_aspect("equal")
+    ax.set_xlabel("Expected log$_2$ ratio (ProteoBench)", fontsize=lab)
+    ax.set_ylabel("Observed log$_2$ ratio", fontsize=lab)
+    if compact:
+        ax.tick_params(labelsize=8)
     fs.despine(ax)
 
+    if with_legend:
+        # short labels, placed in the empty upper-left triangle (points sit on
+        # the diagonal), so the legend never overlaps the data.
+        handles = [Line2D([0], [0], linestyle="--", color="#444444", label="Y = X"),
+                   Line2D([0], [0], marker="o", linestyle="none", ms=7, markerfacecolor=GREY,
+                          markeredgecolor="none", label="standalone DIA-NN")]
+        for ver in VERSIONS:
+            handles.append(Line2D([0], [0], marker="o", linestyle="none", ms=7,
+                           markerfacecolor=_VERSION_COLORS.get(ver, "#d62728"), markeredgecolor="white",
+                           label=f"quantms-diann {_VERSION_LABELS.get(ver, ver)}"))
+        ax.legend(handles=handles, loc="upper left", fontsize=6.5 if compact else 8,
+                  frameon=False, handletextpad=0.3, borderaxespad=0.2, labelspacing=0.3)
 
-def _ids_vs_eps(ax, dataset, threshold):
-    """Depth vs accuracy: precursors (x) against median |eps| (y). Community
-    submissions as a grey cloud; quantms.io versions as a coloured trajectory
-    (1.8.1 -> 2.5.1 -> Enterprise) — moving RIGHT (more IDs) at near-constant
-    height (accuracy), so the depth-for-accuracy tradeoff reads correctly."""
-    comm = _community_entries(dataset, threshold)
-    pts = [(r.get("nr_prec"), r.get("median_abs_epsilon_global")) for r in comm]
-    pts = [(n, e) for n, e in pts
-           if isinstance(n, (int, float)) and isinstance(e, (int, float))
-           and not pd.isna(n) and not pd.isna(e)]
-    if pts:
-        ax.scatter([p[0] for p in pts], [p[1] for p in pts], s=26,
-                   color=COMMUNITY_COLOR, alpha=0.55, edgecolors="none", zorder=2)
-    qm = _qm_ids_eps(dataset, threshold)
-    if qm:
-        ax.plot([q[1] for q in qm], [q[2] for q in qm], color="#999999",
-                linewidth=1.0, zorder=2)
-        for ver, n, e in qm:
-            ax.scatter(n, e, s=85, color=_VERSION_COLORS.get(ver, "#d62728"),
-                       edgecolors="white", linewidths=0.8, zorder=3)
-    fs.kfmt_axis(ax.xaxis)
-    ax.set_xlabel("Precursors quantified (≥3 rep)")
-    ax.set_ylabel("Median |ε|  (lower = more accurate)")
+
+SHAPE_BY_VERSION = {"v1_8_1": "o", "v2_5_1_enterprise": "^"}
+
+
+def draw_strip(ax, threshold: int = 3, *, compact: bool = False,
+               dataset_colors: dict | None = None) -> None:
+    """Per-species accuracy strip+box: one group per HYE species, community runs
+    as a jittered grey strip + box (every dot visible), the ProteoBench-expected
+    ratio as a dashed line, quantms-diann as large markers. Shows the same
+    accuracy/equivalence as the concordance plot but with the community dots
+    clearly spread out instead of stacked on the diagonal."""
+    datasets = list(_COMMUNITY_COMPARATOR_DATASETS)
+    exp: dict[str, float] = {}
+    for ds in datasets:
+        exp.update(SPECIES_EXPECTED_LOG2_A_vs_B.get(DATASET_TO_MODULE[ds], {}))
+    order = sorted([s for s in SPECIES if s in exp], key=lambda s: exp[s])  # ECOLI,-HUMAN,YEAST
+    lab = 8 if compact else None
+    rng = np.random.default_rng(0)
+    for x, sp in enumerate(order):
+        ax.hlines(exp[sp], x - 0.42, x + 0.42, color="#444444", linestyle="--",
+                  linewidth=1.2, zorder=1)
+        cv = []
+        for ds in datasets:
+            cv += [c.get(f"median_log2_empirical_{sp}") for c in diann_community(ds, threshold)]
+        cv = [v for v in cv if isinstance(v, (int, float)) and not np.isnan(v)]
+        if cv:
+            bp = ax.boxplot([cv], positions=[x], widths=0.62, showfliers=False,
+                            patch_artist=True, zorder=2)
+            for b in bp["boxes"]:
+                b.set(facecolor="#eeeeee", edgecolor="#9e9e9e", linewidth=0.8)
+            for w in bp["whiskers"] + bp["caps"]:
+                w.set(color="#9e9e9e", linewidth=0.8)
+            for med in bp["medians"]:
+                med.set(color="#9e9e9e", linewidth=1.0)
+            ax.scatter(x + rng.uniform(-0.24, 0.24, len(cv)), cv, s=16, color=GREY,
+                       alpha=0.6, edgecolors="white", linewidths=0.3, zorder=3)
+        for di, ds in enumerate(datasets):
+            qm = extract_qm_per_species_log2(ds, threshold)
+            qm = qm[qm["species"] == sp]
+            qm = qm[qm["version"].isin(VERSIONS)]
+            # colour = instrument/dataset (defined once in the figure's main
+            # instrument legend); shape = quantms-diann version.
+            colour = (dataset_colors or {}).get(ds)
+            ds_dx = -0.05 if di == 0 else 0.05
+            for _, r in qm.iterrows():
+                ver = r["version"]
+                ver_dx = -0.13 if ver == VERSIONS[0] else 0.13
+                ax.scatter(x + ver_dx + ds_dx, r["median_log2_empirical"], s=34,
+                           marker=SHAPE_BY_VERSION.get(ver, "o"),
+                           color=colour or _VERSION_COLORS.get(ver, "#d62728"),
+                           edgecolors="black", linewidths=0.6, zorder=4)
+    ax.set_xticks(range(len(order)))
+    ax.set_xticklabels([f"{_SPECIES_LABEL[s]}\n(exp. {exp[s]:+g})" for s in order], fontsize=lab)
+    ax.set_ylabel("Observed log$_2$ ratio", fontsize=lab)
+    ax.set_xlim(-0.6, len(order) - 0.4)
+    if compact:
+        ax.tick_params(labelsize=8)
     fs.despine(ax)
+    # Minimal key: colours (= instrument/dataset) are read from the figure's
+    # main instrument legend; here we only define the line, the community dots,
+    # and the SHAPE = quantms-diann version.
+    handles = [Line2D([0], [0], linestyle="--", color="#444444", label="ProteoBench expected"),
+               Line2D([0], [0], marker="o", linestyle="none", ms=7, markerfacecolor=GREY,
+                      markeredgecolor="white", label="standalone DIA-NN")]
+    for ver in VERSIONS:
+        handles.append(Line2D([0], [0], marker=SHAPE_BY_VERSION.get(ver, "o"), linestyle="none",
+                       ms=7, markerfacecolor="#666666", markeredgecolor="black",
+                       label=f"quantms-diann {_VERSION_LABELS.get(ver, ver)}"))
+    ax.legend(handles=handles, loc="upper left", fontsize=6.5 if compact else 8,
+              frameon=False, handletextpad=0.3, labelspacing=0.3, ncol=1)
 
 
 def render(out: Path, threshold: int = 3) -> Path:
-    datasets = list(_COMMUNITY_COMPARATOR_DATASETS)
-    fig, axes = plt.subplots(2, len(datasets), figsize=(4.6 * len(datasets), 7.6))
-    for j, ds in enumerate(datasets):
-        title = _dataset_display_label(ds).splitlines()[0]
-        _per_species(axes[0, j], ds, threshold)
-        axes[0, j].set_title(title)
-        _ids_vs_eps(axes[1, j], ds, threshold)
-
-    # version legend + community
-    handles = [Line2D([0], [0], marker="o", linestyle="none", markersize=8,
-               markerfacecolor=COMMUNITY_COLOR, markeredgecolor="none",
-               label="single-machine community (ProteoBench)")]
-    for ver in VERSIONS:
-        if any((METRICS_CACHE_DIR / f"{ds}_{ver}.json").exists() for ds in datasets):
-            handles.append(Line2D([0], [0], marker="o", linestyle="none", markersize=8,
-                           markerfacecolor=_VERSION_COLORS.get(ver, "#d62728"),
-                           markeredgecolor="white",
-                           label=f"quantms.io DIA-NN {_VERSION_LABELS.get(ver, ver)}"))
-    fig.legend(handles=handles, loc="upper center", ncol=min(4, len(handles)),
-               bbox_to_anchor=(0.5, 1.01), fontsize=8)
-
-    fig.text(0.01, 0.71, "A  accuracy per concentration", rotation=90,
-             va="center", fontsize=11, fontweight="bold")
-    fig.text(0.01, 0.28, "B  depth vs accuracy", rotation=90,
-             va="center", fontsize=11, fontweight="bold")
-    fig.tight_layout(rect=(0.03, 0, 1, 0.95))
+    fig, ax = plt.subplots(figsize=(5.4, 5.0))
+    draw(ax, threshold)
+    fig.tight_layout()
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out)
     plt.close(fig)
