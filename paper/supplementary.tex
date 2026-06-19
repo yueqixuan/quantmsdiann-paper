@@ -132,19 +132,31 @@ These figures decompose the end-to-end wall-clock and resource use reported in m
 
 \begin{figure}[htbp]
   \centering
-  \mcpincludegraphics[width=\textwidth,height=\mcpmaxfigheight,keepaspectratio]{performance/runtime_per_step}
+  \textbf{(a)}\par\vspace{0.1em}
+  \mcpincludegraphics[width=\textwidth,height=0.5\mcpmaxfigheight,keepaspectratio]{performance/runtime_per_step}\par
+  \vspace{0.6em}
+  \textbf{(b)}\par\vspace{0.1em}
+  \mcpincludegraphics[width=0.82\textwidth,keepaspectratio]{performance/mdc_cluster_runtime}
   \caption[Per-step runtime]{%
-    \textbf{Per-step wall-clock distribution across Nextflow processes.}
-    Distribution of task wall-clock time (boxplot, median and IQR) for each
-    \quantmsdiann{} process across the ProteoBench benchmark cohorts and the
-    PXD071075 cluster-node sweep. The per-file parallel stages
-    (\texttt{FILE\_PREPARATION}, \texttt{PRELIMINARY\_ANALYSIS},
+    \textbf{Per-step wall-clock distribution across Nextflow processes, on the
+    EBI cluster and on an independent third-party cluster.}
+    (\textbf{a})~Distribution of task wall-clock time (boxplot, median and IQR)
+    for each \quantmsdiann{} process across the ProteoBench benchmark cohorts
+    and the PXD071075 cluster-node sweep on the EBI HPC cluster. The per-file
+    parallel stages (\texttt{FILE\_PREPARATION}, \texttt{PRELIMINARY\_ANALYSIS},
     \texttt{INDIVIDUAL\_ANALYSIS}) run as one task per raw file and determine
     the workflow's parallelisation envelope, while the collective stages
     (\texttt{INSILICO\_LIBRARY\_GENERATION},
     \texttt{ASSEMBLE\_EMPIRICAL\_LIBRARY}, \texttt{FINAL\_QUANTIFICATION},
     \texttt{DIANN\_MSSTATS}) run once per cohort and set the wall-clock floor
     at maximum cluster width.
+    (\textbf{b})~The same per-step breakdown for a \quantmsdiann{} run executed
+    independently by a different group on a non-EBI SLURM cluster (Max
+    Delbr\"{u}ck Center, Berlin; 279 raw files, \texttt{DIA-NN}~2.5.0,
+    \quantmsdiann{}~v2.1.0 under the Singularity profile; total wall-clock
+    7~h~49~m). The same parallel/collective process structure holds on
+    third-party infrastructure without modification, illustrating the
+    portability of the SDRF-driven, container-pinned workflow.
   }
   \label{fig:runtime-per-step}
 \end{figure}

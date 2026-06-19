@@ -18,6 +18,7 @@ SVGS := \
 	manuscript/fig_reanalysis_improvement.svg \
 	manuscript/fig4_cellline_atlas.svg \
 	performance/runtime_per_step.svg \
+	performance/mdc_cluster_runtime.svg \
 	performance/resources_per_step.svg \
 	quantmsdiann_benchmarks/main_benchmarks_proteins.svg \
 	quantmsdiann_benchmarks/supplementary/supp_benchmarks_proteins_complete.svg \

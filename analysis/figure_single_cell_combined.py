@@ -51,6 +51,8 @@ VERS = ["1_8_1", "2_5_1_enterprise"]
 VLAB = {"1_8_1": "1.8.1", "2_5_1_enterprise": "2.5.1 Enterprise"}
 VCOL = {v: fs.VERSION_COLORS[v] for v in VERS}
 ACC = {"HeLa Astral SC": "PXD046357", "HeLa One-Tip": "PXD044991"}
+# accession by the short panel label (Astral / One-Tip) used in the merged panel
+ACC_SHORT = {"Astral": "PXD046357", "One-Tip": "PXD044991"}
 FLAG = "HeLa Astral SC"
 FLAG_T = f"HeLa Astral SC\n({ACC[FLAG]})"
 # plexDIA (Galatidou 2024) protein groups, deposited vs quantms.io reanalysis —
@@ -241,7 +243,7 @@ def _merged(ax):
     ax.axvline(prot_x[dsx[-1]] + 0.7, color="#cccccc", linewidth=0.8)
     ticks = [prec_x[d] for d in dsx] + [prot_x[d] for d in dsx] + [cell_x[d] for d in dsx]
     ax.set_xticks(ticks)
-    ax.set_xticklabels([d.replace("HeLa ", "").replace(" SC", "") for d in dsx] * 3, fontsize=10)
+    ax.set_xticklabels([f"{ACC_SHORT.get(d, d)}\n({d})" for d in dsx] * 3, fontsize=8.5)
     ax.set_xlim(-0.7, cell_x[dsx[-1]] + 0.7)
     ax.set_ylabel("precursors"); ax2.set_ylabel("protein groups")
     ax.set_ylim(0, 27000); ax2.set_ylim(0, 5400)
@@ -267,8 +269,8 @@ def render(out: Path) -> Path:
     _merged(ax_merged); _completeness(ax_comp); _cv(ax_cv)
     handles = [Line2D([0], [0], color=VCOL[v], marker="o", linewidth=2, markersize=8,
                label=f"DIA-NN {VLAB[v]}") for v in VERS]
-    handles += [Line2D([0], [0], color="#555555", linestyle="-", linewidth=2, label="HeLa Astral (PXD046357)"),
-                Line2D([0], [0], color="#555555", linestyle="--", linewidth=2, label="HeLa One-Tip (PXD044991)")]
+    handles += [Line2D([0], [0], color="#555555", linestyle="-", linewidth=2, label="PXD046357 (HeLa Astral)"),
+                Line2D([0], [0], color="#555555", linestyle="--", linewidth=2, label="PXD044991 (One-Tip)")]
     fig.legend(handles=handles, loc="upper center", ncol=4, bbox_to_anchor=(0.5, 1.01), fontsize=11)
     for a, lab in zip([ax_merged, ax_comp, ax_cv], "ABC"):
         a.text(-0.06, 1.05, lab, transform=a.transAxes, fontsize=17, fontweight="bold", va="bottom", ha="right")

@@ -65,8 +65,8 @@ def _panel(ax, df, orig_col, new_col, xlabel):
         ax.text(xmax * 1.17, i, f"+{row['gain'] * 100:.0f}%",
                 va="center", ha="right", fontsize=10, fontweight="bold", color=vcol)
     ax.set_yticks(range(len(df)))
-    ax.set_yticklabels([f"{r['label']}\n{r['original_engine']} → DIA-NN {r['diann_version']}"
-                        for _, r in df.iterrows()], fontsize=8.5)
+    ax.set_yticklabels([f"{r['dataset']} ({r['label']})\n{r['original_engine']} → DIA-NN {r['diann_version']}"
+                        for _, r in df.iterrows()], fontsize=8.0)
     ax.set_xlabel(xlabel, fontsize=10)
     ax.set_xlim(0, xmax * 1.20)
     ax.set_ylim(-0.7, len(df) - 0.3)
