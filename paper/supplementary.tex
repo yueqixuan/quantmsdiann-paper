@@ -132,11 +132,16 @@ These figures decompose the end-to-end wall-clock and resource use reported in m
 
 \begin{figure}[htbp]
   \centering
-  \textbf{(a)}\par\vspace{0.1em}
-  \mcpincludegraphics[width=\textwidth,height=0.5\mcpmaxfigheight,keepaspectratio]{performance/runtime_per_step}\par
-  \vspace{0.6em}
-  \textbf{(b)}\par\vspace{0.1em}
-  \mcpincludegraphics[width=0.82\textwidth,keepaspectratio]{performance/mdc_cluster_runtime}
+  \begin{minipage}[t]{0.49\textwidth}
+    \centering
+    \textbf{(a)}\par\vspace{0.1em}
+    \mcpincludegraphics[width=\textwidth,keepaspectratio]{performance/runtime_per_step}
+  \end{minipage}\hfill
+  \begin{minipage}[t]{0.49\textwidth}
+    \centering
+    \textbf{(b)}\par\vspace{0.1em}
+    \mcpincludegraphics[width=\textwidth,keepaspectratio]{performance/mdc_cluster_runtime}
+  \end{minipage}
   \caption[Per-step runtime]{%
     \textbf{Per-step wall-clock distribution across Nextflow processes, on the
     EBI cluster and on an independent third-party cluster.}

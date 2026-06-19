@@ -940,15 +940,19 @@ def render_per_step_boxplot(
     durations: dict[str, list[float]],
     summary: pd.DataFrame,
     svg_path: Path,
+    fig_h: float | None = None,
 ) -> None:
     """Horizontal box plot of per-task durations, one row per step, ordered
-    by descending median."""
+    by descending median. `fig_h` overrides the auto-scaled figure height
+    (used to match a companion panel's height when placed side by side)."""
     # Step order: descending median (same as summary).
     steps = summary["step"].tolist()
     data = [durations[s] for s in steps]
 
-    # Figure height scales with the number of steps so labels don't clip.
-    fig_h = max(3.5, 0.45 * len(steps) + 1.5)
+    # Figure height scales with the number of steps so labels don't clip,
+    # unless an explicit height is requested for panel alignment.
+    if fig_h is None:
+        fig_h = max(3.5, 0.45 * len(steps) + 1.5)
     fig, ax = plt.subplots(figsize=(8.0, fig_h))
 
     # Box-plot with whiskers at the 5th/95th percentile, individual outlier
