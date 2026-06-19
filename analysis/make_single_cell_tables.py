@@ -134,8 +134,7 @@ def build() -> dict[str, pd.DataFrame]:
             totals.append((ds, version, c["prec_min1_tgt"], int(pgrun["Protein.Group"].nunique())))
             for run, g in pgrun.groupby("Run"):
                 per_cell.append((ds, version, int(g["Protein.Group"].nunique())))
-            if ds != FLAG:
-                continue
+            # completeness + CV for BOTH datasets (panels B, C now show both).
             n_runs = pgrun["Run"].nunique()
             seen = pgrun.groupby("Protein.Group")["Run"].nunique()
             for mc in range(1, n_runs + 1):
@@ -143,20 +142,22 @@ def build() -> dict[str, pd.DataFrame]:
             q = pgrun.dropna(subset=["PG.MaxLFQ"]).copy()
             q["PG.MaxLFQ"] = pd.to_numeric(q["PG.MaxLFQ"], errors="coerce")
             q = q[q["PG.MaxLFQ"] > 0]
-            mean_int = q.groupby("Protein.Group")["PG.MaxLFQ"].mean().sort_values(ascending=False)
-            for i, val in enumerate(mean_int.values, start=1):
-                if i == 1 or i % 10 == 0:
-                    rank.append((version, i, float(np.log10(val))))
             agg = q.groupby("Protein.Group")["PG.MaxLFQ"].agg(["mean", "std", "count"])
             agg = agg[agg["count"] >= 3]
             for _, r in agg.iterrows():
                 if r["mean"] > 0 and not np.isnan(r["std"]):
-                    cv.append((version, float(r["std"] / r["mean"])))
+                    cv.append((ds, version, float(r["std"] / r["mean"])))
+            # rank/dynamic-range kept for the flagship only (panel retired).
+            if ds == FLAG:
+                mean_int = q.groupby("Protein.Group")["PG.MaxLFQ"].mean().sort_values(ascending=False)
+                for i, val in enumerate(mean_int.values, start=1):
+                    if i == 1 or i % 10 == 0:
+                        rank.append((version, i, float(np.log10(val))))
     return {
         "mv_per_cell.tsv": pd.DataFrame(per_cell, columns=["dataset", "version", "pg_count"]),
         "mv_completeness.tsv": pd.DataFrame(completeness, columns=["dataset", "version", "min_cells", "n_proteins"]),
         "mv_rank_abundance.tsv": pd.DataFrame(rank, columns=["version", "rank", "log10_intensity"]),
-        "mv_cv.tsv": pd.DataFrame(cv, columns=["version", "cv"]),
+        "mv_cv.tsv": pd.DataFrame(cv, columns=["dataset", "version", "cv"]),
         "sc_totals.tsv": pd.DataFrame(totals, columns=["dataset", "version", "precursors", "proteins"]),
     }
 

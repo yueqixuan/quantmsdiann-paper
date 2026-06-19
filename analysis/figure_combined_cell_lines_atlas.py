@@ -2420,9 +2420,9 @@ def main() -> int:  # pragma: no cover
     # tissue_rows. Numbers verified 2026-06-14.
     panel_a_headlines = {
         "PXD003539": DatasetHeadline(
-            4284, 6328, "Guo 2019 (OpenSWATH)", "Protein groups (>=2 peptides)"),
+            4284, 6592, "Guo 2019 (OpenSWATH)", "Protein groups (>=2 peptides)"),
         "PXD030304": DatasetHeadline(
-            6692, 8166, "ProCan 2022", "Protein groups (>=2 peptides)"),
+            6692, 8645, "ProCan 2022", "Protein groups (>=2 peptides)"),
     }
     # Panels b/c: curate to the most-represented tissues for resolution
     # (tissue_rows is pre-sorted by combined cell-line count, descending).
@@ -2437,6 +2437,14 @@ def main() -> int:  # pragma: no cover
         tissue_protein_rows=tissue_protein_rows_top,
     )
     print(f"  saved: {main_svg}")
+    # Also publish to the manuscript figure path used by the LaTeX build
+    # (Supplementary Fig. S13 / fig4_cellline_atlas), so a fresh checkout
+    # regenerates the included SVG directly without a manual copy.
+    import shutil
+    manuscript_svg = REPO_ROOT / "analysis" / "figures" / "manuscript" / "fig4_cellline_atlas.svg"
+    manuscript_svg.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(main_svg, manuscript_svg)
+    print(f"  saved: {manuscript_svg}")
 
     print("Writing combined counts.tsv...")
     data_dir = FIGURES_DIR / "data"

@@ -15,6 +15,7 @@ BUILD_DIR := build
 SVGS := \
 	manuscript/fig2_validation.svg \
 	manuscript/fig3_single_cell_combined.svg \
+	manuscript/fig_reanalysis_improvement.svg \
 	manuscript/fig4_cellline_atlas.svg \
 	performance/runtime_per_step.svg \
 	performance/resources_per_step.svg \
@@ -28,6 +29,7 @@ SVGS := \
 	PXD030304/supp_missing_values_per_run.svg \
 	PXD030304/supp_proteins_per_tissue.svg \
 	plexDIA/MSV000093870/main_galatidou_comparison.svg \
+	plexDIA/MSV000093870/main_galatidou_qc_matched.svg \
 	supplementary/supp_phospho.svg
 
 PDF_TARGETS := $(addprefix $(FIG_PDF)/,$(SVGS:.svg=.pdf)) \

@@ -62,13 +62,21 @@ BAR_DATASETS = [
     "PXD049692 NK-phospho",
 ]
 
-# Panel C -- PXD049692 deposited (Spectronaut directDIA) vs quantms.io DIA-NN
-# 2.5.1 Enterprise, distinct stripped phosphopeptide backbones on the shared
-# 10 runs at 1% FDR. Original from the deposited *_PH_Report.tsv (cached in
-# analysis/figures/PXD049692/counts.tsv); reanalysis from the cluster Enterprise
-# diann_report.parquet (Stripped.Sequence, UniMod:21, Q & Global.Q <= 0.01).
-PXD049692_DEPOSITED = 4254
-PXD049692_QUANTMSDIANN = 5347
+# Panel C -- PXD049692 deposited (Spectronaut directDIA) vs quantmsdiann DIA-NN
+# 2.5.1-enterprise, distinct stripped phosphopeptide backbones on the shared
+# 10 runs at 1% FDR. Both read from the auditable cache
+# analysis/figures/PXD049692/counts.tsv (deposited from the *_PH_Report.tsv;
+# reanalysis recomputed from the published quantmsdiann-benchmarks parquet:
+# distinct Stripped.Sequence with a Phospho/UniMod:21 mod at Global.Q<=0.01).
+def _phospho_backbones():
+    import pandas as pd
+    df = pd.read_csv(FIGURES_DIR_049692 / "counts.tsv", sep="\t").set_index("metric")
+    r = df.loc["phosphopeptides_stripped"]
+    return int(r["original_spectronaut"]), int(r[[c for c in df.columns if c.startswith("quantmsdiann")][0]])
+
+
+FIGURES_DIR_049692 = REPO_ROOT / "analysis" / "figures" / "PXD049692"
+PXD049692_DEPOSITED, PXD049692_QUANTMSDIANN = _phospho_backbones()
 
 
 def _short(label: str) -> str:

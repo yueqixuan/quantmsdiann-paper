@@ -41,13 +41,32 @@ from analysis.figure_pxd030304_procan_vs_quantmsdiann import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-# Inputs are staged from the fresh DIA-NN 2.5.1 run
-# (absolute-expression/cell-lines-proteomes/PXD004701) into data/PXD004701/
-# (filesystem only, no FTP); the per-subtype consistency filter over the
-# multi-GB report.parquet is precomputed on the cluster and staged as
-# diann_per_subtype_consistency_filter.json.
+# Core inputs (diannsummary.log + pg/pr matrices) are pulled from the published
+# PRIDE FTP reanalysis (DIA-NN 2.5.1). The per-subtype consistency filter over
+# the multi-GB report.parquet is precomputed and staged as
+# diann_per_subtype_consistency_filter.json (cluster), as is the SDRF.
 DATA_DIR = REPO_ROOT / "data" / "PXD004701"
 FIGURES_DIR = REPO_ROOT / "analysis" / "figures" / "PXD004701"
+FTP_QUANT_BASE = (
+    "https://ftp.pride.ebi.ac.uk/pub/databases/pride/resources/proteomes/"
+    "quantmsdiann-benchmarks/cell-lines/PXD004701/v2_5_1/quant_tables"
+)
+
+
+def _stage_from_ftp() -> None:
+    """Download the small core reanalysis files from the PRIDE FTP into
+    DATA_DIR if not already present (so a fresh checkout can render the
+    headline counts without cluster access)."""
+    import urllib.request
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    for name in ("diannsummary.log", "diann_report.pg_matrix.tsv",
+                 "diann_report.pr_matrix.tsv"):
+        dest = DATA_DIR / name
+        if dest.exists() and dest.stat().st_size > 0:
+            continue
+        print(f"  staging {name} from FTP ...", file=sys.stderr)
+        with urllib.request.urlopen(f"{FTP_QUANT_BASE}/{name}", timeout=900) as r:
+            dest.write_bytes(r.read())
 
 # Headline constants from Sun et al. 2023 (MCP).
 SUN_PROTEINS = 6091           # global 1% Global.Q.Value + <=90% missing
@@ -676,9 +695,11 @@ def write_counts_tsv(
 def main() -> int:  # pragma: no cover
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+    _stage_from_ftp()
 
-    # Filesystem only: the small quant_tables/ + sdrf files are staged from the
-    # fresh DIA-NN 2.5.1 run under data/PXD004701/ (no FTP). The heavy
+    # Core files come from the PRIDE FTP (staged above); the per-subtype
+    # consistency filter over the multi-GB report.parquet is precomputed and
+    # staged as a JSON under data/PXD004701/. The heavy
     # per-subtype consistency filter over the multi-GB report.parquet is
     # precomputed on the cluster and staged as
     # diann_per_subtype_consistency_filter.json (see _compute_or_load...).

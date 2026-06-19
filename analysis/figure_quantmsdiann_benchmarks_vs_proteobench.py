@@ -1,7 +1,7 @@
 """quantmsdiann vs ProteoBench benchmarks figure.
 
 Each of the four ProteoBench benchmark datasets has been processed through
-quantmsdiann using five DIA-NN versions (1.8.1 -> 2.5.0). This script:
+quantmsdiann across DIA-NN versions (1.8.1, 2.5.1, 2.5.1-enterprise). This script:
 
 - Pulls each version's `diann_report.{pr,pg}_matrix.tsv` from PRIDE FTP
   (cached on disk).

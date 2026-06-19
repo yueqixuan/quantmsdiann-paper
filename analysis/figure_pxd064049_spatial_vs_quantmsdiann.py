@@ -1,20 +1,19 @@
 #!/usr/bin/env python
 """PXD064049 (CHP-212 MYCN Deep Visual Proteomics, diaPASEF) reanalysis:
-quantmsdiann (DIA-NN 2.5.0, library-free) versus the originally deposited
+quantmsdiann (DIA-NN 2.5.1-enterprise, library-free, plain FASTA) versus the originally deposited
 DIA-NN 1.8.1 analysis on the identical 12 DVP runs.
 
 The original analysis (PRIDE PXD064049) used DIA-NN 1.8.1 library-free with a
-plain human FASTA; quantmsdiann re-ran the same raw files with DIA-NN 2.5.0
-against an entrapment+contaminant-augmented FASTA, which enforces an
-empirically-validated FDR. We therefore compare:
+plain human FASTA; quantmsdiann re-ran the same raw files with DIA-NN
+2.5.1-enterprise against the same plain (contaminant-only, NO entrapment)
+human FASTA, so both sides search the same space. We therefore compare:
 
-  * main_comparison.svg -- precursors and protein groups at 1% FDR. Precursors
-                           (least sensitive to the FASTA choice) are at parity
-                           (~99.5%); the quantmsdiann protein-group count is
-                           lower because its search used an entrapment-augmented
-                           FASTA. counts.tsv also records the entrapment hit
-                           rate (fraction of accepted ids mapping to entrapment
-                           sequences) as a measure of error control.
+  * main_comparison.svg -- precursors and protein groups at 1% FDR. The newer
+                           build recovers more of both (precursors 16,518 ->
+                           20,412, +24%; protein groups 2,882 -> 3,067, +6%).
+                           counts.tsv also records the entrapment hit rate
+                           (now 0, since the plain FASTA has no entrapment
+                           sequences) for audit parity with earlier runs.
 
 Run:  PYTHONPATH=. python -m analysis.figure_pxd064049_spatial_vs_quantmsdiann
 """
@@ -47,7 +46,7 @@ ORIG_COLOUR = "#9e9e9e"
 QM_COLOUR = "#1e88e5"
 
 _QB = ("https://ftp.pride.ebi.ac.uk/pub/databases/pride/resources/proteomes/"
-       "quantmsdiann-benchmarks/spatial/PXD064049/v2_5_0/quant_tables")
+       "quantmsdiann-benchmarks/spatial/PXD064049/v2_5_1_enterprise/quant_tables")
 _ORIG_ZIP = ("https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/07/"
              "PXD064049/DIANN_results.zip")
 
@@ -92,16 +91,40 @@ def _entrapment_hit_rate(matrix_path: Path) -> tuple[int, int, float]:
     return entrap, target, (100.0 * entrap / target if target else 0.0)
 
 
+def _qm_counts_parquet() -> tuple[int, int]:
+    """Count quantmsdiann precursors + protein groups from the DIA-NN report
+    PARQUET (not the pg/pr matrices), matching the canonical
+    `count_report_ids` logic Vadim specified: run-specific Q.Value <= 0.05
+    (DIA-NN 2.5.1 recommended per-version q-value), global precursor q <= 0.01,
+    protein groups counted at Global.PG.Q.Value <= 0.01, decoys dropped,
+    target-only (contaminant/entrapment prefixes excluded). Returns
+    (precursors, protein_groups). The parquet is the staged
+    `cache/qm_report.parquet` from the plain-FASTA 2.5.1-enterprise rerun."""
+    import pyarrow.parquet as pq
+    parq = _download(f"{_QB}/diann_report.parquet", CACHE_DIR / "qm_report.parquet")
+    cols = ["Precursor.Id", "Protein.Group", "Q.Value", "Global.Q.Value",
+            "Global.PG.Q.Value", "Decoy"]
+    have = set(pq.ParquetFile(parq).schema_arrow.names)
+    df = pd.read_parquet(parq, columns=[c for c in cols if c in have])
+    if "Decoy" in df.columns:
+        df = df[df["Decoy"] == 0]
+    df = df[(df["Q.Value"] <= 0.05) & (df["Global.Q.Value"] <= 0.01)]
+    df = df[df["Protein.Group"].astype(str).map(is_target_protein_group)]
+    prec = int(df["Precursor.Id"].nunique())
+    pg = int(df[df["Global.PG.Q.Value"] <= 0.01]["Protein.Group"].nunique())
+    return prec, pg
+
+
 def render_main_comparison(or_pr: int, qm_pr: int, or_pg: int, qm_pg: int,
                            svg_path: Path) -> None:
     """Main Fig.~3 panel (d): 2-condition x 2-metric grouped bar chart,
-    original (DIA-NN 1.8.1, grey) vs quantmsdiann (DIA-NN 2.5.0, blue), for
+    original (DIA-NN 1.8.1, grey) vs quantmsdiann (DIA-NN 2.5.1-enterprise, blue), for
     precursors and protein groups at 1% FDR. Matches the per-cohort
     `main_comparison` style of the other panels (log y if a metric's
     cross-condition spread exceeds 5x)."""
     conditions = [
         ("Original (DIA-NN 1.8.1)", ORIG_COLOUR, or_pr, or_pg),
-        ("quantmsdiann (DIA-NN 2.5.0)", QM_COLOUR, qm_pr, qm_pg),
+        ("quantmsdiann (DIA-NN 2.5.1-enterprise)", QM_COLOUR, qm_pr, qm_pg),
     ]
     metrics = ["Precursors", "Protein groups"]
     bar_width = 0.27
@@ -147,8 +170,10 @@ def _save(fig, svg_path: Path) -> None:
 def main() -> int:  # pragma: no cover
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 
-    qm_pr_t = count_target_precursors(_qm_matrix("pr"))[1]
-    qm_pg_t = count_target_protein_groups(_qm_matrix("pg"))[1]
+    # quantmsdiann side: count from the report PARQUET (Vadim's rule), not the
+    # matrices. Original (deposited DIA-NN 1.8.1) only ships matrices, so it
+    # stays matrix-counted (its own reported output).
+    qm_pr_t, qm_pg_t = _qm_counts_parquet()
     or_pr_t = count_target_precursors(_orig_matrix("pr"))[1]
     or_pg_t = count_target_protein_groups(_orig_matrix("pg"))[1]
     pr_entrap, _, pr_hit = _entrapment_hit_rate(_qm_matrix("pr"))
@@ -159,7 +184,7 @@ def main() -> int:  # pragma: no cover
 
     counts = FIGURES_DIR / "counts.tsv"
     counts.write_text(
-        "metric\toriginal_diann181\tquantmsdiann_diann250\t"
+        "metric\toriginal_diann181\tquantmsdiann_diann251_enterprise\t"
         "qm_entrapment_hits\tqm_entrapment_hit_pct\n"
         f"precursors\t{or_pr_t}\t{qm_pr_t}\t{pr_entrap}\t{pr_hit:.3f}\n"
         f"protein_groups\t{or_pg_t}\t{qm_pg_t}\t{pg_entrap}\t{pg_hit:.3f}\n"

@@ -24,7 +24,7 @@ FIGURES_DIR = REPO_ROOT / "analysis" / "figures" / "PXD003539"
 
 PRIDE_QUANT_BASE = (
     "https://ftp.pride.ebi.ac.uk/pub/databases/pride/resources/proteomes/"
-    "quantms-collections/absolute-expression-2.0/cell-lines/PXD003539/quant_tables"
+    "quantmsdiann-benchmarks/cell-lines/PXD003539/v2_5_1_enterprise/quant_tables"
 )
 PRIDE_SUBMISSION_BASE = (
     "https://ftp.pride.ebi.ac.uk/pride/data/archive/2020/06/PXD003539"

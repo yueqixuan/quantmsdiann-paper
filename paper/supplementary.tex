@@ -31,7 +31,7 @@
 \renewcommand{\thetable}{S\arabic{table}}
 \setcounter{table}{0}
 
-%% Number the prose sections as "Supplementary Note 1, 2, ..." (figures stay S1..S12,
+%% Number the prose sections as "Supplementary Note 1, 2, ..." (figures stay S1..S13,
 %% Table S1). Each \section{...} below therefore renders as a Supplementary Note.
 \renewcommand{\thesection}{Supplementary Note~\arabic{section}}
 %% Widen the table-of-contents number box so the long "Supplementary Note N"
@@ -122,7 +122,7 @@ A user with a valid \texttt{DIA-NN} download builds the image locally from the m
 \section{Identification filtering and protein counting}
 \label{sec:supp-filter}
 
-All identification counts reported in the cell-line reanalyses and pan-cohort (main-text Figs.~3 and~4 and Figs.~S4--S12 below) are target-only under a conservative contaminant/decoy filter: any row whose \texttt{Protein.Group} field contains a token prefixed with \texttt{CONTAM\_}, \texttt{Cont\_}, \texttt{ENTRAP\_}, or \texttt{DECOY\_} is dropped before counting, including mixed groups.
+All identification counts reported in the cell-line reanalyses and pan-cohort (main-text Figs.~3 and~4 and Figs.~S4--S13 below) are target-only under a conservative contaminant/decoy filter: any row whose \texttt{Protein.Group} field contains a token prefixed with \texttt{CONTAM\_}, \texttt{Cont\_}, \texttt{ENTRAP\_}, or \texttt{DECOY\_} is dropped before counting, including mixed groups.
 Original-paper headline counts were taken from the corresponding publication's table or text without re-filtering; where the original applied a per-protein peptide threshold (for example, the ProCan-DepMapSanger paper reports both an 8{,}498 protein-group headline at Global.Q.Value~$\leq 0.01$ and a 6{,}692 count under the additional $\geq 2$ supporting-peptide rule), the like-for-like \quantmsdiann{} count is reported under the same threshold.
 
 \section{Per-process runtime and resource envelopes}
@@ -208,13 +208,6 @@ number quantified in every run (``complete profiles'', panel~b).
 
 These figures complement main-text Fig.~4 with per-condition completeness, per-protein peptide counts, gene/accession overlap, and per-cell-line missingness for each reanalysed cohort.
 
-%% NOTE: The previous PXD003539 "genes per condition" panel sourced its
-%% original-paper comparator from Walzer 2022 (E-PROT-73) rather than from
-%% the Guo 2019 OpenSWATH analysis that the main-text PXD003539 reanalysis
-%% uses, so the panel was not on the same comparator axis as main-text
-%% Fig. 3a. The panel has been removed pending a Guo-2019-based replacement;
-%% downstream Fig. S5 numbering has shifted accordingly.
-
 \begin{figure}[htbp]
   \centering
   \mcpincludegraphics[width=\textwidth,height=\mcpmaxfigheight,keepaspectratio]{PXD003539/supp_peptides_per_protein}
@@ -269,7 +262,9 @@ These figures complement main-text Fig.~4 with per-condition completeness, per-p
 
 \begin{figure}[htbp]
   \centering
-  \mcpincludegraphics[width=\textwidth,keepaspectratio]{plexDIA/MSV000093870/main_galatidou_comparison}
+  \mcpincludegraphics[width=\textwidth,keepaspectratio]{plexDIA/MSV000093870/main_galatidou_comparison}\par
+  \vspace{0.6em}
+  \mcpincludegraphics[width=0.7\textwidth,keepaspectratio]{plexDIA/MSV000093870/main_galatidou_qc_matched}
   \caption[MSV000093870 single-cell plexDIA reanalysis]{%
     \textbf{MSV000093870 (Galatidou 2024, single-cell oocyte plexDIA):
     \quantmsdiann{} reanalysis versus the original.}
@@ -282,7 +277,10 @@ These figures complement main-text Fig.~4 with per-condition completeness, per-p
     originally reported protein groups recovered (1{,}999 of 2{,}122) plus 905
     detected only by \quantmsdiann{}. (Expanding \quantmsdiann{}'s protein groups
     to all member accessions gives 3{,}552 accessions, but the overlap here is
-    computed group-to-group so both sides use the same entity.) This figure
+    computed group-to-group so both sides use the same entity.)
+    (\textbf{d})~QC-matched per-oocyte comparison: with the two analyses
+    restricted to the same 97 cells, per-cell protein-group depth is equivalent
+    (median 1{,}784 versus 1{,}748; Pearson $r=0.98$). This figure
     underpins the single-cell panel of the main reanalysis figure.
   }
   \label{fig:supp-msv093870-plexdia}
@@ -327,13 +325,34 @@ These figures complement main-text Fig.~4 with per-condition completeness, per-p
     originally deposited Spectronaut directDIA report with the \quantmsdiann{}
     DIA-NN~2.5.1-enterprise reanalysis. Stripped backbones are the
     engine-independent metric, as the deposited fragment-level report carries
-    no per-site localization probability; \quantmsdiann{} recovers 26\% more
-    phosphopeptide backbones (5{,}347 vs 4{,}254).
+    no per-site localization probability; \quantmsdiann{} recovers 23\% more
+    phosphopeptide backbones (5{,}240 vs 4{,}254).
     The non-enriched PXD034623 (Galectin-1 DIA) is reanalysed for completeness
     but omitted here, as its $\sim$280 phosphopeptides are not comparable to
     the enriched cohorts.
   }
   \label{fig:supp-phospho}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \mcpincludegraphics[width=\textwidth,height=\mcpmaxfigheight,keepaspectratio]{manuscript/fig4_cellline_atlas}
+  \caption[Pan-cohort cell-line atlas]{%
+    \textbf{Pan-cohort of five public DIA cell-line reanalyses by
+    \quantmsdiann{} under a single SDRF-driven invocation.}
+    Combines PXD003539 (NCI-60, Guo 2019), PXD030304 (ProCan-DepMapSanger,
+    947 lines), PXD004701 (Sun 2023, 76 breast-cancer lines), PXD041421
+    (Wang 2023), and PXD017199 (Tognetti 2021, 67 breast-cancer lines).
+    (\textbf{a})~For the two cohorts with a published DIA protein-group
+    headline (NCI-60 and ProCan), protein groups requiring $\geq 2$ unique
+    peptides: the originally published count (grey) and the \quantmsdiann{}
+    reanalysis (blue), with the same filter applied to both sides (these two
+    comparisons also appear in main-text Fig.~4a).
+    (\textbf{b})~Back-to-back per-tissue summary across the combined panel:
+    cell lines contributing to each tissue, stacked by cohort (left), and the
+    union of unique UniProt proteins detected per tissue (right).
+  }
+  \label{fig:supp-pancohort-atlas}
 \end{figure}
 
 \section{Software and resources}

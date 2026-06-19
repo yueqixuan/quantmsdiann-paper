@@ -43,7 +43,7 @@ FIGURES_DIR = REPO_ROOT / "analysis" / "figures" / "PXD030304"
 
 PRIDE_QUANT_BASE = (
     "https://ftp.pride.ebi.ac.uk/pub/databases/pride/resources/proteomes/"
-    "quantms-collections/absolute-expression-2.0/cell-lines/PXD030304"
+    "quantmsdiann-benchmarks/cell-lines/PXD030304/v2_5_1"
 )
 
 DIANN_SUMMARY_LOG_URL = f"{PRIDE_QUANT_BASE}/quant_tables/diannsummary.log"
