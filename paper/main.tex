@@ -45,8 +45,8 @@
 \author[aff3]{Asier Larrea}
 \author[aff2]{Chengxin Dai}
 \author[aff4]{Henry Webel}
-\author[aff6]{Jose Nimo}
-\author[aff6]{Fabian Coscia}
+\author[aff6,aff11,aff12]{Jose Nimo}
+\author[aff6,aff12]{Fabian Coscia}
 \author[aff7]{Orhun Kok}
 \author[aff7,aff8]{Nikolai Slavov}
 \author[aff9,aff10]{Timo Sachsenberg} % ORCID 0000-0002-2833-6070
@@ -67,6 +67,9 @@
 \affiliation[aff8]{organization={Parallel Squared Technology Institute}, city={Watertown, Massachusetts}, country={USA}}
 \affiliation[aff9]{organization={Department of Computer Science, Applied Bioinformatics, University of T\"{u}bingen}, city={T\"{u}bingen}, country={Germany}}
 \affiliation[aff10]{organization={Institute for Bioinformatics and Medical Informatics, University of T\"{u}bingen}, city={T\"{u}bingen}, country={Germany}}
+\affiliation[aff11]{organization={Charit\'{e} – Universit\'{a}tsmedizin Berlin, corporate member of Freie Universit\'{a}t Berlin and Humboldt-Universit\'{a}t zu Berlin},city={Berlin}, country={Germany}}
+\affiliation[aff12]{organization={German Cancer Consortium (DKTK), Partner Site Berlin}, city={Heidelberg}, country={Germany}}
+
 
 \begin{abstract}
 Public proteomics archives now host thousands of data-independent acquisition (DIA) datasets, but they remain difficult to integrate and reuse because each dataset has been processed with a different software configuration, and most of them lack standardised metadata. Here, we present \quantmsdiann{}, an open-source Nextflow/nf-core workflow that parallelises \texttt{DIA-NN} across cloud and HPC infrastructures, guided by the experimental design declared in SDRF format. The workflow ships container-pinned profiles for each supported \texttt{DIA-NN} version (extensible to any release via a custom container) through Docker and Singularity, with no manual installation or dependency resolution, and natively handles all vendor formats, converting to mzML when needed (e.g.\ SCIEX). It exports harmonised quantification tables as MSstats input, the new Quantitative Proteomics eXchange format (\qpx{}), and a \texttt{pmultiqc} quality-control report. The parallelisation design reanalyses a 2{,}300-run single-cell dataset in 2.2~hours on an HPC cluster of 300 nodes. We benchmark \quantmsdiann{} on four ProteoBench DIA instrument modalities, where distributed \quantmsdiann{} reproduces single-machine community submissions independent of \texttt{DIA-NN} release. We reanalyse public DIA deposits spanning single-cell proteomes (HeLa on Orbitrap Astral, PXD046357; One-Tip, PXD044991; and an oocyte plexDIA cohort, MSV000093870) and bulk cell-line panels (NCI-60/PXD003539 and ProCan/PXD030304, with three further cohorts combined into a five-cohort pan-cohort under a single invocation). Reprocessing with current \texttt{DIA-NN} releases matches or exceeds the originally deposited counts: across these single-cell and bulk cell-line cohorts it recovers on average $\sim$30\% more protein groups ($+$17\% to $+$54\% across cohorts) and, in the single-cell cohorts, $\sim$32\% more precursors, than the original or 1.8.1 analyses; a spatial Deep Visual Proteomics cohort (PXD064049) and a phosphoproteomics cohort (PXD049692) are reanalysed in the supplement. \quantmsdiann{} is a step towards scalable, reproducible reanalysis of the growing DIA data landscape and a foundation for community efforts in large-scale DIA meta-analysis and atlas building.
