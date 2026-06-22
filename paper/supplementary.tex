@@ -89,7 +89,7 @@ PXD017199 & Q Exactive Plus & Cell line (Tognetti 2021) & 2021 \\
 \hline
 \multicolumn{4}{l}{\textit{Single-cell proteomics}} \\
 PXD046357 & Orbitrap Astral & Single-cell HeLa (Astral) & 2024 \\
-PXD044991 & Orbitrap Astral & Single-cell HeLa (One-Tip) & 2024 \\
+PXD049412 & Orbitrap Astral & Single-cell A549/H460 (Bubis 2025; also Module~9 benchmark) & 2024 \\
 MSV000093870 & Q Exactive & Single-cell oocyte plexDIA (Galatidou 2024) & 2024 \\
 \hline
 \multicolumn{4}{l}{\textit{Phosphoproteomics}} \\
@@ -122,8 +122,8 @@ A user with a valid \texttt{DIA-NN} download builds the image locally from the m
 \section{Identification filtering and protein counting}
 \label{sec:supp-filter}
 
-All identification counts reported in the cell-line reanalyses and pan-cohort (main-text Figs.~3 and~4 and Figs.~S4--S13 below) are target-only under a conservative contaminant/decoy filter: any row whose \texttt{Protein.Group} field contains a token prefixed with \texttt{CONTAM\_}, \texttt{Cont\_}, \texttt{ENTRAP\_}, or \texttt{DECOY\_} is dropped before counting, including mixed groups.
-Original-paper headline counts were taken from the corresponding publication's table or text without re-filtering; where the original applied a per-protein peptide threshold (for example, the ProCan-DepMapSanger paper reports both an 8{,}498 protein-group headline at Global.Q.Value~$\leq 0.01$ and a 6{,}692 count under the additional $\geq 2$ supporting-peptide rule), the like-for-like \quantmsdiann{} count is reported under the same threshold.
+All \quantmsdiann{} identification counts follow a single rule with exactly one admissible q-value filter per quantity and nothing else (no contaminant/target filter, no positive-quantity filter; zero quantities are counted; decoys are dropped). \emph{Per-run} numbers (per cell, per run): protein groups at \texttt{PG.Q.Value}~$\leq 0.01$ only; precursors at the run-specific \texttt{Q.Value}~$\leq q$ only (\texttt{DIA-NN}'s per-version \texttt{-{}-qvalue}: 0.01 for 1.8.1, 0.05 for $\geq$~2.5.x). \emph{Global} (dataset-total/union) numbers: protein groups at \texttt{Lib.PG.Q.Value}~$\leq 0.01$ only; precursors at \texttt{Lib.Q.Value}~$\leq 0.01$ only. For deposited datasets only the already-filtered \texttt{pg\_matrix}/\texttt{pr\_matrix} count matrices are available, so the ``original'' count is the matrix row count as deposited. In plexDIA mode the channel is the per-run unit, so per-cell precursors are counted at \texttt{Channel.Q.Value}~$\leq 0.01$.
+Original-paper headline counts were taken from the corresponding publication's table or text without re-filtering; where the original applied a per-protein peptide threshold (for example, the ProCan-DepMapSanger paper reports both an 8{,}498 protein-group headline at \texttt{Lib.PG.Q.Value}~$\leq 0.01$ and a 6{,}692 count under the additional $\geq 2$ supporting-peptide rule), the like-for-like \quantmsdiann{} count is reported under the same threshold.
 
 \section{Per-process runtime and resource envelopes}
 \label{sec:supp-performance}
@@ -187,13 +187,13 @@ These figures decompose the end-to-end wall-clock and resource use reported in m
 \label{sec:supp-proteobench-proteins}
 
 The main text reports ProteoBench quantification accuracy (Fig.~2c); the
-identification depth behind the same runs is summarised here. Precursors
-identified in at least one run rise by 14--23\% from \texttt{DIA-NN}~1.8.1 to
+identification depth behind the same runs is summarised here. Total precursors
+(at the global 1\% \texttt{Lib.Q.Value}) rise by 9--22\% from \texttt{DIA-NN}~1.8.1 to
 2.5.1-enterprise on all four modules (largest on timsTOF diaPASEF,
-97{,}149~$\to$~119{,}726); proteins quantified in every run rise by up to 20\%
-(single-cell Astral, 6{,}124~$\to$~7{,}349). Protein groups are
+102{,}528~$\to$~124{,}756); proteins quantified in every run rise by up to 17\%
+(single-cell Astral, 6{,}246~$\to$~7{,}299). Protein groups are
 counted from the per-precursor \texttt{DIA-NN} report at a 1\% run-specific
-protein-group q-value, target-only, as the average per run (panel~a) and the
+protein-group q-value (\texttt{PG.Q.Value}) as the average per run (panel~a) and the
 number quantified in every run (``complete profiles'', panel~b).
 
 \begin{figure}[htbp]
@@ -213,7 +213,7 @@ number quantified in every run (``complete profiles'', panel~b).
     (\textbf{b})~Complete-profile protein groups (quantified in every run).
     Both metrics rise monotonically from 1.8.1 to 2.5.1 to the enterprise build
     on every module; the gain is larger for the complete profiles (up to
-    $+$20\% to the enterprise build) than for the per-run average ($+$8--14\%),
+    $+$18\% to the enterprise build) than for the per-run average ($+$10--12\%),
     reflecting improved cross-run consistency in the newer release.
   }
   \label{fig:supp-proteobench-proteins}
@@ -286,18 +286,19 @@ These figures complement main-text Fig.~4 with per-condition completeness, per-p
     \textbf{MSV000093870 (Galatidou 2024, single-cell oocyte plexDIA):
     \quantmsdiann{} reanalysis versus the original.}
     (\textbf{a})~Protein groups per single cell (Galatidou $n=97$ post-QC
-    oocytes; \quantmsdiann{} $n=107$ channel-confident cells): comparable
-    median depth (1{,}784 original versus 1{,}736 \quantmsdiann{}). (\textbf{b})~Total protein groups
-    across the dataset: 2{,}122 (original) versus 2{,}904 (\quantmsdiann{}).
+    oocytes; \quantmsdiann{} $n=107$ channel-confident cells): per-cell
+    median 1{,}784 original versus 1{,}473 \quantmsdiann{} (the latter at the
+    stricter \texttt{PG.Q.Value} per-cell gate). (\textbf{b})~Total protein groups
+    across the dataset: 2{,}122 (original) versus 3{,}328 (\quantmsdiann{}).
     (\textbf{c})~Protein-group overlap at the leading-protein level (like-for-like):
-    1{,}999 shared, 123 original-only, 905 \quantmsdiann{}-only, i.e.\ 94\% of the
-    originally reported protein groups recovered (1{,}999 of 2{,}122) plus 905
+    2{,}001 shared, 121 original-only, 1{,}326 \quantmsdiann{}-only, i.e.\ 94\% of the
+    originally reported protein groups recovered (2{,}001 of 2{,}122) plus 1{,}326
     detected only by \quantmsdiann{}. (Expanding \quantmsdiann{}'s protein groups
-    to all member accessions gives 3{,}552 accessions, but the overlap here is
+    to all member accessions gives 4{,}031 accessions, but the overlap here is
     computed group-to-group so both sides use the same entity.)
     (\textbf{d})~QC-matched per-oocyte comparison: with the two analyses
-    restricted to the same 97 cells, per-cell protein-group depth is equivalent
-    (median 1{,}784 versus 1{,}748; Pearson $r=0.98$). This figure
+    restricted to the same 97 cells, per-cell protein-group quantification
+    remains correlated (median 1{,}784 versus 1{,}501; Pearson $r=0.97$). This figure
     underpins the single-cell panel of the main reanalysis figure.
   }
   \label{fig:supp-msv093870-plexdia}

@@ -1,16 +1,16 @@
 metric	channel	value	source
 single_cells_total	all	107	Run x Channel (channel-confident)
 runs	all	38	diann_report.parquet
-unique_protein_groups	all	2904	target, channel-confident
-unique_precursors	all	31699	target, channel-confident
-median_proteins_per_cell	all	1736	median across cells
-median_precursors_per_cell	all	15137	median across cells
+unique_protein_groups	all	3328	target, channel-confident
+unique_precursors	all	33133	target, channel-confident
+median_proteins_per_cell	all	1473	median across cells
+median_precursors_per_cell	all	15872	median across cells
 n_cells	mTRAQ-0	36	cells in channel
-median_proteins_per_cell	mTRAQ-0	1739	median
-median_precursors_per_cell	mTRAQ-0	15476	median
+median_proteins_per_cell	mTRAQ-0	1501	median
+median_precursors_per_cell	mTRAQ-0	16144	median
 n_cells	mTRAQ-4	35	cells in channel
-median_proteins_per_cell	mTRAQ-4	1739	median
-median_precursors_per_cell	mTRAQ-4	15701	median
+median_proteins_per_cell	mTRAQ-4	1464	median
+median_precursors_per_cell	mTRAQ-4	16431	median
 n_cells	mTRAQ-8	36	cells in channel
-median_proteins_per_cell	mTRAQ-8	1708	median
-median_precursors_per_cell	mTRAQ-8	14196	median
+median_proteins_per_cell	mTRAQ-8	1441	median
+median_precursors_per_cell	mTRAQ-8	14815	median
