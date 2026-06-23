@@ -472,8 +472,9 @@ positive-quantity filter, zeros counted):
 
   * Per-run numbers (within a single run / cell):
       - protein groups: `PG.Q.Value <= 0.01` only.
-      - precursors:     `Q.Value <= precursor_q` only (run-specific `--qvalue`:
-        0.01 for 1.8.1, 0.05 for >= 2.5.0, DIA-NN's per-version operating point).
+      - precursors:     `Q.Value <= 0.01` only (flat, all versions, per
+        methods.md §1; the matrices' baked per-version `--matrix-spec-q` does
+        not apply to the report-side count, which is gated at 0.01 throughout).
   * Global numbers (dataset union / totals):
       - protein groups: `Lib.PG.Q.Value <= 0.01` only.
       - precursors:     `Lib.Q.Value <= 0.01` only.
@@ -505,7 +506,7 @@ import sys
 from pathlib import Path
 import pandas as pd
 Q_THRESHOLD = 0.01
-PRECURSOR_Q = {'v1_8_1': 0.01, 'v2_5_1': 0.05, 'v2_5_1_enterprise': 0.05}
+PRECURSOR_Q = {'v1_8_1': 0.01, 'v2_5_1': 0.01, 'v2_5_1_enterprise': 0.01}
 DEFAULT_PRECURSOR_Q = 0.01
 _NEEDED_COLS = ['Run', 'Precursor.Id', 'Protein.Group', 'Stripped.Sequence', 'Q.Value', 'PG.Q.Value', 'Lib.Q.Value', 'Lib.PG.Q.Value', 'Decoy']
 DATASET_MODULES = ('ProteoBench_Module_7', 'PXD049412', 'PXD062685', 'PXD070049')
@@ -543,7 +544,18 @@ def count_report(df: pd.DataFrame, precursor_q: float=DEFAULT_PRECURSOR_Q) -> di
         prec_global = int(df.loc[df['Lib.Q.Value'] <= Q_THRESHOLD, 'Precursor.Id'].nunique())
     prot_global = 0
     if 'Lib.PG.Q.Value' in df.columns:
-        prot_global = int(df.loc[df['Lib.PG.Q.Value'] <= Q_THRESHOLD, 'Protein.Group'].nunique())
+        global_pgs = df.loc[df['Lib.PG.Q.Value'] <= Q_THRESHOLD, 'Protein.Group'].dropna().unique()
+        prot_global = int(len(global_pgs))
+        # methods.md §4 protein-inference sanity check: among unique global
+        # protein groups at 1% q-value, no more than 1.2% may carry multiple
+        # accessions (';' in Protein.Group). Exceeding it signals inflated
+        # inference (e.g. DIA-NN 1.8.1 without --relaxed-prot-inf) and is flagged.
+        if len(global_pgs):
+            multi_frac = 100.0 * sum(';' in str(pg) for pg in global_pgs) / len(global_pgs)
+            if multi_frac > 1.2:
+                print(f"WARNING [methods.md §4]: {multi_frac:.2f}% of global protein "
+                      f"groups are multi-accession (>1.2% cap) — possible inference "
+                      f"inflation; counts may not be comparable.", file=sys.stderr)
     prot_perrun_avg = prot_complete = 0
     if 'PG.Q.Value' in df.columns:
         n_runs = df['Run'].nunique()
@@ -663,6 +675,59 @@ PXD041421_SDRF = DATA_ROOT / 'PXD041421' / 'PXD041421.sdrf.tsv'
 PXD041421_PR_MATRIX = DATA_ROOT / 'PXD041421' / 'diann_report.pr_matrix.tsv'
 PXD041421_PG_MATRIX = DATA_ROOT / 'PXD041421' / 'diann_report.pg_matrix.tsv'
 E_PROT_73_TSV = DATA_ROOT / 'E-PROT-73-query-results.tsv'
+
+# Public-FTP sources for the bulk cell-line DIA-NN count matrices the reanalysis,
+# venn and atlas figures read. Three live under quantmsdiann-benchmarks/cell-lines
+# (with a version dir), two under the absolute-expression-2.0 collection (no
+# version dir). ensure_cell_line_matrices() auto-fetches any that are missing so
+# the rebuild is self-sufficient (no manual staging).
+_BENCH_CL_BASE = 'https://ftp.pride.ebi.ac.uk/pub/databases/pride/resources/proteomes/quantmsdiann-benchmarks/cell-lines'
+_ABSEXP_CL_BASE = 'https://ftp.pride.ebi.ac.uk/pub/databases/pride/resources/proteomes/quantms-collections/absolute-expression-2.0/cell-lines'
+# Per-cohort quant_tables base URLs (three on quantmsdiann-benchmarks with a
+# version dir; two on the absolute-expression-2.0 collection, no version dir).
+_CELL_LINE_QT_BASE: dict[str, str] = {
+    'PXD003539': f'{_BENCH_CL_BASE}/PXD003539/v2_5_1_enterprise/quant_tables',
+    'PXD030304': f'{_BENCH_CL_BASE}/PXD030304/v2_5_1/quant_tables',
+    'PXD004701': f'{_BENCH_CL_BASE}/PXD004701/v2_5_1/quant_tables',
+    'PXD017199': f'{_ABSEXP_CL_BASE}/PXD017199/quant_tables',
+    'PXD041421': f'{_ABSEXP_CL_BASE}/PXD041421/quant_tables',
+}
+# DIA-NN count matrices each cohort's figures actually read (shared across
+# stages, NOT purged). Per-cohort to avoid fetching the unused 2 GB ProCan
+# pr_matrix: pxd030304 reads only pg, and atlas reads ProCan/Sun from their
+# cached JSONs. The full diann_report.parquet is fetched only on demand
+# (with_report) and IS purged after the stage that needs it.
+_PR, _PG, _UG = 'diann_report.pr_matrix.tsv', 'diann_report.pg_matrix.tsv', 'diann_report.unique_genes_matrix.tsv'
+_CELL_LINE_MATRIX_FILES = {
+    'PXD003539': (_PR, _PG, _UG),
+    'PXD030304': (_PG,),
+    'PXD004701': (_PG,),
+    'PXD017199': (_PR, _PG),
+    'PXD041421': (_PR, _PG),
+}
+
+def ensure_cell_line_matrices(*accessions: str, with_report: bool = False) -> None:
+    """Download missing cell-line DIA-NN quant_tables files from the public FTP
+    so the rebuild is self-sufficient (no manual staging). Fetches the count
+    matrices each given cohort's figures read (all cohorts if none given);
+    with_report=True also pulls the large diann_report.parquet. No-op for files
+    already present; files absent on the FTP are skipped."""
+    for acc in (accessions or tuple(_CELL_LINE_QT_BASE)):
+        base = _CELL_LINE_QT_BASE.get(acc)
+        if not base:
+            continue
+        wanted = list(_CELL_LINE_MATRIX_FILES.get(acc, (_PR, _PG, _UG)))
+        if with_report:
+            wanted.append('diann_report.parquet')
+        for fn in wanted:
+            dest = DATA_ROOT / acc / fn
+            if dest.exists() and dest.stat().st_size > 0:
+                continue
+            try:
+                print(f'Fetching {acc}/{fn} ...', file=sys.stderr)
+                download_if_missing(f'{base}/{fn}', dest)
+            except Exception as exc:
+                print(f'  (skipping {acc}/{fn}: {exc})', file=sys.stderr)
 DATASET_COLORS = {'PXD003539': '#1b9e77', 'PXD030304': '#7570b3', 'PXD004701': '#d95f02', 'PXD017199': '#e6ab02', 'PXD041421': '#8da0cb'}
 DATASET_LABELS = {'PXD003539': 'PXD003539\n(Guo 2019)', 'PXD030304': 'PXD030304\n(ProCan 2022)', 'PXD004701': 'PXD004701\n(Sun 2023)', 'PXD017199': 'PXD017199\n(Tognetti 2021)', 'PXD041421': 'PXD041421\n(Wang 2023)'}
 
@@ -1970,6 +2035,13 @@ def check_prerequisites() -> list[tuple[Path, str]]:
     return [(p, cmd) for p, cmd in PREREQS if not (p.exists() and p.stat().st_size > 0)]
 
 def figure_combined_cell_lines_atlas_main() -> int:
+    # atlas reads accessions from pr_matrix for PXD003539/017199/041421 only;
+    # ProCan/Sun come from cached JSONs, so skip their (large) matrices.
+    # PXD003539 with its report parquet so refresh_dataset_headlines() actually
+    # recomputes the headline from the FTP instead of falling back to the
+    # precomputed constant; 017199/041421 need only their pr/pg matrices.
+    ensure_cell_line_matrices('PXD003539', with_report=True)
+    ensure_cell_line_matrices('PXD017199', 'PXD041421')
     missing = check_prerequisites()
     if missing:
         print('Combined atlas requires the per-dataset scripts to run first.', file=sys.stderr)
@@ -3075,6 +3147,53 @@ def download_if_missing(url: str, dest: Path, *, retries: int=2) -> Path:
     finally:
         part.unlink(missing_ok=True)
 
+# When set, raw downloads (DIA-NN reports / matrices) are kept on disk for fast
+# repeated runs. Default OFF: the rebuild streams the public-FTP data one file at
+# a time and discards each after it has been counted/rendered, so it never needs
+# the whole FTP dataset on disk at once. Only the small derived TSV/JSON outputs
+# persist, and those are what the figure stages consume.
+KEEP_DOWNLOADS = os.environ.get('REBUILD_KEEP_DOWNLOADS', '').lower() not in ('', '0', 'false', 'no')
+
+def discard_download(*paths: Path) -> None:
+    """Delete large downloaded reports/matrices once consumed (unless
+    REBUILD_KEEP_DOWNLOADS is set), bounding peak disk to a single file."""
+    if KEEP_DOWNLOADS:
+        return
+    for p in paths:
+        try:
+            Path(p).unlink(missing_ok=True)
+        except OSError:
+            pass
+
+# Filename patterns of the large raw per-precursor FTP downloads (full DIA-NN
+# reports, deposited zips, site reports) that are consumed once and re-derivable.
+# NOTE: the cell-line `*_matrix.tsv` count matrices are deliberately NOT purged:
+# they are small (~1.5 GB total) and shared across stages (a per-cohort figure
+# downloads them; `atlas`/`venn` read the same files later), so deleting them
+# between stages breaks those downstream figures.
+_RAW_DOWNLOAD_GLOBS = ('diann_report.parquet', 'diann_report.tsv',
+                       '*.zip', 'site_report*.parquet', 'report.parquet')
+
+def purge_raw_downloads() -> int:
+    """Delete the large raw FTP downloads under data/ and analysis/figures/,
+    keeping the derived outputs. No-op when REBUILD_KEEP_DOWNLOADS is set. Called
+    after each stage by the orchestrator so the rebuild never holds the whole
+    public-FTP dataset on disk at once. Returns the number of files removed."""
+    if KEEP_DOWNLOADS:
+        return 0
+    n = 0
+    for root in (REPO / 'data', REPO / 'analysis' / 'figures'):
+        if not root.exists():
+            continue
+        for pat in _RAW_DOWNLOAD_GLOBS:
+            for p in root.rglob(pat):
+                try:
+                    p.unlink()
+                    n += 1
+                except OSError:
+                    pass
+    return n
+
 def count_quantified_rows(matrix_path: Path, metadata_cols: list[str], unique_by: str | None=None) -> int:
     """Count quantified rows in a DIA-NN-style TSV matrix."""
     df = pd.read_csv(matrix_path, sep='\t', dtype=str)
@@ -3577,7 +3696,7 @@ def report_global_counts_diann(parquet_path: Path) -> dict[str, int]:
     have = set(pq.ParquetFile(parquet_path).schema_arrow.names)
     cols = [c for c in _NEEDED_COLS if c in have]
     df = pq.read_table(parquet_path, columns=cols).to_pandas()
-    return count_report(df, precursor_q=0.05)
+    return count_report(df, precursor_q=DEFAULT_PRECURSOR_Q)
 
 def render_figure(counts: Counts, svg_path: Path) -> None:
     """Render a 2-condition x 2-metric grouped bar chart. Paper-ready: only
@@ -3721,6 +3840,7 @@ def _figure_original_vs_quantmsdiann__write_counts_tsv(counts: Counts, tsv_path:
             writer.writerow(row)
 
 def figure_original_vs_quantmsdiann_main() -> int:
+    ensure_cell_line_matrices('PXD003539', with_report=True)
     _figure_original_vs_quantmsdiann__DATA_DIR.mkdir(parents=True, exist_ok=True)
     _figure_original_vs_quantmsdiann__FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     pr_path = _figure_original_vs_quantmsdiann__DATA_DIR / 'diann_report.pr_matrix.tsv'
@@ -5515,6 +5635,7 @@ def _figure_pxd004701_sun_vs_quantmsdiann__write_counts_tsv(counts: Counts, tsv_
             fh.write('\t'.join((str(x) for x in r)) + '\n')
 
 def figure_pxd004701_sun_vs_quantmsdiann_main() -> int:
+    ensure_cell_line_matrices('PXD004701')
     _figure_pxd004701_sun_vs_quantmsdiann__DATA_DIR.mkdir(parents=True, exist_ok=True)
     _figure_pxd004701_sun_vs_quantmsdiann__FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     _stage_from_ftp()
@@ -6054,6 +6175,7 @@ def _figure_pxd030304_procan_vs_quantmsdiann__write_counts_tsv(counts: Counts, t
             fh.write('\t'.join((str(x) for x in r)) + '\n')
 
 def figure_pxd030304_procan_vs_quantmsdiann_main() -> int:
+    ensure_cell_line_matrices('PXD030304')
     _figure_pxd030304_procan_vs_quantmsdiann__DATA_DIR.mkdir(parents=True, exist_ok=True)
     _figure_pxd030304_procan_vs_quantmsdiann__FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     log_path = _figure_pxd030304_procan_vs_quantmsdiann__DATA_DIR / 'diannsummary.log'
@@ -6849,7 +6971,8 @@ def build() -> dict[str, pd.DataFrame]:
     per_cell, completeness, rank, cv, totals = ([], [], [], [], [])
     for ds, acc in _make_single_cell_tables__ACC.items():
         for version in _make_single_cell_tables__VERSIONS:
-            df = _load(_make_single_cell_tables___cached_report(FTP_DIR[ds], version))
+            _sc_report = _make_single_cell_tables___cached_report(FTP_DIR[ds], version)
+            df = _load(_sc_report)
             df = df[~df['Run'].astype(str).str.contains('20xSC|40xSC', case=False, regex=True)]
             prot = _perrun_proteins(df)
             pgrun = prot.drop_duplicates(['Run', 'Protein.Group'])
@@ -6874,6 +6997,7 @@ def build() -> dict[str, pd.DataFrame]:
                 for i, val in enumerate(mean_int.values, start=1):
                     if i == 1 or i % 10 == 0:
                         rank.append((version, i, float(np.log10(val))))
+            discard_download(_sc_report)  # bound disk: drop the report once tabulated
     return {'mv_per_cell.tsv': pd.DataFrame(per_cell, columns=['dataset', 'version', 'pg_count']), 'mv_completeness.tsv': pd.DataFrame(completeness, columns=['dataset', 'version', 'min_cells', 'n_proteins']), 'mv_rank_abundance.tsv': pd.DataFrame(rank, columns=['version', 'rank', 'log10_intensity']), 'mv_cv.tsv': pd.DataFrame(cv, columns=['dataset', 'version', 'cv']), 'sc_totals.tsv': pd.DataFrame(totals, columns=['dataset', 'version', 'precursors', 'proteins'])}
 
 def make_single_cell_tables_main() -> int:
@@ -7185,9 +7309,13 @@ CHANNEL_LABELS = {'0': 'mTRAQ-0', '4': 'mTRAQ-4', '8': 'mTRAQ-8'}
 REPORT_COLUMNS = ['Run', 'Channel', 'Protein.Group', 'Protein.Ids', 'Precursor.Id', 'Decoy', 'Channel.Q.Value', 'PG.Q.Value']
 
 def _cached_report() -> Path:
-    """Download the DIA-NN report parquet once and cache it on disk."""
+    """Download the DIA-NN report parquet once and cache it on disk. The cache
+    filename is deliberately NOT 'diann_report.parquet' so purge_raw_downloads()
+    leaves it: both plexDIA stages (plexdia_per_cell, plexdia_vs_galatidou) share
+    this report, and purging it between them would force a wasteful ~245 MB
+    re-download."""
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    dest = CACHE_DIR / 'diann_report.parquet'
+    dest = CACHE_DIR / 'msv093870_plexdia_report.parquet'
     if dest.exists() and dest.stat().st_size > 0:
         return dest
     print(f'Downloading {REPORT_PARQUET_URL} (~245 MB, cached)…', file=sys.stderr)
@@ -7636,6 +7764,7 @@ def render_venn_diagram(guo_acc: set[str], diann_acc: set[str], svg_path: Path, 
     plt.close(fig)
 
 def venn_protein_accessions_main() -> int:
+    ensure_cell_line_matrices('PXD003539', with_report=True)  # 2-set venn (Guo vs quantmsdiann) is PXD003539 only
     pr_path = _venn_protein_accessions__DATA_DIR / 'diann_report.pr_matrix.tsv'
     opensw_path = _venn_protein_accessions__DATA_DIR / 'feature_alignment_requant_matrix.tsv'
     if not pr_path.exists():
@@ -7695,6 +7824,7 @@ def recompute_report_counts() -> int:
             rows.append(c)
             print(f"  {dataset} {version}: prec_global={c['prec_global']:,} "
                   f"prot_global={c['prot_global']:,}", flush=True)
+            discard_download(parquet, tsv)  # bound disk: drop the report once counted
     pd.DataFrame(rows)[cols].to_csv(root / "report_counts.tsv", sep="\t", index=False)
     print(f"  wrote {root / 'report_counts.tsv'}", flush=True)
     return 0
@@ -7883,6 +8013,7 @@ def main(argv: list[str] | None = None) -> int:
     for name, fn, _ in stages:
         r = run_stage(name, fn)
         results.append(r)
+        purge_raw_downloads()  # drop raw FTP downloads so disk stays bounded across stages
         if not r[1] and fail_fast:
             break
 
