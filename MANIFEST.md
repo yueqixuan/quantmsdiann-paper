@@ -58,8 +58,8 @@ experiment #13 in [docs/brainstorming.md](docs/brainstorming.md).
 | `PXD041421` | Wang 2023 — 2 lines (A549 lung + K562 leukemia) × 24 reps each, 2-batch design | timsTOF Pro (diaPASEF) | 48 | Wang et al. 2023 (batch-effect benchmark dataset) | [PRIDE FTP](https://ftp.pride.ebi.ac.uk/pub/databases/pride/resources/proteomes/quantms-collections/absolute-expression-2.0/cell-lines/PXD041421/) — atlas-only (no per-cohort figure: methodological dataset) |
 
 Cached artefacts vary per dataset (pr_matrix, pg_matrix, SDRF,
-per-tissue protein JSONs). See the per-script docstring in
-[`analysis/figure_combined_cell_lines_atlas.py`](analysis/figure_combined_cell_lines_atlas.py)
+per-tissue protein JSONs). See the `atlas` stage and its helpers in
+[`scripts/rebuild.py`](scripts/rebuild.py) (`python -m scripts.rebuild --only atlas`)
 for the canonical layout.
 
 Consumed by: **F3** (combined atlas), **F3.PXDxxx** (per-cohort

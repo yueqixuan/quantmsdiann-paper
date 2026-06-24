@@ -102,11 +102,11 @@ All reanalysis reports are on the public PRIDE FTP under
 | PXD070049 | ZenoTOF | ProteoBench M10 benchmark | 1.8.1 / 2.5.1 / 2.5.1-ent |
 | PXD046357 | single-cell HeLa Astral | reanalysis | 1.8.1 / 2.5.1-ent |
 | PXD049412 | single-cell A549/H460 (Astral) | reanalysis (146 single cells; 20x/40x A549 library runs excluded; blanks/HeLa-dilution/HYE not used) | 1.8.1 / 2.5.1-ent |
-| MSV000093870 | oocyte plexDIA | reanalysis | 2.5.0 |
+| MSV000093870 | oocyte plexDIA | reanalysis | 2.5.1 |
 | PXD003539 | NCI-60 bulk | reanalysis | 2.5.x |
 | PXD030304 | ProCan bulk | reanalysis | 2.5.x |
 | PXD004701 | Sun bulk | reanalysis | 2.5.x |
-| PXD064049 | spatial DVP diaPASEF | reanalysis | 2.5.0 |
+| PXD064049 | spatial DVP diaPASEF | reanalysis | 2.5.1-ent |
 | PXD049692 / PXD034128 / PXD034623 | phospho | reanalysis (supp) | 2.5.1 / -ent |
 
 _(PXD044991 "One-Tip" has been removed from the manuscript — see the design
@@ -137,7 +137,7 @@ then the numbers aggregator); `--list` prints the same registry live.
 | `report_counts` | data | `data/quantmsdiann_benchmarks/report_counts.tsv` | downloads FTP reports, runs `count_report` |
 | `reanalysis_pg_counts` | data | per-cohort `diann_report_protein_counts.json` caches | Lib rule; inputs for the bulk-cohort figures |
 | `single_cell_tables` | data | `data/single_cell/mv_*.tsv`, `sc_totals.tsv` | per-cell `PG.Q.Value`; totals global |
-| `phospho_tables` | data | phosphopeptide / phosphosite tables | `Lib.Q.Value`; site Prob>=0.99 |
+| `phospho_tables` | data | phosphopeptide / phosphosite tables | `Lib.Q.Value`; site Prob>=0.75 |
 | `benchmarks` | fig | Fig 2 benchmark panels, `counts.tsv` | reads `report_counts.tsv` |
 | `queue_sweep` | fig | `queue_size_sweep.tsv` (feeds `fig2_validation`) | runtime trace |
 | `fig2_validation` | fig | Fig 2 validation composite | composes sweep + accuracy |
@@ -152,7 +152,7 @@ then the numbers aggregator); `--list` prints the same registry live.
 | `pxd030304` | fig | PXD030304 (ProCan) panels | streams a 2GB matrix |
 | `pxd064049_spatial` | fig | spatial DVP panels | matrix-based (see spec Goal 5) |
 | `atlas` | fig | pan-cohort (Fig S13) | needs numpy<2 env |
-| `phospho` | fig | phosphoproteomics supp figure | `Lib.Q.Value`; site Prob>=0.99 |
+| `phospho` | fig | phosphoproteomics supp figure | `Lib.Q.Value`; site Prob>=0.75 |
 | `venn` | fig | protein-accession overlap (supp) | per-cohort |
 | `performance_trace`, `mdc_cluster_runtime` | fig | Fig 1 / performance traces | runtime + resource traces |
 | `paper_numbers` | num | `data/paper_numbers.tsv` + `paper/generated_numbers.tex` | aggregates ALL manuscript numbers |

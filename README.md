@@ -58,14 +58,21 @@ conda activate quantmsdiann
 
 ## Usage
 
+All analysis logic lives in one self-contained script, `scripts/rebuild.py`,
+exposed as named stages:
+
 ```bash
-python -m analysis.figure_single_cell_combined   # one figure family per script
-pytest analysis/tests/                           # test suite
+python -m scripts.rebuild --list                      # list every stage + what it produces
+python -m scripts.rebuild --all                       # data prep -> all figures -> PDFs
+python -m scripts.rebuild --only single_cell_combined # rebuild one figure
+python -m scripts.rebuild --only paper_numbers        # re-aggregate every manuscript number
+pytest tests/                                         # schema/regression tests
 ```
 
-Each script writes SVGs to `analysis/figures/<group>/` and derived tables to
-`analysis/figures/<group>/data/`. Inputs are cached under `data/` (git-ignored,
-re-downloaded on demand; see [MANIFEST.md](MANIFEST.md)).
+Each stage writes SVGs to `analysis/figures/<group>/` and derived tables to
+`analysis/figures/<group>/data/` (or `data/`). Inputs are cached under `data/`
+(git-ignored, re-downloaded on demand; see [MANIFEST.md](MANIFEST.md)). The PDF
+build runs only when every prior stage succeeds.
 
 All reported counts are target-only under a conservative contaminant / entrapment
 / decoy filter (drop a protein group if any accession token carries a `CONTAM_` /

@@ -96,27 +96,33 @@ Each `quant_tables/` holds `diann_report.parquet` (+ `diann_report.site_report.p
 
 | Figure | Numbers | Source (public) | Regenerate | Status |
 |---|---|---|---|---|
-| **Fig 1** pipeline/scaling | wall-clock per node-count & per dataset | `quantmsdiann-benchmarks/PXD071075_cluster_sizes/` (queue sweep) + per-dataset `nextflow_trace.txt` / `run_metadata.json` | `python -m analysis.figure_performance_trace`, `figure_queue_size_sweep` | trace/metadata staged from FTP — generator pending |
-| **Fig 2** ProteoBench | depth vs accuracy, per-version IDs | ProteoBench community submissions + our `quantmsdiann-benchmarks/proteobench/` reports | `python -m analysis.figure_proteobench_accuracy` | community JSONs staged — generator pending |
-| **Fig 3** single-cell | per-cell / completeness / dynamic range / CV / totals / plexDIA | `quantmsdiann-benchmarks/single-cell/{PXD046357,PXD044991_one-tip}/v{1_8_1,2_5_1_enterprise}/quant_tables/diann_report.{tsv,parquet}`; plexDIA `MSV000093870_plexDIA/` vs Galatidou 2024 matrix (`github.com/SlavovLab/single_cell_oocyte`) | **`python -m analysis.make_single_cell_tables`** then `figure_single_cell_combined` | **fully reproducible** ✅ |
-| **Fig 4** cell-line atlas | per-cohort target-only protein groups, overlaps | `data/PXD00{3539,4701},PXD030304,...` reports (from `quantms-collections`/`quantmsdiann-benchmarks`) + per-cohort report JSONs | `python -m analysis.figure_combined_cell_lines_atlas` | matrices reproducible; per-tissue/per-subtype JSONs — generator pending |
-| **Supp** phospho (PXD049692) | phosphopeptides / class-I sites, deposited vs reanalysis | our `quantmsdiann-benchmarks/.../PXD049692/.../diann_report.parquet` + deposited `*_PH_Report.tsv` | `python -m analysis.figure_phospho` | `phospho_counts.tsv` staged — generator pending |
-| **Supp** spatial (PXD064049) | target-only protein groups, deposited vs reanalysis | `quantmsdiann-benchmarks/PXD064049-MYCN-DVP-diaPASEF/quant_tables/` + original `2025/07/PXD064049/DIANN_results.zip` | `python -m analysis.figure_pxd064049_spatial_vs_quantmsdiann` | script reads from FTP, but report ⏳ deposition pending |
+| **Fig 1** pipeline/scaling | wall-clock per node-count & per dataset | `quantmsdiann-benchmarks/PXD071075_cluster_sizes/` (queue sweep) + per-dataset `nextflow_trace.txt` / `run_metadata.json` | `python -m scripts.rebuild --only performance_trace queue_sweep mdc_cluster_runtime` | trace/metadata staged from FTP |
+| **Fig 2** ProteoBench | depth vs accuracy, per-version IDs | ProteoBench community submissions + our `quantmsdiann-benchmarks/proteobench/` reports | `python -m scripts.rebuild --only benchmarks proteobench_accuracy fig2_validation` | community JSONs staged |
+| **Fig 3** single-cell | per-cell / completeness / dynamic range / CV / totals / plexDIA | `quantmsdiann-benchmarks/single-cell/{PXD046357,PXD049412}/v{1_8_1,2_5_1_enterprise}/quant_tables/diann_report.{tsv,parquet}`; plexDIA `MSV000093870` vs Galatidou 2024 matrix (`github.com/SlavovLab/single_cell_oocyte`) | `python -m scripts.rebuild --only single_cell_tables single_cell_combined` | **fully reproducible** ✅ |
+| **Fig 4** reanalysis / cell-line atlas | per-cohort protein groups, overlaps | `data/PXD00{3539,4701},PXD030304,...` reports (from `quantms-collections`/`quantmsdiann-benchmarks`) + per-cohort report JSONs | `python -m scripts.rebuild --only reanalysis_improvement_data reanalysis_improvement atlas` | **fully reproducible** ✅ |
+| **Supp** phospho (PXD049692) | phosphopeptides / class-I sites (DIA-NN only) | our `quantmsdiann-benchmarks/.../PXD049692/.../diann_report.parquet` + `diann_report.site_report.parquet` | `python -m scripts.rebuild --only phospho_tables phospho` | **fully reproducible** ✅ |
+| **Supp** spatial (PXD064049) | protein groups, deposited vs reanalysis | `quantmsdiann-benchmarks/spatial/PXD064049/.../quant_tables/` + original `2025/07/PXD064049/DIANN_results.zip` | `python -m scripts.rebuild --only pxd064049_spatial` | **fully reproducible** ✅ |
 
-## External published baselines (cited, not recomputed)
+## Original / baseline counts
 
-These are numbers reported by the original studies; we do not recompute them, we
-cite them and compare against our reanalysis:
+The reanalysis-recovery "original" counts are now **recomputed from public
+deposits** (no transcribed paper headlines), each via `scripts/rebuild.py`:
 
-- **Guo 2019** (NCI-60, PXD003539) — deposited OpenSWATH matrix + paper text.
-- **Walzer 2022** (PXD003539 reanalysis) — Supplementary Table S2.
-- **Gonçalves 2022 / ProCan** (PXD030304) — paper protein/peptide counts.
-- **Sun 2023** (PXD004701) — paper protein/peptide/library counts.
-- **Galatidou 2024** (MSV000093870 plexDIA) — published proteins × cells matrix.
+- **Guo 2019** (NCI-60, PXD003539) — recomputed from the deposited PRIDE OpenSWATH
+  `feature_alignment_requant_matrix.tsv` (≥2-peptide = 4,284; all-protein = 6,556).
+- **Gonçalves 2022 / ProCan** (PXD030304) — recomputed from the figshare
+  peptide-count matrix (doi:10.6084/m9.figshare.19345397) (≥2-peptide = 6,698;
+  all-protein = 8,498).
+- **Sun 2023** (PXD004701) — recomputed from the deposited PRIDE OpenSWATH
+  `1R_all_id.txt` + library (proteotypic = 6,183; all-protein = 6,696).
+- **Galatidou 2024** (MSV000093870 plexDIA) — published proteins × cells matrix,
+  used for a per-oocyte reproducibility comparison (Pearson r), not a count gain.
 
-Each appears as a clearly-labelled constant in the relevant figure script with a
-source comment.
+Still cited as constants (no downloadable processed source): **Walzer 2022**
+(PXD003539, Supplementary Table S2) and the library-size / cell-line-split
+metadata. Each appears as a clearly-labelled constant with a source comment.
 
 ---
-*Generators that download from the FTP cache under `data/**/cache/` (git-ignored).
-Run any `analysis/figure_*.py` or `analysis/make_*` module from the repo root.*
+*Generators download from the FTP cache under `data/**/cache/` (git-ignored).
+Run any stage from the repo root via `python -m scripts.rebuild --only <stage>`
+(`--list` shows them all); `python -m scripts.rebuild --all` runs the full chain.*

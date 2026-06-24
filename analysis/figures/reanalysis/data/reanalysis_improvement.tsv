@@ -1,7 +1,6 @@
 dataset	label	original	original_engine	reanalysis	diann_version	metric	orig_precursors	new_precursors
-PXD003539	NCI-60	4284	OpenSWATH	6433	2.5.1-enterprise	protein groups (>=2 peptides)
-MSV000093870	plexDIA	2122	Galatidou (1.8.1)	3328	2.5.1	protein groups (channel-confident)
-PXD030304	ProCan	6692	DIA-NN 1.7	8993	2.5.1	protein groups (>=2 peptides)
-PXD004701	Sun	6091	PCT-SWATH	7561	2.5.1	protein groups (consistency filter)
-PXD046357	HeLa Astral	3903	DIA-NN 1.8.1	4840	2.5.1-enterprise	protein groups (union)	19365	26238
+PXD003539	NCI-60	4284	OpenSWATH	6812	2.5.1-enterprise	protein groups (>=2 peptides)		
+PXD030304	ProCan	6698	DIA-NN 1.7	8993	2.5.1	protein groups (>=2 peptides)		
+PXD004701	Sun	6183	PCT-SWATH	8304	2.5.1	protein groups (1% FDR)		
+PXD046357	HeLa Astral	4137	DIA-NN 1.8.1	4840	2.5.1-enterprise	protein groups (union)	22631	26238
 PXD064049	Spatial DVP	2947	DIA-NN 1.8.1	3099	2.5.1-enterprise	protein groups	17287	20705

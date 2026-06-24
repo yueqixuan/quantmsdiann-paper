@@ -122,8 +122,8 @@ A user with a valid \texttt{DIA-NN} download builds the image locally from the m
 \section{Identification filtering and protein counting}
 \label{sec:supp-filter}
 
-All \quantmsdiann{} identification counts follow a single rule with exactly one admissible q-value filter per quantity and nothing else (no contaminant/target filter, no positive-quantity filter; zero quantities are counted; decoys are dropped). \emph{Per-run} numbers (per cell, per run): protein groups at \texttt{PG.Q.Value}~$\leq 0.01$ only; precursors at \texttt{Q.Value}~$\leq 0.01$ only. \emph{Global} (dataset-total/union) numbers: protein groups at \texttt{Lib.PG.Q.Value}~$\leq 0.01$ only; precursors at \texttt{Lib.Q.Value}~$\leq 0.01$ only. For deposited datasets only the already-filtered \texttt{pg\_matrix}/\texttt{pr\_matrix} count matrices are available, so the ``original'' count is the matrix row count as deposited. In plexDIA mode the channel is the per-run unit, so per-cell precursors are counted at \texttt{Channel.Q.Value}~$\leq 0.01$.
-Original-paper headline counts were taken from the corresponding publication's table or text without re-filtering; where the original applied a per-protein peptide threshold (for example, the ProCan-DepMapSanger paper reports both an 8{,}498 protein-group headline at \texttt{Lib.PG.Q.Value}~$\leq 0.01$ and a 6{,}692 count under the additional $\geq 2$ supporting-peptide rule), the like-for-like \quantmsdiann{} count is reported under the same threshold.
+All \quantmsdiann{} identification counts follow a single rule with exactly one admissible q-value filter per quantity and nothing else (no contaminant/target filter, no positive-quantity filter; zero quantities are counted; decoys are dropped). \emph{Per-run} numbers (per cell, per run): protein groups at \texttt{PG.Q.Value}~$\leq 0.01$ only; precursors at \texttt{Q.Value}~$\leq 0.01$ only. \emph{Global} (dataset-total/union) numbers: protein groups at \texttt{Lib.PG.Q.Value}~$\leq 0.01$ only; precursors at \texttt{Lib.Q.Value}~$\leq 0.01$ only. For deposited datasets the ``original'' count is the deposited analysis result: the row count of the deposited \texttt{pg\_matrix}/\texttt{pr\_matrix} where only a count matrix is available (HeLa, spatial), or a protein count recomputed from the deposited search output for the reanalysis-recovery cohorts (NCI-60, ProCan, Sun; see below). In plexDIA mode the channel is the per-run unit, so per-cell precursors are counted at \texttt{Channel.Q.Value}~$\leq 0.01$ in addition to \texttt{Q.Value}~$\leq 0.01$. plexDIA protein-group identification counts are not compared across \texttt{DIA-NN} versions, because the channel-level \texttt{PG.Q.Value} confidence used here is not defined in pre-2.0 output; for plexDIA we report quantmsdiann depth on its own and assess reproducibility against the deposited analysis rather than an identification gain.
+For the reanalysis-recovery figure, each ``original'' count is recomputed from the deposited or public-repository data rather than transcribed from the paper, so every bar is reproducible: NCI-60 (PXD003539) and Sun (PXD004701) from the deposited PRIDE OpenSWATH analyses (for NCI-60, proteins with $\geq 2$ distinct peptides in \texttt{feature\_alignment\_requant\_matrix.tsv}, reproducing the published 4{,}284; for Sun, proteotypic SwissProt proteins at the OpenSWATH peak-group q-value~$\leq 0.01$ in \texttt{1R\_all\_id.txt}, reproducing $\sim$6{,}091), and ProCan (PXD030304) from the authors' figshare peptide-count matrix (proteins with $\geq 2$ supporting peptides, 6{,}698, reproducing the published 6{,}692). The \quantmsdiann{} count is computed under its own global rule (\texttt{Lib.PG.Q.Value}~$\leq 0.01$, with the $\geq 2$-peptide refinement where the original reports a $\geq 2$-peptide headline); no original-study consistency or detection filter is applied to the \quantmsdiann{} side.
 
 \section{Per-process runtime and resource envelopes}
 \label{sec:supp-performance}
@@ -284,22 +284,21 @@ These figures complement main-text Fig.~4 with per-condition completeness, per-p
   \mcpincludegraphics[width=0.7\textwidth,keepaspectratio]{plexDIA/MSV000093870/main_galatidou_qc_matched}
   \caption[MSV000093870 single-cell plexDIA reanalysis]{%
     \textbf{MSV000093870 (Galatidou 2024, single-cell oocyte plexDIA):
-    \quantmsdiann{} reanalysis versus the original.}
-    (\textbf{a})~Protein groups per single cell (Galatidou $n=97$ post-QC
-    oocytes; \quantmsdiann{} $n=107$ channel-confident cells): per-cell
-    median 1{,}784 original versus 1{,}473 \quantmsdiann{} (the latter at the
-    stricter \texttt{PG.Q.Value} per-cell gate). (\textbf{b})~Total protein groups
-    across the dataset: 2{,}122 (original) versus 3{,}328 (\quantmsdiann{}).
-    (\textbf{c})~Protein-group overlap at the leading-protein level (like-for-like):
-    2{,}001 shared, 121 original-only, 1{,}326 \quantmsdiann{}-only, i.e.\ 94\% of the
-    originally reported protein groups recovered (2{,}001 of 2{,}122) plus 1{,}326
-    detected only by \quantmsdiann{}. (Expanding \quantmsdiann{}'s protein groups
-    to all member accessions gives 4{,}031 accessions, but the overlap here is
-    computed group-to-group so both sides use the same entity.)
-    (\textbf{d})~QC-matched per-oocyte comparison: with the two analyses
-    restricted to the same 97 cells, per-cell protein-group quantification
-    remains correlated (median 1{,}784 versus 1{,}501; Pearson $r=0.97$). This figure
-    underpins the single-cell panel of the main reanalysis figure.
+    \quantmsdiann{} reproduces the deposited single-cell depth.}
+    For plexDIA, protein-group identification counts are not comparable across
+    \texttt{DIA-NN} versions (the channel-level \texttt{PG.Q.Value} used here is
+    not defined in the \texttt{DIA-NN}~1.8.1 output of the original analysis), so
+    we assess reproducibility rather than an identification gain.
+    (\textbf{a})~Protein groups per single cell, shown for distributional
+    context only (Galatidou $n=97$ post-QC oocytes at their reported depth;
+    \quantmsdiann{} $n=107$ channel-confident cells at the channel-level
+    \texttt{PG.Q.Value} gate): the two distributions are of comparable magnitude
+    (per-cell median 1{,}784 versus 1{,}484) and this panel is not an
+    identification-count comparison.
+    (\textbf{b})~QC-matched per-oocyte comparison: with the two analyses
+    restricted to the same 97 cells, per-oocyte protein-group quantification is
+    strongly correlated (Pearson $r=0.97$), showing that the standardised,
+    version-pinned workflow reproduces the deposited plexDIA single-cell depth.
   }
   \label{fig:supp-msv093870-plexdia}
 \end{figure}
@@ -333,21 +332,16 @@ These figures complement main-text Fig.~4 with per-condition completeness, per-p
     variable modifications per peptide, 1\% FDR).}
     (\textbf{a})~Phosphopeptides (distinct phospho-bearing modified precursors)
     and (\textbf{b})~class-I phosphosites (localization probability
-    $\geq 0.99$, unique by protein and residue) for the phospho-enriched
+    $\geq 0.75$, unique by protein and residue) for the phospho-enriched
     cohorts under standard DIA-NN~2.5.1 versus 2.5.1-enterprise: PXD034128
     (HeLa EGF, biological-study and high-speed acquisitions) and PXD049692
     (NK-cell Fe-NTA diaPASEF). The enterprise build adds a few percent of
-    identifications across both metrics.
-    (\textbf{c})~PXD049692 deposited-versus-reanalysis: distinct stripped
-    phosphopeptide backbones on the identical ten diaPASEF runs, comparing the
-    originally deposited Spectronaut directDIA report with the \quantmsdiann{}
-    DIA-NN~2.5.1-enterprise reanalysis. Stripped backbones are the
-    engine-independent metric, as the deposited fragment-level report carries
-    no per-site localization probability; \quantmsdiann{} recovers 23\% more
-    phosphopeptide backbones (5{,}240 vs 4{,}254).
-    The non-enriched PXD034623 (Galectin-1 DIA) is reanalysed for completeness
-    but omitted here, as its $\sim$280 phosphopeptides are not comparable to
-    the enriched cohorts.
+    identifications across both metrics. Phosphoproteomic identification numbers
+    are not compared across search engines (false-localisation rates differ
+    markedly at equal nominal confidence), so only \quantmsdiann{} DIA-NN~2.5.1
+    counts are shown. The non-enriched PXD034623 (Galectin-1 DIA) is reanalysed
+    for completeness but omitted here, as its $\sim$280 phosphopeptides are not
+    comparable to the enriched cohorts.
   }
   \label{fig:supp-phospho}
 \end{figure}
