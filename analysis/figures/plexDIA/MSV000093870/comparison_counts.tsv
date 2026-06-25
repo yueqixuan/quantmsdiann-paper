@@ -1,7 +1,0 @@
-metric	Galatidou_2024	quantmsdiann
-cells	97	107
-median_proteins_per_cell	1784	1484
-quantmsdiann_global_protein_groups	-	2500
-qc_matched_cells	97	97
-qc_matched_median_proteins_per_cell	1784	1512
-qc_matched_pearson_r	0.968	0.968

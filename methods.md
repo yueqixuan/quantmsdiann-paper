@@ -137,7 +137,7 @@ then the numbers aggregator); `--list` prints the same registry live.
 | `report_counts` | data | `data/quantmsdiann_benchmarks/report_counts.tsv` | downloads FTP reports, runs `count_report` |
 | `reanalysis_pg_counts` | data | per-cohort `diann_report_protein_counts.json` caches | Lib rule; inputs for the bulk-cohort figures |
 | `single_cell_tables` | data | `data/single_cell/mv_*.tsv`, `sc_totals.tsv` | per-cell `PG.Q.Value`; totals global |
-| `phospho_tables` | data | phosphopeptide / phosphosite tables | `Lib.Q.Value`; site Prob>=0.75 |
+| `runtime_by_dataset` | fig | per-run wall-clock by dataset type (Supp Fig S3) | `parallelism_data.tsv` |
 | `benchmarks` | fig | Fig 2 benchmark panels, `counts.tsv` | reads `report_counts.tsv` |
 | `queue_sweep` | fig | `queue_size_sweep.tsv` (feeds `fig2_validation`) | runtime trace |
 | `fig2_validation` | fig | Fig 2 validation composite | composes sweep + accuracy |
@@ -145,14 +145,11 @@ then the numbers aggregator); `--list` prints the same registry live.
 | `proteobench_accuracy` | fig | ProteoBench accuracy panels | HYE fold-changes |
 | `reanalysis_improvement` | fig | reanalysis-recovery figure | original matrix vs reanalysis report |
 | `single_cell_combined` | fig | single-cell figure | `single_cell_tables` outputs |
-| `plexdia_per_cell` | fig | plexDIA per-cell depth (MSV000093870) | `Channel.Q.Value` / `PG.Q.Value` |
-| `plexdia_vs_galatidou` | fig | plexDIA deposited vs quantmsdiann | same per-cell counter |
 | `pxd003539` | fig | PXD003539 (NCI-60) panels | matrix vs report |
 | `pxd004701` | fig | PXD004701 (Sun) panels | matrix vs report |
 | `pxd030304` | fig | PXD030304 (ProCan) panels | streams a 2GB matrix |
 | `pxd064049_spatial` | fig | spatial DVP panels | matrix-based (see spec Goal 5) |
-| `atlas` | fig | pan-cohort (Fig S13) | needs numpy<2 env |
-| `phospho` | fig | phosphoproteomics supp figure | `Lib.Q.Value`; site Prob>=0.75 |
+| `atlas` | fig | pan-cohort (Fig S10) | needs numpy<2 env |
 | `venn` | fig | protein-accession overlap (supp) | per-cohort |
 | `performance_trace`, `mdc_cluster_runtime` | fig | Fig 1 / performance traces | runtime + resource traces |
 | `paper_numbers` | num | `data/paper_numbers.tsv` + `paper/generated_numbers.tex` | aggregates ALL manuscript numbers |

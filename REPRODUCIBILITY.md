@@ -49,8 +49,8 @@ deposited under `quantmsdiann-benchmarks/`. Verified by HTTP HEAD:
 
 All reanalysis reports are now deposited under `quantmsdiann-benchmarks/`
 (verified by HTTP HEAD). Each figure's generator pulls its report from the FTP:
-single-cell → `make_single_cell_tables.py`; phospho → `make_phospho_tables.py`;
-spatial/plexDIA → the figure scripts download directly. ProCan's per-tissue
+single-cell → the `single_cell_tables` stage; spatial → the figure stage
+downloads directly. ProCan's per-tissue
 generator is the one remaining item.
 
 ## Deposition checklist (to close the ⏳ rows)
@@ -100,7 +100,7 @@ Each `quant_tables/` holds `diann_report.parquet` (+ `diann_report.site_report.p
 | **Fig 2** ProteoBench | depth vs accuracy, per-version IDs | ProteoBench community submissions + our `quantmsdiann-benchmarks/proteobench/` reports | `python -m scripts.rebuild --only benchmarks proteobench_accuracy fig2_validation` | community JSONs staged |
 | **Fig 3** single-cell | per-cell / completeness / dynamic range / CV / totals / plexDIA | `quantmsdiann-benchmarks/single-cell/{PXD046357,PXD049412}/v{1_8_1,2_5_1_enterprise}/quant_tables/diann_report.{tsv,parquet}`; plexDIA `MSV000093870` vs Galatidou 2024 matrix (`github.com/SlavovLab/single_cell_oocyte`) | `python -m scripts.rebuild --only single_cell_tables single_cell_combined` | **fully reproducible** ✅ |
 | **Fig 4** reanalysis / cell-line atlas | per-cohort protein groups, overlaps | `data/PXD00{3539,4701},PXD030304,...` reports (from `quantms-collections`/`quantmsdiann-benchmarks`) + per-cohort report JSONs | `python -m scripts.rebuild --only reanalysis_improvement_data reanalysis_improvement atlas` | **fully reproducible** ✅ |
-| **Supp** phospho (PXD049692) | phosphopeptides / class-I sites (DIA-NN only) | our `quantmsdiann-benchmarks/.../PXD049692/.../diann_report.parquet` + `diann_report.site_report.parquet` | `python -m scripts.rebuild --only phospho_tables phospho` | **fully reproducible** ✅ |
+| **Supp Fig S3** runtime by dataset type | per-run wall-clock by dataset type (incl. plexDIA + phospho, processed for support but not benchmarked) | `parallelism_data.tsv` (nextflow traces) | `python -m scripts.rebuild --only runtime_by_dataset` | **fully reproducible** ✅ |
 | **Supp** spatial (PXD064049) | protein groups, deposited vs reanalysis | `quantmsdiann-benchmarks/spatial/PXD064049/.../quant_tables/` + original `2025/07/PXD064049/DIANN_results.zip` | `python -m scripts.rebuild --only pxd064049_spatial` | **fully reproducible** ✅ |
 
 ## Original / baseline counts

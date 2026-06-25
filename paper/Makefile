@@ -20,6 +20,7 @@ SVGS := \
 	performance/runtime_per_step.svg \
 	performance/mdc_cluster_runtime.svg \
 	performance/resources_per_step.svg \
+	supplementary/supp_runtime_by_dataset.svg \
 	quantmsdiann_benchmarks/main_benchmarks_proteins.svg \
 	quantmsdiann_benchmarks/supplementary/supp_benchmarks_proteins_complete.svg \
 	PXD003539/supp_missing_values_per_run.svg \
@@ -27,11 +28,7 @@ SVGS := \
 	PXD003539/supp_venn_protein_accessions.svg \
 	PXD004701/supp_missing_values_per_run.svg \
 	PXD004701/supp_proteins_per_subtype.svg \
-	PXD030304/supp_missing_values_per_run.svg \
-	PXD030304/supp_proteins_per_tissue.svg \
-	plexDIA/MSV000093870/main_galatidou_comparison.svg \
-	plexDIA/MSV000093870/main_galatidou_qc_matched.svg \
-	supplementary/supp_phospho.svg
+	PXD030304/supp_proteins_per_tissue.svg
 
 PDF_TARGETS := $(addprefix $(FIG_PDF)/,$(SVGS:.svg=.pdf)) \
 	$(FIG_PDF)/manuscript/workflow_panel.pdf

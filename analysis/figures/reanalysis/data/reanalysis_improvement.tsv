@@ -3,4 +3,4 @@ PXD003539	NCI-60	4284	OpenSWATH	6812	2.5.1-enterprise	protein groups (>=2 peptid
 PXD030304	ProCan	6698	DIA-NN 1.7	8993	2.5.1	protein groups (>=2 peptides)		
 PXD004701	Sun	6183	PCT-SWATH	8304	2.5.1	protein groups (1% FDR)		
 PXD046357	HeLa Astral	4137	DIA-NN 1.8.1	4840	2.5.1-enterprise	protein groups (union)	22631	26238
-PXD064049	Spatial DVP	2947	DIA-NN 1.8.1	3099	2.5.1-enterprise	protein groups	17287	20705
+PXD064049	Spatial DVP	2947	DIA-NN 1.8.1	3301	2.5.1-enterprise	protein groups (1% FDR)	17958	21535

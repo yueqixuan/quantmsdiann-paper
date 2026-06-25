@@ -31,7 +31,7 @@
 \renewcommand{\thetable}{S\arabic{table}}
 \setcounter{table}{0}
 
-%% Number the prose sections as "Supplementary Note 1, 2, ..." (figures stay S1..S13,
+%% Number the prose sections as "Supplementary Note 1, 2, ..." (figures stay S1..S11,
 %% Table S1). Each \section{...} below therefore renders as a Supplementary Note.
 \renewcommand{\thesection}{Supplementary Note~\arabic{section}}
 %% Widen the table-of-contents number box so the long "Supplementary Note N"
@@ -123,7 +123,7 @@ A user with a valid \texttt{DIA-NN} download builds the image locally from the m
 \label{sec:supp-filter}
 
 All \quantmsdiann{} identification counts follow a single rule with exactly one admissible q-value filter per quantity and nothing else (no contaminant/target filter, no positive-quantity filter; zero quantities are counted; decoys are dropped). \emph{Per-run} numbers (per cell, per run): protein groups at \texttt{PG.Q.Value}~$\leq 0.01$ only; precursors at \texttt{Q.Value}~$\leq 0.01$ only. \emph{Global} (dataset-total/union) numbers: protein groups at \texttt{Lib.PG.Q.Value}~$\leq 0.01$ only; precursors at \texttt{Lib.Q.Value}~$\leq 0.01$ only. For deposited datasets the ``original'' count is the deposited analysis result: the row count of the deposited \texttt{pg\_matrix}/\texttt{pr\_matrix} where only a count matrix is available (HeLa, spatial), or a protein count recomputed from the deposited search output for the reanalysis-recovery cohorts (NCI-60, ProCan, Sun; see below). In plexDIA mode the channel is the per-run unit, so per-cell precursors are counted at \texttt{Channel.Q.Value}~$\leq 0.01$ in addition to \texttt{Q.Value}~$\leq 0.01$. plexDIA protein-group identification counts are not compared across \texttt{DIA-NN} versions, because the channel-level \texttt{PG.Q.Value} confidence used here is not defined in pre-2.0 output; for plexDIA we report quantmsdiann depth on its own and assess reproducibility against the deposited analysis rather than an identification gain.
-For the reanalysis-recovery figure, each ``original'' count is recomputed from the deposited or public-repository data rather than transcribed from the paper, so every bar is reproducible: NCI-60 (PXD003539) and Sun (PXD004701) from the deposited PRIDE OpenSWATH analyses (for NCI-60, proteins with $\geq 2$ distinct peptides in \texttt{feature\_alignment\_requant\_matrix.tsv}, reproducing the published 4{,}284; for Sun, proteotypic SwissProt proteins at the OpenSWATH peak-group q-value~$\leq 0.01$ in \texttt{1R\_all\_id.txt}, reproducing $\sim$6{,}091), and ProCan (PXD030304) from the authors' figshare peptide-count matrix (proteins with $\geq 2$ supporting peptides, 6{,}698, reproducing the published 6{,}692). The \quantmsdiann{} count is computed under its own global rule (\texttt{Lib.PG.Q.Value}~$\leq 0.01$, with the $\geq 2$-peptide refinement where the original reports a $\geq 2$-peptide headline); no original-study consistency or detection filter is applied to the \quantmsdiann{} side.
+For the reanalysis-recovery figure, each ``original'' count is recomputed from the deposited or public-repository data rather than transcribed from the paper, so every bar is reproducible: NCI-60 (PXD003539) and Sun (PXD004701) from the deposited PRIDE OpenSWATH analyses (for NCI-60, proteins with $\geq 2$ distinct peptides in \texttt{feature\_alignment\_requant\_matrix.tsv}, reproducing the published 4{,}284; for Sun, proteotypic SwissProt proteins at the OpenSWATH peak-group q-value~$\leq 0.01$ in \texttt{1R\_all\_id.txt}, 6{,}183, reproducing the published $\sim$6{,}091), and ProCan (PXD030304) from the authors' figshare peptide-count matrix (proteins with $\geq 2$ supporting peptides, 6{,}698, reproducing the published 6{,}692). The \quantmsdiann{} count is computed under its own global rule (\texttt{Lib.PG.Q.Value}~$\leq 0.01$, with the $\geq 2$-peptide refinement where the original reports a $\geq 2$-peptide headline); no original-study consistency or detection filter is applied to the \quantmsdiann{} side.
 
 \section{Per-process runtime and resource envelopes}
 \label{sec:supp-performance}
@@ -180,6 +180,25 @@ These figures decompose the end-to-end wall-clock and resource use reported in m
     partitions.
   }
   \label{fig:resources-per-step}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \mcpincludegraphics[width=\textwidth,keepaspectratio]{supplementary/supp_runtime_by_dataset}
+  \caption[Per-run wall-clock by dataset type]{%
+    \textbf{Per-run wall-clock for every dataset processed in this study, grouped
+    by dataset type.} Bars show the mean \texttt{DIA-NN} wall-clock per run
+    (minutes, log scale); each bar is annotated with the cohort wall-clock and the
+    number of runs. Every supported modality completes within minutes to hours,
+    including the cohorts that are processed only to demonstrate workflow support
+    and are not benchmarked against the deposited analyses (plexDIA,
+    phosphoproteomics, spatial). The deep variable-modification phosphoproteomics
+    searches (PXD034128, PXD049692) are the most expensive per run, yet each cohort
+    still finishes in a few hours, while the bulk TripleTOF cohorts are fastest per
+    run. Times are from the EMBL-EBI HPC runs (\texttt{nextflow} traces), net of the
+    one-time in-silico library-prediction step.
+  }
+  \label{fig:supp-runtime-by-dataset}
 \end{figure}
 
 
@@ -279,32 +298,6 @@ These figures complement main-text Fig.~4 with per-condition completeness, per-p
 
 \begin{figure}[htbp]
   \centering
-  \mcpincludegraphics[width=\textwidth,keepaspectratio]{plexDIA/MSV000093870/main_galatidou_comparison}\par
-  \vspace{0.6em}
-  \mcpincludegraphics[width=0.7\textwidth,keepaspectratio]{plexDIA/MSV000093870/main_galatidou_qc_matched}
-  \caption[MSV000093870 single-cell plexDIA reanalysis]{%
-    \textbf{MSV000093870 (Galatidou 2024, single-cell oocyte plexDIA):
-    \quantmsdiann{} reproduces the deposited single-cell depth.}
-    For plexDIA, protein-group identification counts are not comparable across
-    \texttt{DIA-NN} versions (the channel-level \texttt{PG.Q.Value} used here is
-    not defined in the \texttt{DIA-NN}~1.8.1 output of the original analysis), so
-    we assess reproducibility rather than an identification gain.
-    (\textbf{a})~Protein groups per single cell, shown for distributional
-    context only (Galatidou $n=97$ post-QC oocytes at their reported depth;
-    \quantmsdiann{} $n=107$ channel-confident cells at the channel-level
-    \texttt{PG.Q.Value} gate): the two distributions are of comparable magnitude
-    (per-cell median 1{,}784 versus 1{,}484) and this panel is not an
-    identification-count comparison.
-    (\textbf{b})~QC-matched per-oocyte comparison: with the two analyses
-    restricted to the same 97 cells, per-oocyte protein-group quantification is
-    strongly correlated (Pearson $r=0.97$), showing that the standardised,
-    version-pinned workflow reproduces the deposited plexDIA single-cell depth.
-  }
-  \label{fig:supp-msv093870-plexdia}
-\end{figure}
-
-\begin{figure}[htbp]
-  \centering
   \mcpincludegraphics[width=\textwidth,height=\mcpmaxfigheight,keepaspectratio]{PXD030304/supp_proteins_per_tissue}
   \caption[PXD030304 per tissue]{%
     \textbf{PXD030304 (ProCan-DepMapSanger): protein groups per tissue.}
@@ -312,38 +305,6 @@ These figures complement main-text Fig.~4 with per-condition completeness, per-p
     tissue of origin.
   }
   \label{fig:supp-pxd030304-tissue}
-\end{figure}
-
-\begin{figure}[htbp]
-  \centering
-  \mcpincludegraphics[width=\textwidth,height=\mcpmaxfigheight,keepaspectratio]{PXD030304/supp_missing_values_per_run}
-  \caption[PXD030304 missingness]{%
-    \textbf{PXD030304: per-run missing-value fraction across the
-    947-cell-line panel.}
-  }
-  \label{fig:supp-pxd030304-missing}
-\end{figure}
-
-\begin{figure}[htbp]
-  \centering
-  \mcpincludegraphics[width=\textwidth,keepaspectratio]{supplementary/supp_phospho}
-  \caption[Phosphoproteomics reanalysis]{%
-    \textbf{Phosphoproteomics reanalysis by \quantmsdiann{} (DIA-NN, max.\ two
-    variable modifications per peptide, 1\% FDR).}
-    (\textbf{a})~Phosphopeptides (distinct phospho-bearing modified precursors)
-    and (\textbf{b})~class-I phosphosites (localization probability
-    $\geq 0.75$, unique by protein and residue) for the phospho-enriched
-    cohorts under standard DIA-NN~2.5.1 versus 2.5.1-enterprise: PXD034128
-    (HeLa EGF, biological-study and high-speed acquisitions) and PXD049692
-    (NK-cell Fe-NTA diaPASEF). The enterprise build adds a few percent of
-    identifications across both metrics. Phosphoproteomic identification numbers
-    are not compared across search engines (false-localisation rates differ
-    markedly at equal nominal confidence), so only \quantmsdiann{} DIA-NN~2.5.1
-    counts are shown. The non-enriched PXD034623 (Galectin-1 DIA) is reanalysed
-    for completeness but omitted here, as its $\sim$280 phosphopeptides are not
-    comparable to the enriched cohorts.
-  }
-  \label{fig:supp-phospho}
 \end{figure}
 
 \begin{figure}[htbp]
