@@ -20,16 +20,20 @@ command that regenerates it.
 
 ## Counting conventions (the one place the rules live)
 
-`analysis/count_report_ids.py` is the canonical counter; `analysis/contaminant_filter.py`
-is the canonical target filter. All "our reanalysis" counts follow:
+The canonical rule is [methods.md §1](methods.md); the primitive that implements it
+is `count_report` in [`scripts/rebuild.py`](scripts/rebuild.py). Exactly one
+admissible q-value filter per quantity, and nothing else:
 
-- **target-only**: drop any protein group with a `CONTAM_`/`Cont_`/`ENTRAP_`/`DECOY_`/`decoy_`
-  token (`is_target_protein_group`).
-- **protein groups**: unique `Protein.Group` at `Global.PG.Q.Value ≤ 0.01` (cross-run union).
-- **precursors**: distinct `Precursor.Id` at run-specific `Q.Value` (0.01 for 1.8.1, 0.05 for
-  ≥ 2.5.x — DIA-NN's per-version `--qvalue`) **and** `Global.Q.Value ≤ 0.01`.
+- **protein groups, per run**: `PG.Q.Value ≤ 0.01`; **precursors, per run**: `Q.Value ≤ 0.01`.
+- **protein groups, global** (unique per dataset): `Lib.PG.Q.Value ≤ 0.01`;
+  **precursors, global**: `Lib.Q.Value ≤ 0.01`.
+- **No** contaminant/target filter, **no** positive-quantity filter (zeros counted);
+  decoys dropped. A §4 guard flags datasets where >1.2% of protein groups are
+  multi-accession (possible inference inflation).
 - counts come from the **report** (`diann_report.parquet`/`.tsv`), never the `*_matrix.tsv`
   files (those bake in a version-dependent `--matrix-spec-q` and are not comparable across versions).
+- plexDIA and phosphoproteomics are processed for workflow support only; their
+  identification counts are not benchmarked across DIA-NN versions (runtime figures only).
 
 ## Public availability (verified 2026-06-17)
 
@@ -38,13 +42,13 @@ deposited under `quantmsdiann-benchmarks/`. Verified by HTTP HEAD:
 
 | Dataset / figure | Public on FTP? |
 |---|---|
-| single-cell PXD046357 / PXD044991 (Fig 3) | ✅ live |
+| single-cell PXD046357 (HeLa Astral) / PXD049412 (A549/H460) (Fig 3) | ✅ live |
 | ProteoBench modules — Module_7, PXD062685, PXD049412, PXD070049 (Fig 2) | ✅ live |
 | PXD071075 cluster-size sweep (Fig 1) | ✅ live |
 | NCI-60 PXD003539 (Fig 4, via `quantms-collections`) | ✅ live |
 | ProCan PXD030304 (Fig 4) — `quantms-collections/absolute-expression-2.0/cell-lines/PXD030304/` (figure source; also mirrored at `quantmsdiann-benchmarks/cell-lines/PXD030304/v2_5_1/`) | ✅ live |
-| plexDIA MSV000093870 (Fig 3F) — `single-cell/MSV000093870/v2_5_1/` | ✅ live |
-| spatial PXD064049 (Supp) — `spatial/PXD064049/v2_5_0/` | ✅ live |
+| plexDIA MSV000093870 (support only, not benchmarked) — `single-cell/MSV000093870/v2_5_1/` | ✅ live |
+| spatial PXD064049 (Fig 4) — `spatial/PXD064049/v2_5_1_enterprise/` | ✅ live |
 | phospho PXD049692 / PXD034128 / PXD034623 (Supp) — `phospho/<ds>/v{2_5_1,2_5_1_enterprise}/` | ✅ live |
 
 All reanalysis reports are now deposited under `quantmsdiann-benchmarks/`
@@ -98,10 +102,10 @@ Each `quant_tables/` holds `diann_report.parquet` (+ `diann_report.site_report.p
 |---|---|---|---|---|
 | **Fig 1** pipeline/scaling | wall-clock per node-count & per dataset | `quantmsdiann-benchmarks/PXD071075_cluster_sizes/` (queue sweep) + per-dataset `nextflow_trace.txt` / `run_metadata.json` | `python -m scripts.rebuild --only performance_trace queue_sweep mdc_cluster_runtime` | trace/metadata staged from FTP |
 | **Fig 2** ProteoBench | depth vs accuracy, per-version IDs | ProteoBench community submissions + our `quantmsdiann-benchmarks/proteobench/` reports | `python -m scripts.rebuild --only benchmarks proteobench_accuracy fig2_validation` | community JSONs staged |
-| **Fig 3** single-cell | per-cell / completeness / dynamic range / CV / totals / plexDIA | `quantmsdiann-benchmarks/single-cell/{PXD046357,PXD049412}/v{1_8_1,2_5_1_enterprise}/quant_tables/diann_report.{tsv,parquet}`; plexDIA `MSV000093870` vs Galatidou 2024 matrix (`github.com/SlavovLab/single_cell_oocyte`) | `python -m scripts.rebuild --only single_cell_tables single_cell_combined` | **fully reproducible** ✅ |
+| **Fig 3** single-cell | per-cell / completeness (both cohorts) / dynamic range / CV / totals | `quantmsdiann-benchmarks/single-cell/{PXD046357,PXD049412}/v{1_8_1,2_5_1_enterprise}/quant_tables/diann_report.{tsv,parquet}` | `python -m scripts.rebuild --only single_cell_tables single_cell_combined` | **fully reproducible** ✅ |
 | **Fig 4** reanalysis / cell-line atlas | per-cohort protein groups, overlaps | `data/PXD00{3539,4701},PXD030304,...` reports (from `quantms-collections`/`quantmsdiann-benchmarks`) + per-cohort report JSONs | `python -m scripts.rebuild --only reanalysis_improvement_data reanalysis_improvement atlas` | **fully reproducible** ✅ |
 | **Supp Fig S3** runtime by dataset type | per-run wall-clock by dataset type (incl. plexDIA + phospho, processed for support but not benchmarked) | `parallelism_data.tsv` (nextflow traces) | `python -m scripts.rebuild --only runtime_by_dataset` | **fully reproducible** ✅ |
-| **Supp** spatial (PXD064049) | protein groups, deposited vs reanalysis | `quantmsdiann-benchmarks/spatial/PXD064049/.../quant_tables/` + original `2025/07/PXD064049/DIANN_results.zip` | `python -m scripts.rebuild --only pxd064049_spatial` | **fully reproducible** ✅ |
+| **Fig 4** spatial DVP (PXD064049) | protein groups + precursors, deposited 1.8.1 vs reanalysis, §1 report rule | `quantmsdiann-benchmarks/spatial/PXD064049/v2_5_1_enterprise/quant_tables/diann_report.parquet` + original `2025/07/PXD064049/DIANN_results.zip` (1.8.1 `MYCN_High_Low.tsv`) | `python -m scripts.rebuild --only reanalysis_improvement_data reanalysis_improvement` | **fully reproducible** ✅ |
 
 ## Original / baseline counts
 
@@ -115,8 +119,9 @@ deposits** (no transcribed paper headlines), each via `scripts/rebuild.py`:
   all-protein = 8,498).
 - **Sun 2023** (PXD004701) — recomputed from the deposited PRIDE OpenSWATH
   `1R_all_id.txt` + library (proteotypic = 6,183; all-protein = 6,696).
-- **Galatidou 2024** (MSV000093870 plexDIA) — published proteins × cells matrix,
-  used for a per-oocyte reproducibility comparison (Pearson r), not a count gain.
+- **Galatidou 2024** (MSV000093870 plexDIA) — processed for workflow support only;
+  not benchmarked against the deposit (DIA-NN identification counts are not comparable
+  across versions), so it carries no baseline count.
 
 Still cited as constants (no downloadable processed source): **Walzer 2022**
 (PXD003539, Supplementary Table S2) and the library-size / cell-line-split

@@ -31,7 +31,7 @@ $QB = https://ftp.pride.ebi.ac.uk/pub/databases/pride/resources/proteomes/quantm
 | Sun breast PCT-SWATH | PXD004701 | (cell-line panel) | [PRIDE](https://www.ebi.ac.uk/pride/archive/projects/PXD004701) |
 | Tognetti breast | PXD017199 | (cell-line panel) | [PRIDE](https://www.ebi.ac.uk/pride/archive/projects/PXD017199) |
 | MultiPro batch testbed | PXD041421 | (cell-line panel) | [PRIDE](https://www.ebi.ac.uk/pride/archive/projects/PXD041421) |
-| Spatial DVP (MYCN) | PXD064049 | `spatial/PXD064049/v2_5_0/` | [PRIDE](https://www.ebi.ac.uk/pride/archive/projects/PXD064049) |
+| Spatial DVP (MYCN) | PXD064049 | `spatial/PXD064049/v2_5_1_enterprise/` | [PRIDE](https://www.ebi.ac.uk/pride/archive/projects/PXD064049) |
 | Phospho (NK Fe-NTA) | PXD049692 | `phospho/PXD049692/v*/` | [PRIDE](https://www.ebi.ac.uk/pride/archive/projects/PXD049692) |
 | Phospho-enriched | PXD034128 | `phospho/PXD034128-{biological-study,highspeed-DIA}/v*/` | [PRIDE](https://www.ebi.ac.uk/pride/archive/projects/PXD034128) |
 | Galectin-1 phospho | PXD034623 | `phospho/PXD034623/v*/` | [PRIDE](https://www.ebi.ac.uk/pride/archive/projects/PXD034623) |
@@ -74,7 +74,13 @@ Each stage writes SVGs to `analysis/figures/<group>/` and derived tables to
 (git-ignored, re-downloaded on demand; see [MANIFEST.md](MANIFEST.md)). The PDF
 build runs only when every prior stage succeeds.
 
-All reported counts are target-only under a conservative contaminant / entrapment
-/ decoy filter (drop a protein group if any accession token carries a `CONTAM_` /
-`Cont_` / `ENTRAP_` / `DECOY_` prefix); canonical helper:
-[`analysis/contaminant_filter.py`](analysis/contaminant_filter.py).
+All reported identification counts follow a single rule ([methods.md §1](methods.md)):
+exactly one admissible q-value filter per quantity and nothing else. **No**
+contaminant/target filter, no positive-quantity filter (zeros are counted), decoys
+dropped. Per-run: protein groups at `PG.Q.Value <= 0.01`, precursors at
+`Q.Value <= 0.01`. Global (dataset totals): protein groups at `Lib.PG.Q.Value <= 0.01`,
+precursors at `Lib.Q.Value <= 0.01`. The counting primitive is `count_report` in
+[`scripts/rebuild.py`](scripts/rebuild.py). plexDIA and phosphoproteomics are
+processed end-to-end to demonstrate workflow support, but are **not** benchmarked
+across DIA-NN versions (their identification counts are not comparable, so they
+appear only in the runtime figures).

@@ -143,15 +143,16 @@ each Nextflow task occupies one SLURM job in this configuration.
 
 Consumed by: **F2d** (queueSize scaling).
 
-## Contaminant / entrapment / decoy filter
+## Counting rule
 
-Every protein-group / accession count in this repo is **target-only**
-under the conservative filter spec'd at
-[docs/superpowers/specs/2026-05-21-contaminant-filter-and-pxd041421-design.md](docs/superpowers/specs/2026-05-21-contaminant-filter-and-pxd041421-design.md):
-a Protein.Group row is excluded if any semicolon-separated token
-carries one of `CONTAM_`, `Cont_`, `ENTRAP_`, `DECOY_`, `decoy_`. The
-canonical predicate is [`analysis/contaminant_filter.is_target_protein_group`](analysis/contaminant_filter.py).
-Per-figure audit TSVs carry paired `unfiltered` + `target_only`
-counts so the contamination delta is auditable per cohort (typically
-2-8 % of cell-line PG rows; ~1 % of benchmark precursor rows).
+Every identification count in this repo follows a single rule
+([methods.md §1](methods.md)): exactly one admissible q-value filter per
+quantity and nothing else. Per run, protein groups at `PG.Q.Value <= 0.01`
+and precursors at `Q.Value <= 0.01`; global (dataset) totals at
+`Lib.PG.Q.Value <= 0.01` and `Lib.Q.Value <= 0.01`. There is **no**
+contaminant/target filter and **no** positive-quantity filter (zeros are
+counted); decoys are dropped. Counts come from the DIA-NN report, never the
+`*_matrix.tsv` files. The canonical primitive is `count_report` in
+[`scripts/rebuild.py`](scripts/rebuild.py); a §4 guard flags datasets where
+>1.2% of protein groups are multi-accession.
 
