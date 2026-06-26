@@ -57,7 +57,7 @@
 Table~\ref{tab:datasets-supp} lists every public dataset used in this study.
 For each dataset, an SDRF was prepared from the original sample metadata and is provided alongside this supplementary deposition.
 Raw files were downloaded from PRIDE and MassIVE using pridepy~\cite{kamatchinathan2025pridepy}.
-For each cell-line reanalysis cohort, the original published quantification was downloaded from the PRIDE deposition and used as the comparator.
+For each cell-line reanalysis cohort, the original published quantification was downloaded from a public repository (the PRIDE deposition, or an associated repository such as figshare for ProCan) and used as the comparator.
 The cell-line bulk DIA cohorts were assembled by programmatic search of PRIDE Archive via the PRIDE API~\cite{deutsch2026proteomexchange}, filtering for projects annotated as DIA acquisition on human samples with at least one standardised cell line listed in the Cellosaurus reference, downloadable raw files, and SDRF-compatible sample metadata.
 
 \begin{table}[htbp]
@@ -192,7 +192,7 @@ These figures decompose the end-to-end wall-clock and resource use reported in m
     number of runs. Every supported modality completes within minutes to hours,
     including the cohorts that are processed only to demonstrate workflow support
     and are not benchmarked against the deposited analyses (plexDIA,
-    phosphoproteomics, spatial). The deep variable-modification phosphoproteomics
+    phosphoproteomics). The deep variable-modification phosphoproteomics
     searches (PXD034128, PXD049692) are the most expensive per run, yet each cohort
     still finishes in a few hours, while the bulk TripleTOF cohorts are fastest per
     run. Times are from the EMBL-EBI HPC runs (\texttt{nextflow} traces), net of the
@@ -209,8 +209,8 @@ The main text reports ProteoBench quantification accuracy (Fig.~2c); the
 identification depth behind the same runs is summarised here. Total precursors
 (at the global 1\% \texttt{Lib.Q.Value}) rise by 9--22\% from \texttt{DIA-NN}~1.8.1 to
 2.5.1-enterprise on all four modules (largest on timsTOF diaPASEF,
-102{,}528~$\to$~124{,}756); proteins quantified in every run rise by up to 17\%
-(single-cell Astral, 6{,}246~$\to$~7{,}299). Protein groups are
+102{,}528~$\to$~124{,}756); proteins quantified in every run rise by up to 18\%
+(e.g.\ single-cell Astral, 6{,}246~$\to$~7{,}299, $+17$\%). Protein groups are
 counted from the per-precursor \texttt{DIA-NN} report at a 1\% run-specific
 protein-group q-value (\texttt{PG.Q.Value}) as the average per run (panel~a) and the
 number quantified in every run (``complete profiles'', panel~b).

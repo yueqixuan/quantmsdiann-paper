@@ -6514,19 +6514,35 @@ def render_queue_size_sweep(df: pd.DataFrame, svg_path: Path | None=None, *, ax:
     ann_size = 6 if composite else 8.5
     label_size = 8 if composite else 11
     tick_size = 6.5 if composite else 10
+    # Ideal strong-scaling reference (slope -1 on log-log): T_ideal(N) = T(N0)*N0/N,
+    # anchored at the smallest sweep point. The measured curve peeling ABOVE this line
+    # is the diminishing-returns saturation, most visible from 200 to 300 nodes where
+    # 50% more hardware buys only ~13 min. Two non-separable contributions: the serial
+    # cohort-level steps that remain in this wall-clock (empirical-library merge, final
+    # consolidation, export -- the one-time in-silico library prediction is already
+    # excluded from wallclock_s) set a fixed floor, and on a shared production cluster
+    # the rising concurrency competes for filesystem I/O / scheduler slots, so part of
+    # the plateau is specific to this allocation. Each point is a single run.
+    # Parallel efficiency (speedup / ideal speedup) is printed under each dot.
+    ideal = ys[0] * xs[0] / xs
+    eff = ideal / ys
+    ax.plot(xs, ideal, color='#9e9e9e', linewidth=line_width * 0.8, linestyle=(0, (5, 3)), alpha=0.9, zorder=1)
+    ax.annotate('ideal (linear / $1{/}N$)', xy=(xs[-1], ideal[-1]), xytext=(2, -1), textcoords='offset points', fontsize=ann_size, color='#757575', ha='left', va='top', style='italic')
     ax.plot(xs, ys, color=dot_color, linewidth=line_width, alpha=0.55, zorder=2)
     ax.scatter(xs, ys, s=dot_size, c=dot_color, edgecolors='#0d47a1', linewidths=0.8, zorder=3)
-    for xi, yi in zip(xs, ys):
-        ax.annotate(f'{yi:.1f} h', xy=(xi, yi), xytext=(6, 6), textcoords='offset points', fontsize=ann_size, color='#1a237e', fontweight='bold', ha='left', va='bottom')
+    for xi, yi, ei in zip(xs, ys, eff):
+        ax.annotate(f'{yi:.1f} h', xy=(xi, yi), xytext=(0, 9), textcoords='offset points', fontsize=ann_size, color='#1a237e', fontweight='bold', ha='center', va='bottom')
+        ax.annotate(f'{ei:.0%} eff.', xy=(xi, yi), xytext=(0, -10), textcoords='offset points', fontsize=ann_size - 0.5, color='#757575', ha='center', va='top')
     ax.set_xscale('log')
     ax.set_yscale('log')
     from matplotlib.ticker import FixedLocator, FixedFormatter
     ax.xaxis.set_major_locator(FixedLocator(xs))
     ax.xaxis.set_major_formatter(FixedFormatter([str(int(x)) for x in xs]))
     ax.xaxis.set_minor_locator(FixedLocator([]))
+    y_lo = min(ys.min(), ideal.min())
     y_ticks = []
     for cand in (1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0):
-        if ys.min() / 1.4 <= cand <= ys.max() * 1.4:
+        if y_lo / 1.4 <= cand <= ys.max() * 1.4:
             y_ticks.append(cand)
     if y_ticks:
         ax.yaxis.set_major_locator(FixedLocator(y_ticks))
@@ -6538,7 +6554,7 @@ def render_queue_size_sweep(df: pd.DataFrame, svg_path: Path | None=None, *, ax:
     ax.spines['right'].set_visible(False)
     ax.tick_params(axis='both', labelsize=tick_size)
     ax.set_xlim(xs.min() / 1.4, xs.max() * 1.8)
-    ax.set_ylim(ys.min() / 1.6, ys.max() * 1.6)
+    ax.set_ylim(y_lo / 1.6, ys.max() * 1.6)
     if own_fig:
         fig.tight_layout()
         assert svg_path is not None
