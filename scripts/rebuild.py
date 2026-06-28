@@ -123,7 +123,7 @@ def categorical_colors(n):
 
 def apply_house_style():
     """Apply the manuscript-wide matplotlib rcParams. Idempotent."""
-    mpl.rcParams.update({'font.family': 'sans-serif', 'font.sans-serif': ['Helvetica', 'Arial', 'DejaVu Sans'], 'font.size': 16, 'axes.titlesize': 18, 'axes.titleweight': 'bold', 'axes.labelsize': 17, 'xtick.labelsize': 14, 'ytick.labelsize': 14, 'legend.fontsize': 14, 'legend.title_fontsize': 14, 'axes.spines.top': False, 'axes.spines.right': False, 'axes.linewidth': 0.8, 'xtick.direction': 'out', 'ytick.direction': 'out', 'legend.frameon': False, 'figure.facecolor': 'white', 'axes.facecolor': 'white', 'savefig.facecolor': 'white', 'savefig.bbox': 'tight', 'savefig.dpi': 300, 'svg.fonttype': 'none'})
+    mpl.rcParams.update({'font.family': 'sans-serif', 'font.sans-serif': ['Helvetica', 'Arial', 'DejaVu Sans'], 'font.size': 16, 'axes.titlesize': 18, 'axes.titleweight': 'bold', 'axes.labelsize': 17, 'xtick.labelsize': 14, 'ytick.labelsize': 14, 'legend.fontsize': 14, 'legend.title_fontsize': 14, 'axes.spines.top': False, 'axes.spines.right': False, 'axes.linewidth': 0.8, 'xtick.direction': 'out', 'ytick.direction': 'out', 'legend.frameon': False, 'figure.facecolor': 'white', 'axes.facecolor': 'white', 'savefig.facecolor': 'white', 'savefig.bbox': 'tight', 'savefig.dpi': 300, 'svg.fonttype': 'path'})
 
 def kfmt(value, _pos=None):
     """Abbreviate large counts: 134000 -> '134k', 1300 -> '1.3k', 950 -> '950'.
@@ -2528,7 +2528,7 @@ def _render_main_metric(quantmsdiann_rows: list[tuple[str, str, int, int]], svg_
     ax.legend(title='DIA-NN version', loc='upper center', bbox_to_anchor=(0.5, -0.18), ncol=n_versions, frameon=False, fontsize=8, title_fontsize=9)
     fig.tight_layout(rect=(0, 0.12, 1, 1))
     svg_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(svg_path)
+    fig.savefig(svg_path, bbox_inches='tight', pad_inches=0.3)
     plt.close(fig)
 
 def render_main_precursors(quantmsdiann_rows: list[tuple[str, str, int, int]], svg_path: Path) -> None:
@@ -2717,7 +2717,7 @@ def figure_quantmsdiann_benchmarks_vs_proteobench_main() -> int:
     print('Rendering protein-group main panel (per-run average)...')
     render_main_proteins(quantmsdiann_rows_protavg, _figure_quantmsdiann_benchmarks_vs_proteobench__FIGURES_DIR / 'main_benchmarks_proteins.svg')
     print('Rendering complete-profile protein panel (supplementary)...')
-    _render_main_metric(quantmsdiann_rows_complete, SUPP_DIR / 'supp_benchmarks_proteins_complete.svg', metric='proteins', ylabel='Complete-profile protein groups (in all runs)', label_fmt=lambda v: f'{v / 1000:.1f}k')
+    _render_main_metric(quantmsdiann_rows_complete, SUPP_DIR / 'supp_benchmarks_proteins_complete.svg', metric='proteins', ylabel='Complete-profile protein groups', label_fmt=lambda v: f'{v / 1000:.1f}k')
     print('Writing auditable counts TSV (≥1)...')
     _figure_quantmsdiann_benchmarks_vs_proteobench__write_counts_tsv(long_df, FIG_DATA_DIR / 'counts.tsv', quantmsdiann_unfiltered_rows=quantmsdiann_rows_unfiltered)
     print('Writing auditable counts TSV (≥3)...')
@@ -3838,14 +3838,14 @@ def render_missing_values_per_run(guo_per_run: dict[str, float], diann_per_run: 
     ax.plot(list(x), [guo_by_stem[s] for s in common], label='Guo 2019 (OpenSWATH)', color=fs.COMPARISON['original'], linewidth=1.0)
     ax.plot(list(x), [diann_by_stem[s] for s in common], label='quantmsdiann (DIA-NN)', color=fs.COMPARISON['quantmsdiann'], linewidth=1.0)
     ax.set_xlabel(f'MS run index ({len(common)} runs, ordered by acquisition date)')
-    ax.set_ylabel('Fraction of precursors quantified per run')
+    ax.set_ylabel('Fraction of precursors quantified')
     ax.set_ylim(0, 1.05)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.legend(loc='lower right', frameon=False)
     fig.tight_layout()
     svg_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(svg_path)
+    fig.savefig(svg_path, bbox_inches='tight', pad_inches=0.3)
     plt.close(fig)
 _DISEASE_LABEL_ORDER = ['leukemia', 'central nervous system cancer', 'breast cancer', 'colorectal cancer', 'lung cancer', 'melanoma', 'ovarian cancer', 'prostate cancer', 'renal cancer']
 
@@ -6131,7 +6131,7 @@ def render_proteins_per_tissue(procan_per_tissue: dict[str, set[str]], diann_per
     ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.28), ncol=2, frameon=False)
     fig.tight_layout(rect=(0, 0.18, 1, 1))
     svg_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(svg_path)
+    fig.savefig(svg_path, bbox_inches='tight', pad_inches=0.3)
     plt.close(fig)
 
 def _figure_pxd030304_procan_vs_quantmsdiann__render_per_run_completeness(procan_freqs: list[float], diann_freqs: list[float], svg_path: Path) -> None:
