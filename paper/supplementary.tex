@@ -106,6 +106,7 @@ PXD004701 deposited 2016, published as Sun \textit{et al.}~2023).}
 \multicolumn{4}{l}{\textit{Single-cell proteomics}} \\
 \sdrf{PXD046357} & Orbitrap Astral & Single-cell HeLa (Astral) & 2024 \\
 \sdrf{PXD049412} & Orbitrap Astral & Single-cell A549/H460 (Bubis 2025; also Module~9 benchmark) & 2024 \\
+\sdrf{PXD044991} & Orbitrap Astral & Single-cell, minimal-input HeLa (One-Tip) & 2023 \\
 \sdrf{MSV000093870} & Q Exactive & Single-cell oocyte plexDIA (Galatidou 2024) & 2024 \\
 \hline
 \multicolumn{4}{l}{\textit{Phosphoproteomics}} \\
@@ -126,7 +127,7 @@ PXD004701 deposited 2016, published as Sun \textit{et al.}~2023).}
 \label{sec:supp-filter}
 
 All \quantmsdiann{} identification counts follow a single rule with exactly one admissible q-value filter per quantity and nothing else (no contaminant/target filter, no positive-quantity filter; zero quantities are counted; decoys are dropped). \emph{Per-run} numbers (per cell, per run): protein groups at \texttt{PG.Q.Value}~$\leq 0.01$ only; precursors at \texttt{Q.Value}~$\leq 0.01$ only. \emph{Global} (dataset-total/union) numbers: protein groups at \texttt{Lib.PG.Q.Value}~$\leq 0.01$ only; precursors at \texttt{Lib.Q.Value}~$\leq 0.01$ only. For deposited datasets the ``original'' count is the deposited analysis result: the row count of the deposited \texttt{pg\_matrix}/\texttt{pr\_matrix} where only a count matrix is available (HeLa, spatial), or a protein count recomputed from the deposited search output for the reanalysis-recovery cohorts (NCI-60, ProCan, Sun; see below). In plexDIA mode the channel is the per-run unit, so per-cell precursors are counted at \texttt{Channel.Q.Value}~$\leq 0.01$ in addition to \texttt{Q.Value}~$\leq 0.01$. plexDIA protein-group identification counts are not compared across \texttt{DIA-NN} versions, because the channel-level \texttt{PG.Q.Value} confidence used here is not defined in pre-2.0 output; for plexDIA we report quantmsdiann depth on its own and assess reproducibility against the deposited analysis rather than an identification gain.
-For the reanalysis-recovery figure, each ``original'' count is recomputed from the deposited or public-repository data rather than transcribed from the paper, so every bar is reproducible: NCI-60 (PXD003539) and Sun (PXD004701) from the deposited PRIDE OpenSWATH analyses (for NCI-60, proteins with $\geq 2$ distinct peptides in \texttt{feature\_alignment\_requant\_matrix.tsv}, reproducing the published 4{,}284; for Sun, proteotypic SwissProt proteins at the OpenSWATH peak-group q-value~$\leq 0.01$ in \texttt{1R\_all\_id.txt}, 6{,}183, reproducing the published $\sim$6{,}091), and ProCan (PXD030304) from the authors' figshare peptide-count matrix (proteins with $\geq 2$ supporting peptides, 6{,}698, reproducing the published 6{,}692). The \quantmsdiann{} count is computed under its own global rule (\texttt{Lib.PG.Q.Value}~$\leq 0.01$, with the $\geq 2$-peptide refinement where the original reports a $\geq 2$-peptide headline); no original-study consistency or detection filter is applied to the \quantmsdiann{} side.
+For the reanalysis-recovery figure, each ``original'' count is recomputed from the deposited or public-repository data rather than transcribed from the paper, so every bar is reproducible: NCI-60 (PXD003539) and Sun (PXD004701) from the deposited PRIDE OpenSWATH analyses (for NCI-60, proteins with $\geq 2$ distinct peptides in \texttt{feature\_alignment\_requant\_matrix.tsv}, reproducing the published 4{,}284; for Sun, proteotypic SwissProt proteins at the OpenSWATH peak-group q-value~$\leq 0.01$ in \texttt{1R\_all\_id.txt}, 6{,}183, reproducing the published $\sim$6{,}091), and ProCan (PXD030304) from the authors' figshare peptide-count matrix (proteins with $\geq 2$ supporting peptides, 6{,}698, reproducing the published 6{,}692). The \quantmsdiann{} count is computed under its own global rule (\texttt{Lib.PG.Q.Value}~$\leq 0.01$, with the $\geq 2$-peptide refinement where the original reports a $\geq 2$-peptide headline); no original-study consistency or detection filter is applied to the \quantmsdiann{} side. Three caveats bound the cross-deposit comparisons (main-text Section~3.4): differences in FDR calibration across search-engine generations, the use of each original study's own counting criterion, and possible differences in protein sequence database and search settings between the deposited analysis and the reanalysis (including contaminant databases that are often not deposited, as for the spatial DVP cohort PXD064049). Because \quantmsdiann{} applies one harmonised FASTA and parameter set across all cohorts, residual count differences attributable to such undocumented database or setting choices cannot be fully excluded.
 
 \section{Per-process runtime and resource envelopes}
 \label{sec:supp-performance}
@@ -184,26 +185,6 @@ These figures decompose the end-to-end wall-clock and resource use reported in m
   }
   \label{fig:resources-per-step}
 \end{figure}
-
-\begin{figure}[htbp]
-  \centering
-  \mcpincludegraphics[width=\textwidth,keepaspectratio]{supplementary/supp_runtime_by_dataset}
-  \caption[Per-run wall-clock by dataset type]{%
-    \textbf{Per-run wall-clock for every dataset processed in this study, grouped
-    by dataset type.} Bars show the mean \texttt{DIA-NN} wall-clock per run
-    (minutes, log scale); each bar is annotated with the cohort wall-clock and the
-    number of runs. Every supported modality completes within minutes to hours,
-    including the cohorts that are processed only to demonstrate workflow support
-    and are not benchmarked against the deposited analyses (plexDIA,
-    phosphoproteomics). The deep variable-modification phosphoproteomics
-    searches (PXD034128, PXD049692) are the most expensive per run, yet each cohort
-    still finishes in a few hours, while the bulk TripleTOF cohorts are fastest per
-    run. Times are from the EMBL-EBI HPC runs (\texttt{nextflow} traces), net of the
-    one-time in-silico library-prediction step.
-  }
-  \label{fig:supp-runtime-by-dataset}
-\end{figure}
-
 
 \section{ProteoBench protein-group depth across \texttt{DIA-NN} versions}
 \label{sec:supp-proteobench-proteins}

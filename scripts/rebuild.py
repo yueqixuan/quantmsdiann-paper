@@ -2240,8 +2240,12 @@ def _figure_fig2_validation__render(out: Path) -> Path:
         a.text(-0.06, 1.05, f'({lab})', transform=a.transAxes, fontsize=14, fontweight='bold', va='bottom', ha='left')
     insts = [i for i in dict.fromkeys(dp['instrument']) if isinstance(i, str)]
     handles = [Patch(facecolor=INSTRUMENT_COLOURS.get(i, '#9e9e9e'), edgecolor='#222222', label=i) for i in insts]
-    fig.legend(handles=handles, loc='lower center', ncol=5, fontsize=7, frameon=False, title='Instrument / dataset (panels b, c)', title_fontsize=7.5, bbox_to_anchor=(0.5, -0.02))
-    fig.tight_layout(rect=(0, 0.13, 1, 1), w_pad=0.4)
+    leg_inst = fig.legend(handles=handles, loc='lower center', ncol=5, fontsize=7, frameon=False, title='Instrument / dataset bar colour (panels b, c)', title_fontsize=7.5, bbox_to_anchor=(0.5, -0.02))
+    fig.add_artist(leg_inst)
+    types_present = [t for t in dict.fromkeys(DATASET_TYPE.get(ds) for ds in dp['dataset']) if t]
+    thandles = [Patch(facecolor=DATASET_TYPE_COLOURS[t], edgecolor='#222222', label=t) for t in types_present]
+    fig.legend(handles=thandles, loc='lower center', ncol=6, fontsize=6.5, frameon=False, title='Dataset type (panel b y-axis label colour)', title_fontsize=7, bbox_to_anchor=(0.5, -0.11))
+    fig.tight_layout(rect=(0, 0.2, 1, 1), w_pad=0.4)
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out)
     plt.close(fig)
@@ -4887,6 +4891,15 @@ def render_parallelism_scatter(df: pd.DataFrame, svg_path: Path | None=None, *, 
         ax.text(h + hmax * 0.012, yi, f'{h:.1f} h', va='center', ha='left', fontsize=ann_size, color='#333333')
     ax.set_yticks(y)
     ax.set_yticklabels(rep['label'], fontsize=tick_size)
+    # Dataset-type metadata channel: colour each y-tick label by dataset type,
+    # orthogonal to the instrument-family bar colour. This replaces the removed
+    # per-run "by dataset type" supplementary figure (former Supp Fig S3); here it
+    # is descriptive metadata only -- bar height reflects cohort size and
+    # parallelisation, not sample type.
+    for tick, ds in zip(ax.get_yticklabels(), rep['dataset']):
+        t = DATASET_TYPE.get(ds)
+        if t:
+            tick.set_color(DATASET_TYPE_COLOURS.get(t, '#333333'))
     ax.invert_yaxis()
     ax.set_xlabel('Wall-clock time to finish (hours)', fontsize=label_size)
     ax.set_xlim(0, hmax * 1.16)
@@ -4902,7 +4915,15 @@ def render_parallelism_scatter(df: pd.DataFrame, svg_path: Path | None=None, *, 
         legend_title_fs = 7 if composite else 10
         ncol = 2 if composite else legend_ncol
         bbox_y = -0.22 if composite else legend_bbox_y
-        ax.legend(handles=handles, title='Instrument', loc='upper center', bbox_to_anchor=(0.5, bbox_y), fontsize=legend_fs, title_fontsize=legend_title_fs, frameon=False, borderaxespad=0.0, ncol=ncol, columnspacing=1.2 if composite else 1.6)
+        leg1 = ax.legend(handles=handles, title='Instrument (bar)', loc='upper center', bbox_to_anchor=(0.5, bbox_y), fontsize=legend_fs, title_fontsize=legend_title_fs, frameon=False, borderaxespad=0.0, ncol=ncol, columnspacing=1.2 if composite else 1.6)
+        ax.add_artist(leg1)
+        tseen: dict[str, str] = {}
+        for ds in rep['dataset']:
+            t = DATASET_TYPE.get(ds)
+            if t:
+                tseen.setdefault(t, DATASET_TYPE_COLOURS.get(t, '#333333'))
+        thandles = [Patch(facecolor=c, edgecolor='#222222', label=t) for t, c in tseen.items()]
+        ax.legend(handles=thandles, title='Dataset type (label)', loc='lower right', fontsize=legend_fs, title_fontsize=legend_title_fs, frameon=False, borderaxespad=0.0, ncol=1)
     if own_fig:
         fig.tight_layout()
         assert svg_path is not None
@@ -5089,7 +5110,7 @@ def figure_performance_trace_main() -> int:
 DATASET_TYPE = {
     'ProteoBench_Module_7': 'Benchmark (ProteoBench)', 'PXD049412': 'Benchmark (ProteoBench)',
     'PXD062685': 'Benchmark (ProteoBench)', 'PXD070049': 'Benchmark (ProteoBench)',
-    'PXD046357': 'Single-cell', 'PXD071075': 'Single-cell',
+    'PXD046357': 'Single-cell', 'PXD071075': 'Single-cell', 'PXD044991': 'Single-cell',
     'MSV000093870': 'plexDIA',
     'PXD003539': 'Bulk cell-line', 'PXD004701': 'Bulk cell-line', 'PXD030304': 'Bulk cell-line',
     'PXD017199': 'Bulk cell-line', 'PXD041421': 'Bulk cell-line',
@@ -7643,8 +7664,12 @@ FIGURES = [
      "Protein-accession overlap (supplementary)"),
     ("performance_trace", figure_performance_trace_main,
      "Per-step runtime + resources (runtime_per_step.svg, resources_per_step.svg)"),
-    ("runtime_by_dataset", figure_runtime_by_dataset_main,
-     "Per-run wall-clock by dataset type (supplementary Fig S3)"),
+    # NOTE: the per-run "runtime_by_dataset" supplementary figure (former Supp Fig S3)
+    # was removed per author feedback: per-run time scales with experiment scale and
+    # parallelisation, not sample type, so grouping it by dataset type is misleading.
+    # Dataset type is now shown directly on main-text Fig 2b instead (see
+    # render_parallelism_scatter). figure_runtime_by_dataset_main() is retained but
+    # unregistered.
     ("mdc_cluster_runtime", figure_mdc_cluster_runtime_main,
      "MDC cluster runtime"),
 ]

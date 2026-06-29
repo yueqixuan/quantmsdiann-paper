@@ -137,7 +137,7 @@ then the numbers aggregator); `--list` prints the same registry live.
 | `report_counts` | data | `data/quantmsdiann_benchmarks/report_counts.tsv` | downloads FTP reports, runs `count_report` |
 | `reanalysis_pg_counts` | data | per-cohort `diann_report_protein_counts.json` caches | Lib rule; inputs for the bulk-cohort figures |
 | `single_cell_tables` | data | `data/single_cell/mv_*.tsv`, `sc_totals.tsv` | per-cell `PG.Q.Value`; totals global |
-| `runtime_by_dataset` | fig | per-run wall-clock by dataset type (Supp Fig S3) | `parallelism_data.tsv` |
+| `runtime_by_dataset` | fig | DEPRECATED/unregistered: former Supp Fig S3 (per-run wall-clock by dataset type) removed per author feedback; dataset type now shown on Fig 2b y-labels | `parallelism_data.tsv` |
 | `benchmarks` | fig | Fig 2 benchmark panels, `counts.tsv` | reads `report_counts.tsv` |
 | `queue_sweep` | fig | `queue_size_sweep.tsv` (feeds `fig2_validation`) | runtime trace |
 | `fig2_validation` | fig | Fig 2 validation composite | composes sweep + accuracy |
@@ -180,5 +180,4 @@ If an audit finding cannot easily be fixed, e.g. conforming to a directive requr
 This section lists pending changes. Once a change is implemented, the list below must be updated accordingly.
 
 * Reformat this methods.md document to use consistent text style, without artificial line breaks. Correct any typos.
-* Rearrange figures order: the figure on quantmsdiann 2.5/2.5.1 comparison with public data must precede the single cell performance comparison with DIA-NN 1.8.1.
 * Refactor phpsphoproteomics benchmarks to show only DIA-NN 2.5 or 2.5.1 numbers and runtimes but NOT comparing to other softwares.
